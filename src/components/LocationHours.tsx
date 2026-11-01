@@ -187,14 +187,6 @@ export const LocationHours = () => {
                 <MapPin className="w-5 h-5" />
               </div>
               <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-heading text-base sm:text-lg font-bold text-white uppercase leading-none">
-                    Dirección Oficial
-                  </h4>
-                  <span className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 font-semibold px-2 py-0.5 rounded-full uppercase">
-                    Food Truck
-                  </span>
-                </div>
                 <p className="text-gray-200 text-xs sm:text-sm font-medium">
                   {RESTAURANT_INFO.address}
                 </p>
