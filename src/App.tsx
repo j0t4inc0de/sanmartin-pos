@@ -12,11 +12,9 @@ import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { QrMenuPage } from './components/QrMenuPage';
-import { UnderConstruction } from './components/UnderConstruction';
 import { CartItem, MenuItem, ComboItem, ExtraItem } from './types';
 
-// Feature Flag: Set to true when ready to release the full landing page
-const SHOW_FULL_LANDING = false;
+// ponytail: removed UnderConstruction maintenance gate so full landing and QR menu are live
 
 function getInitialRoute(): 'home' | 'menu' {
   if (typeof window === 'undefined') return 'home';
@@ -147,11 +145,6 @@ export default function App() {
 
   if (currentRoute === 'menu') {
     return <QrMenuPage onNavigateHome={() => navigateTo('home')} />;
-  }
-
-  // Under construction mode: shows We Are Samod agency teaser on root /
-  if (!SHOW_FULL_LANDING) {
-    return <UnderConstruction onNavigateToMenu={() => navigateTo('menu')} />;
   }
 
   return (

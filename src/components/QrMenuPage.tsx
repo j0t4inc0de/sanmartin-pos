@@ -14,7 +14,7 @@ interface QrMenuPageProps {
   onNavigateHome?: () => void;
 }
 
-export const QrMenuPage = ({ onNavigateHome: _onNavigateHome }: QrMenuPageProps) => {
+export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const status = useBusinessStatus();
@@ -88,15 +88,17 @@ export const QrMenuPage = ({ onNavigateHome: _onNavigateHome }: QrMenuPageProps)
             </div>
           </div>
 
-          {/* Botón para volver a la web comentado temporalmente */}
-          {/* <button
-            onClick={onNavigateHome}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs font-semibold border border-white/10 transition-colors cursor-pointer shrink-0"
-            title="Ir a la página web completa"
-          >
-            <span className="hidden sm:inline">Sitio Web</span>
-            <span className="sm:hidden">Web</span>
-          </button> */}
+          {/* ponytail: enable navigation back to live landing page */}
+          {onNavigateHome && (
+            <button
+              onClick={onNavigateHome}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white text-xs font-semibold border border-white/10 transition-colors cursor-pointer shrink-0"
+              title="Ir a la página web completa"
+            >
+              <span className="hidden sm:inline">Sitio Web</span>
+              <span className="sm:hidden">Web</span>
+            </button>
+          )}
         </div>
 
         {/* Search Bar */}
@@ -109,7 +111,7 @@ export const QrMenuPage = ({ onNavigateHome: _onNavigateHome }: QrMenuPageProps)
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por sándwich o ingrediente (palta, mechada, luco...)"
+              placeholder="Buscar producto o ingrediente (italiano, chorrillana, luco, palta...)"
               className="w-full pl-9 pr-9 py-2 rounded-xl bg-[#171717] border border-white/10 text-white placeholder-gray-500 text-xs sm:text-sm focus:outline-none focus:border-[#FACC15] focus:ring-1 focus:ring-[#FACC15] transition-all"
             />
             {searchQuery && (
@@ -238,6 +240,15 @@ export const QrMenuPage = ({ onNavigateHome: _onNavigateHome }: QrMenuPageProps)
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#161616] via-transparent to-black/30" />
                         
+                        {/* ponytail: display CSV size attribute when present */}
+                        {item.size && (
+                          <div className="absolute top-2 left-2 bg-black/75 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10">
+                            <span className="text-[10px] font-semibold text-gray-200 uppercase">
+                              {item.size}
+                            </span>
+                          </div>
+                        )}
+
                         {/* Price Tag in Gold */}
                         <div className="absolute bottom-2 right-2 bg-[#0D0D0D]/95 backdrop-blur-md px-3 py-1 rounded-xl border border-white/15 shadow-md">
                           <span className="font-heading text-base sm:text-lg font-extrabold text-[#FACC15]">

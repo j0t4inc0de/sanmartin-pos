@@ -49,10 +49,10 @@ export const CombosSection = ({ onAddComboToCart }: CombosSectionProps) => {
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto space-y-3 mb-14">
           <h2 className="font-heading text-4xl sm:text-5xl font-extrabold text-white tracking-tight uppercase">
-            Combos Para Compartir
+            Promociones & Combos
           </h2>
           <p className="text-gray-400 text-base sm:text-lg">
-            Ahorra más y disfruta en grande. Todos nuestros combos incluyen papas rústicas, bebidas heladas y salsas caseras de la casa.
+            Aprovecha nuestras promociones de 2 sándwiches con papas fritas y nuestras chorrillanas con bebida o jugo de 1.5L.
           </p>
         </div>
 

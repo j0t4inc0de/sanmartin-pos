@@ -75,7 +75,7 @@ export const Hero = () => {
               transition={{ duration: 0.5, delay: 0.15 }}
               className="text-gray-300 text-base sm:text-lg md:text-xl max-w-2xl mx-auto lg:mx-0 font-normal leading-relaxed"
             >
-              Carne jugosa 100% de primera cocinada al momento a la plancha, mechada de cocción lenta, abundante palta hass molida fresca y pan crujiente en porciones <strong className="text-white font-bold">verdaderamente gigantes</strong>.
+              Sándwiches con proteína a elección, vianesas, ases, chorrillanas, papas fritas y promociones preparados al momento a la plancha con <strong className="text-white font-bold">abundante palta fresca y mayo casera</strong>.
             </motion.p>
 
 

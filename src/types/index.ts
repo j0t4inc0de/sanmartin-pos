@@ -1,7 +1,9 @@
 export interface MenuItem {
   id: string;
   name: string;
-  category: 'churrascos' | 'mechadas' | 'lomitos' | 'completos' | 'papas' | 'bebidas';
+  // ponytail: align category union with real CSV catalog categories
+  category: 'sandwiches' | 'vianesas' | 'ases' | 'chorrillanas' | 'acompanamientos' | 'salsas' | 'bebestibles' | 'agregados';
+  size?: string;
   price: number;
   originalPrice?: number;
   original_price?: number | null;
