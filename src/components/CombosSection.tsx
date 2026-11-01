@@ -18,9 +18,10 @@ const ENABLE_ONLINE_CART = false;
 
 interface CombosSectionProps {
   onAddComboToCart?: (combo: ComboItem) => void;
+  onNavigateToMenu?: () => void;
 }
 
-export const CombosSection = ({ onAddComboToCart }: CombosSectionProps) => {
+export const CombosSection = ({ onAddComboToCart, onNavigateToMenu }: CombosSectionProps) => {
   const [addedComboId, setAddedComboId] = useState<string | null>(null);
 
   const handleAdd = (combo: ComboItem) => {
@@ -172,6 +173,30 @@ export const CombosSection = ({ onAddComboToCart }: CombosSectionProps) => {
 
             </motion.div>
           ))}
+        </div>
+
+        {/* CTA: Redirigir al menú completo */}
+        <div className="mt-12 text-center">
+          <div className="inline-flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 p-4 sm:px-6 sm:py-3.5 rounded-2xl bg-[#171717] border border-white/10 shadow-xl">
+            <span className="text-sm sm:text-base text-gray-300 font-medium">
+              ¿Quieres ver el menú completo?
+            </span>
+            <a
+              href="/menu"
+              onClick={(e) => {
+                e.preventDefault();
+                if (onNavigateToMenu) {
+                  onNavigateToMenu();
+                } else {
+                  window.location.href = '/menu';
+                }
+              }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] hover:from-[#EF4444] hover:to-[#DC2626] text-white font-bold text-sm shadow-[0_0_15px_rgba(220,38,38,0.4)] transition-all cursor-pointer"
+            >
+              <span>Ver Menú Completo</span>
+              <span className="text-amber-300">→</span>
+            </a>
+          </div>
         </div>
 
       </div>

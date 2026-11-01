@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
-import { CombosSection } from './components/CombosSection';
 import { AboutFeatures } from './components/AboutFeatures';
-import { DeliveryChannels } from './components/DeliveryChannels';
+import { CombosSection } from './components/CombosSection';
 import { LocationHours } from './components/LocationHours';
 import { Testimonials } from './components/Testimonials';
 import { Footer } from './components/Footer';
@@ -123,12 +122,14 @@ export default function App() {
         onNavigateToMenu={() => navigateTo('menu')}
       />
 
-      {/* Main Content Sections */}
+      {/* Main Content Sections: 1: Por Qué Elegirnos, 2: Combos, 3: Ubicación & Horarios, 4: Reseñas */}
       <main className="flex-1">
         <Hero onNavigateToMenu={() => navigateTo('menu')} />
-        <CombosSection onAddComboToCart={handleAddComboToCart} />
         <AboutFeatures />
-        <DeliveryChannels />
+        <CombosSection
+          onAddComboToCart={handleAddComboToCart}
+          onNavigateToMenu={() => navigateTo('menu')}
+        />
         <LocationHours />
         <Testimonials />
       </main>
