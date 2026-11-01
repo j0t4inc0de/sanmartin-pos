@@ -45,18 +45,18 @@ export const LocationHours = () => {
         </div>
 
         {/* Content Split */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-stretch">
           
           {/* Left Column: Schedule & Info */}
-          <div className="lg:col-span-6 space-y-6">
+          <div className="lg:col-span-6 flex flex-col space-y-4 sm:space-y-5">
             
             {/* Live Status Card */}
-            <div className={`p-6 sm:p-7 rounded-3xl border shadow-2xl relative overflow-hidden ${
+            <div className={`p-5 sm:p-6 rounded-3xl border shadow-xl relative overflow-hidden ${
               status.isOpen
                 ? 'bg-gradient-to-br from-[#13231B] via-[#161616] to-[#121212] border-emerald-500/40'
                 : 'bg-gradient-to-br from-[#241A13] via-[#161616] to-[#121212] border-amber-500/40'
             }`}>
-              <div className="flex items-center justify-between gap-4 mb-4">
+              <div className="flex items-center justify-between gap-4 mb-3">
                 <div className="flex items-center gap-2.5">
                   <span className="relative flex h-3.5 w-3.5">
                     {status.isOpen ? (
@@ -80,11 +80,11 @@ export const LocationHours = () => {
                 </span>
               </div>
 
-              <p className="text-sm text-gray-300 leading-relaxed mb-4">
+              <p className="text-xs sm:text-sm text-gray-300 leading-relaxed mb-3">
                 {status.statusDetail}
               </p>
 
-              <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-white/10 text-xs text-gray-400">
+              <div className="flex flex-wrap items-center gap-3 pt-2.5 border-t border-white/10 text-xs text-gray-400">
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-[#FACC15]" />
                   Próxima apertura: <strong className="text-white">{status.nextOpenText}</strong>
@@ -92,21 +92,21 @@ export const LocationHours = () => {
               </div>
             </div>
 
-            {/* Schedule Table */}
-            <div className="p-6 sm:p-7 rounded-3xl bg-[#161616] border border-white/10 shadow-xl space-y-4">
-              <div className="flex items-center gap-2 text-white font-heading text-lg uppercase tracking-wider">
-                <Calendar className="w-5 h-5 text-[#FACC15]" />
+            {/* Schedule Table: compact and aligned with right column map */}
+            <div className="flex-1 p-5 sm:p-6 rounded-3xl bg-[#161616] border border-white/10 shadow-xl flex flex-col justify-between space-y-3">
+              <div className="flex items-center gap-2 text-white font-heading text-base sm:text-lg uppercase tracking-wider">
+                <Calendar className="w-4 h-4 text-[#FACC15]" />
                 <span>Horario de Atención Semanal</span>
               </div>
 
-              <div className="divide-y divide-white/5">
+              <div className="divide-y divide-white/5 flex-1 flex flex-col justify-around">
                 {scheduleDays.map((item, index) => (
-                  <div key={index} className="py-2.5 flex items-center justify-between text-xs sm:text-sm">
+                  <div key={index} className="py-1.5 sm:py-2 flex items-center justify-between text-xs sm:text-sm">
                     <span className="font-medium text-gray-300 flex items-center gap-2">
                       {item.isClosed ? (
-                        <XCircle className="w-4 h-4 text-red-500" />
+                        <XCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
                       ) : (
-                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                       )}
                       <span>{item.day}</span>
                     </span>
@@ -123,13 +123,13 @@ export const LocationHours = () => {
           </div>
 
           {/* Right Column: Google Maps Embed Card */}
-          <div className="lg:col-span-6 h-full">
+          <div className="lg:col-span-6 h-full flex flex-col">
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5 }}
-              className="relative rounded-3xl bg-[#161616] border border-white/15 overflow-hidden shadow-2xl h-[470px] flex flex-col"
+              className="relative rounded-3xl bg-[#161616] border border-white/15 overflow-hidden shadow-2xl flex-1 w-full flex flex-col min-h-[420px]"
             >
               {/* Interactive Google Map */}
               <div className="relative flex-1 w-full h-full bg-[#111]">

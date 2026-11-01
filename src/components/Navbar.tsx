@@ -28,11 +28,10 @@ export const Navbar = ({ cartCount = 0, onOpenCart, onNavigateToMenu }: NavbarPr
 
   const navLinks = [
     { name: 'Inicio', href: '#inicio' },
-    { name: 'Por Qué Elegirnos', href: '#nosotros' },
-    { name: 'Combos', href: '#combos' },
+    { name: 'Menú', href: '/menu', isRoute: true },
+    { name: 'Porque elegirnos', href: '#nosotros' },
     { name: 'Ubicación & Horarios', href: '#horarios' },
     { name: 'Reseñas', href: '#resenas' },
-    { name: 'Menú', href: '/menu', isRoute: true },
   ];
 
   const handleNavClick = (href: string, isRoute?: boolean) => {
