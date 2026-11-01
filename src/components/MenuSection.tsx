@@ -174,15 +174,6 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#161616] via-transparent to-black/30" />
                       
-                      {/* ponytail: display CSV size attribute when present */}
-                      {item.size && (
-                        <div className="absolute top-2 left-2 bg-black/75 backdrop-blur-md px-2 py-0.5 rounded-md border border-white/10">
-                          <span className="text-[10px] font-semibold text-gray-200 uppercase">
-                            {item.size}
-                          </span>
-                        </div>
-                      )}
-
                       {/* Price Badge Over Image */}
                       <div className="absolute bottom-2 right-2 bg-[#0D0D0D]/90 backdrop-blur-md px-2.5 py-1 rounded-lg border border-white/15 shadow-md">
                         <span className="font-heading text-sm sm:text-base font-bold text-[#FACC15]">
