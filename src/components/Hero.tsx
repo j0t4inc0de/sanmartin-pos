@@ -12,13 +12,21 @@ import {
 } from 'lucide-react';
 import { RESTAURANT_INFO } from '../utils/businessHours';
 
-export const Hero = () => {
+interface HeroProps {
+  onNavigateToMenu?: () => void;
+}
+
+export const Hero = ({ onNavigateToMenu }: HeroProps = {}) => {
 
   const handleScrollToMenu = (e: MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-    const menuEl = document.getElementById('menu');
-    if (menuEl) {
-      menuEl.scrollIntoView({ behavior: 'smooth' });
+    if (onNavigateToMenu) {
+      onNavigateToMenu();
+    } else {
+      const menuEl = document.getElementById('menu');
+      if (menuEl) {
+        menuEl.scrollIntoView({ behavior: 'smooth' });
+      }
     }
   };
 
@@ -99,9 +107,9 @@ export const Hero = () => {
 
               {/* Menu Scroll Button */}
               <a
-                href="#menu"
+                href="/menu"
                 onClick={handleScrollToMenu}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-7 py-4 rounded-xl text-base font-bold text-gray-200 bg-[#1A1A1A] hover:bg-[#252525] border border-white/15 hover:border-[#FACC15]/50 transition-all duration-200"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-7 py-4 rounded-xl text-base font-bold text-gray-200 bg-[#1A1A1A] hover:bg-[#252525] border border-white/15 hover:border-[#FACC15]/50 transition-all duration-200 cursor-pointer"
               >
                 <UtensilsCrossed className="w-5 h-5 text-[#FACC15]" />
                 <span>Ver Menú Completo</span>

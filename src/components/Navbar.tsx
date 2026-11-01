@@ -28,15 +28,19 @@ export const Navbar = ({ cartCount = 0, onOpenCart, onNavigateToMenu }: NavbarPr
 
   const navLinks = [
     { name: 'Inicio', href: '#inicio' },
-    { name: 'Menú', href: '#menu' },
+    { name: 'Menú', href: '/menu', isRoute: true },
     { name: 'Combos', href: '#combos' },
     { name: 'Por Qué Elegirnos', href: '#nosotros' },
     { name: 'Ubicación & Horarios', href: '#horarios' },
     { name: 'Reseñas', href: '#resenas' },
   ];
 
-  const handleNavClick = (href: string) => {
+  const handleNavClick = (href: string, isRoute?: boolean) => {
     setMobileMenuOpen(false);
+    if (isRoute || href === '/menu') {
+      onNavigateToMenu?.();
+      return;
+    }
     const element = document.querySelector(href);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth' });
@@ -95,9 +99,9 @@ export const Navbar = ({ cartCount = 0, onOpenCart, onNavigateToMenu }: NavbarPr
                 href={link.href}
                 onClick={(e) => {
                   e.preventDefault();
-                  handleNavClick(link.href);
+                  handleNavClick(link.href, link.isRoute);
                 }}
-                className="px-2.5 py-1 text-xs xl:text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                className="px-2.5 py-1 text-xs xl:text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
               >
                 {link.name}
               </a>
@@ -199,9 +203,9 @@ export const Navbar = ({ cartCount = 0, onOpenCart, onNavigateToMenu }: NavbarPr
                     href={link.href}
                     onClick={(e) => {
                       e.preventDefault();
-                      handleNavClick(link.href);
+                      handleNavClick(link.href, link.isRoute);
                     }}
-                    className="flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium text-gray-200 hover:text-[#FACC15] hover:bg-white/5 transition-colors"
+                    className="flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium text-gray-200 hover:text-[#FACC15] hover:bg-white/5 transition-colors cursor-pointer"
                   >
                     <span>{link.name}</span>
                     <span className="text-gray-500 text-xs">→</span>

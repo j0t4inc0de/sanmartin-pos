@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
-import { MenuSection } from './components/MenuSection';
 import { CombosSection } from './components/CombosSection';
 import { AboutFeatures } from './components/AboutFeatures';
 import { DeliveryChannels } from './components/DeliveryChannels';
@@ -12,7 +11,7 @@ import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { QrMenuPage } from './components/QrMenuPage';
-import { CartItem, MenuItem, ComboItem, ExtraItem } from './types';
+import { CartItem, ComboItem } from './types';
 
 // ponytail: removed UnderConstruction maintenance gate so full landing and QR menu are live
 
@@ -63,41 +62,6 @@ export default function App() {
   };
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
-
-  const handleAddToCart = (
-    item: MenuItem,
-    selectedExtras: ExtraItem[] = [],
-    notes?: string,
-    quantity: number = 1
-  ) => {
-    const extrasKey = selectedExtras.length > 0
-      ? selectedExtras.map((e) => e.id).sort().join('-')
-      : '';
-    const notesKey = notes?.trim() ? encodeURIComponent(notes.trim()) : '';
-    const cartItemId = extrasKey || notesKey ? `${item.id}_${extrasKey}_${notesKey}` : item.id;
-
-    setCartItems((prev) => {
-      const existing = prev.find((i) => i.id === cartItemId);
-      if (existing) {
-        return prev.map((i) =>
-          i.id === cartItemId ? { ...i, quantity: i.quantity + quantity } : i
-        );
-      }
-      return [
-        ...prev,
-        {
-          id: cartItemId,
-          name: item.name,
-          price: item.price,
-          quantity: quantity,
-          image: item.image,
-          notes: notes?.trim() || undefined,
-          selectedExtras: selectedExtras.length > 0 ? selectedExtras : undefined,
-          type: 'menu',
-        },
-      ];
-    });
-  };
 
   const handleAddComboToCart = (combo: ComboItem) => {
     setCartItems((prev) => {
@@ -161,8 +125,7 @@ export default function App() {
 
       {/* Main Content Sections */}
       <main className="flex-1">
-        <Hero />
-        <MenuSection onAddToCart={handleAddToCart} />
+        <Hero onNavigateToMenu={() => navigateTo('menu')} />
         <CombosSection onAddComboToCart={handleAddComboToCart} />
         <AboutFeatures />
         <DeliveryChannels />

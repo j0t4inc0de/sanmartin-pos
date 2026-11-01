@@ -81,7 +81,7 @@ export const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="#menu" className="hover:text-white transition-colors">
+                <a href="/menu" className="hover:text-white transition-colors">
                   Carta & Menú
                 </a>
               </li>
