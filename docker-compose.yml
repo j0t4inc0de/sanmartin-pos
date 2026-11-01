@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  sanmartin-landing:
+    build: .
+    container_name: sanmartin-landing
+    restart: always
+    expose:
+      - "80"
+    networks:
+      - proxy_network
+
+networks:
+  proxy_network:
+    external: true

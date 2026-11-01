@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>San Martín - Cartel QR para Mesas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background-color: #1a1a1a;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      padding: 20px;
+    }
+    /* Standard Table Tent / Acrylic Stand Size (A6 format: 105mm x 148mm) */
+    .table-tent {
+      width: 420px;
+      height: 600px;
+      background: radial-gradient(circle at 50% 20%, #1f1f1f 0%, #0d0d0d 100%);
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 40px rgba(220, 38, 38, 0.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 36px 28px;
+      position: relative;
+      overflow: hidden;
+      color: #ffffff;
+      text-align: center;
+    }
+    .accent-glow-top {
+      position: absolute;
+      top: -60px;
+      width: 250px;
+      height: 120px;
+      background: rgba(220, 38, 38, 0.45);
+      filter: blur(50px);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .logo-badge {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 3px solid #EAB308;
+      box-shadow: 0 0 20px rgba(234, 179, 8, 0.4);
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .logo-badge img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .brand-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+    .brand-title span {
+      color: #DC2626;
+    }
+    .tagline {
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #EAB308;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .qr-container {
+      background: #FFFFFF;
+      padding: 16px;
+      border-radius: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 0 4px rgba(234, 179, 8, 0.3);
+      position: relative;
+      margin: 16px 0;
+    }
+    .qr-container img {
+      width: 200px;
+      height: 200px;
+      display: block;
+    }
+    .call-to-action {
+      background: linear-gradient(135deg, #DC2626, #991B1B);
+      color: white;
+      font-family: 'Montserrat', sans-serif;
+      font-size: 14px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      padding: 10px 24px;
+      border-radius: 14px;
+      box-shadow: 0 8px 16px rgba(220, 38, 38, 0.35);
+      margin-bottom: 8px;
+    }
+    .features-list {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: #a3a3a3;
+      font-weight: 600;
+    }
+    .features-list span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .features-list span::before {
+      content: "•";
+      color: #EAB308;
+    }
+    .footer-location {
+      font-size: 10px;
+      color: #737373;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      width: 100%;
+      padding-top: 12px;
+    }
+    .print-btn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #DC2626;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      font-family: inherit;
+    }
+    .print-btn:hover {
+      background: #b91c1c;
+    }
+    @media print {
+      body {
+        background: transparent;
+        padding: 0;
+      }
+      .print-btn {
+        display: none;
+      }
+      .table-tent {
+        box-shadow: none;
+        border: 1px solid #ddd;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Guardar como PDF</button>
+
+  <div class="table-tent">
+    <div class="accent-glow-top"></div>
+
+    <div style="display: flex; flex-direction: column; align-items: center;">
+      <div class="logo-badge">
+        <img src="/logo-sanmartin.jpg" alt="Logo Food Truck San Martín">
+      </div>
+      <h1 class="brand-title">SAN <span>MARTÍN</span></h1>
+      <p class="tagline">FOOD TRUCK • PUENTE ALTO</p>
+    </div>
+
+    <div>
+      <div class="qr-container">
+        <img src="/qr-sanmartin.svg" alt="Código QR Carta Digital San Martín">
+      </div>
+      <div class="call-to-action">
+        ESCANEÁ LA CARTA DIGITAL
+      </div>
+      <div class="features-list">
+        <span>Precios en vivo</span>
+        <span>Fotos reales</span>
+        <span>Ingredientes</span>
+      </div>
+    </div>
+
+    <div class="footer-location">
+      Av. Gabriela Oriente #01216 • Mar a Dom: 18:30 - 23:30 hrs
+    </div>
+  </div>
+
+</body>
+</html>

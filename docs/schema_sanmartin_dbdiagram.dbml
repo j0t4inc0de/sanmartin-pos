@@ -1,0 +1,207 @@
+// ==============================================================================
+// MODELO ENTIDAD-RELACION (MER) OPTIMIZADO — POS FOOD TRUCK SAN MARTIN
+// Cliente: Sanguchería San Martín (Puente Alto)
+// Plataforma: https://dbdiagram.io/
+// Stack: PostgreSQL 16 + Django REST Framework en jota-server
+// Enfoque: Cero sobreingeniería, soporte Offline-First e inmutabilidad contable
+// Versión: 2.1 (Sincronización Offline Blindada)
+// ==============================================================================
+
+// ------------------------------------------------------------------------------
+// 1. SEGURIDAD Y ACCESO (Compatible con Django AbstractUser)
+// ------------------------------------------------------------------------------
+Table users {
+  id integer [primary key, increment]
+  username varchar(150) [unique, not null, note: 'admin meson']
+  password_hash varchar(255) [not null]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+// ------------------------------------------------------------------------------
+// 2. CATALOGO MAESTRO (POS + CARTA DIGITAL QR + LANDING PAGE)
+// ------------------------------------------------------------------------------
+Table categories {
+  id integer [primary key, increment]
+  name varchar(50) [not null, note: 'Churrascos, Mechadas, Lomitos, Completos, Papas, Bebidas']
+  slug varchar(50) [unique, not null, note: 'churrascos, mechadas, lomitos, completos, papas, bebidas']
+  sort_order integer [not null, default: 0, note: 'Orden de display en mesón y móvil']
+  is_active boolean [not null, default: true, note: 'Soft delete para ocultar categoría']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`, note: 'Delta sync: detecta cambios al reconectar el POS']
+}
+
+Table products {
+  id integer [primary key, increment]
+  category_id integer [not null]
+  name varchar(100) [not null, note: 'Ej. Churrasco Italiano Gigante']
+  description text [null, note: 'Texto comercial de ingredientes']
+  ingredients jsonb [not null, default: '[]', note: 'Array nativo para filtros frontend string[]']
+  price integer [not null, note: 'Precio venta en CLP (ej. 6500) - Sin decimales']
+  original_price integer [null, note: 'Precio referencia/oferta para promociones futuras online']
+  image_url varchar(500) [null, note: 'Ruta o URL CDN ampliada']
+  badge varchar(50) [null, note: 'Insignia mutable: Más Vendido ⭐, Favorito 🔥']
+  is_available boolean [not null, default: true, note: 'Switch operativo diario: si se apaga en POS, se oculta en QR y Landing']
+  is_active boolean [not null, default: true, note: 'Soft delete: producto vigente o descontinuado permanentemente']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`, note: 'Delta sync: el POS descarga solo precios o disponibilidad modificados']
+
+  indexes {
+    category_id [name: 'idx_products_category']
+    (is_active, is_available) [name: 'idx_products_active_available']
+    updated_at [name: 'idx_products_updated_at']
+  }
+}
+
+Table modifiers {
+  id integer [primary key, increment]
+  name varchar(50) [not null, note: 'Ej. Queso Mantecoso Extra, Sin Mayo']
+  price integer [not null, default: 0, note: '0 para exclusiones sin costo; 900 para agregados']
+  modifier_type varchar(20) [not null, default: 'EXTRA_PAGO', note: 'EXTRA_PAGO o EXCLUSION_COCINA']
+  is_available boolean [not null, default: true, note: 'Switch rápido de ingrediente agotado hoy']
+  is_active boolean [not null, default: true, note: 'Soft delete del modificador']
+  updated_at timestamptz [not null, default: `now()`, note: 'Delta sync para agregados']
+
+  indexes {
+    (is_active, is_available) [name: 'idx_modifiers_active_available']
+  }
+}
+
+// ------------------------------------------------------------------------------
+// 3. OPERACION TRANSACCIONAL Y CAJA DIARIA (OFFLINE-FIRST)
+// ------------------------------------------------------------------------------
+Table cash_shifts {
+  id integer [primary key, increment]
+  uuid uuid [unique, not null, note: 'Clave universal generada en el POS (evita colisiones offline)']
+  user_id integer [not null, note: 'admin']
+  opened_at timestamptz [not null, default: `now()`, note: 'Al abrir turno se reinicia daily_order_number a 1']
+  closed_at timestamptz [null, note: 'Momento exacto del cierre de caja (null = turno abierto)']
+  initial_cash integer [not null, default: 0, note: 'Fondo para dar vuelto (ej. 30000)']
+  notes text [null, note: 'Observaciones de cuadratura o incidencias del turno']
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    user_id [name: 'idx_cash_shifts_user']
+    (user_id, closed_at) [name: 'idx_cash_shifts_user_open']
+  }
+}
+
+Table orders {
+  id integer [primary key, increment]
+  uuid uuid [unique, not null, note: 'Idempotency Key: si el POS reintenta enviar sin internet, jamás duplica la venta']
+  cash_shift_id integer [not null]
+  daily_order_number integer [not null, note: 'Número de comanda diario (#001, #002...) reiniciado por turno']
+  created_at timestamptz [not null, default: `now()`, note: 'Hora real del POS (preserva Horas Punta aunque sincronice horas después)']
+  consumption_type varchar(30) [not null, default: 'PARA_LLEVAR', note: 'PARA_SERVIR, PARA_LLEVAR, CONSUMO_PROPIO, DELIVERY, RETIRO']
+  payment_method varchar(30) [not null, note: 'EFECTIVO, DEBITO_TRANSBANK, TRANSFERENCIA, SIN_COSTO_CONSUMO_PROPIO']
+  subtotal integer [not null, note: 'Suma neta de productos y agregados']
+  delivery_fee integer [not null, default: 0, note: 'Recargo de delivery (ej. 2000)']
+  total_amount integer [not null, note: 'subtotal + delivery_fee (0 en consumo propio)']
+  amount_paid integer [null, note: 'Efectivo recibido del cliente para cálculo de vuelto']
+  change_given integer [null, note: 'Vuelto entregado al cliente']
+  status varchar(20) [not null, default: 'COMPLETADA', note: 'COMPLETADA (nace cobrada) o ANULADA (1 clic para descontar)']
+  cancelled_at timestamptz [null, note: 'Momento de anulación para auditoría interna']
+  cancellation_reason varchar(255) [null, note: 'Motivo de anulación: Demora en plancha, Error de tipeo, etc.']
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (cash_shift_id, daily_order_number) [unique, name: 'uidx_orders_shift_daily_number']
+    (cash_shift_id, status) [name: 'idx_orders_shift_status_aggregation']
+    (created_at, status) [name: 'idx_orders_created_status_rush_hours']
+  }
+}
+
+Table order_items {
+  id integer [primary key, increment]
+  order_id integer [not null]
+  product_id integer [not null]
+  product_name varchar(100) [not null, note: 'Nombre histórico congelado: no muta si Diego edita el producto en la carta']
+  quantity integer [not null, default: 1]
+  unit_price integer [not null, note: 'Precio unitario congelado a la fecha de venta']
+  notes varchar(150) [null, note: 'Observaciones de plancha: Pan bien tostado']
+
+  indexes {
+    order_id [name: 'idx_order_items_order_id']
+    product_id [name: 'idx_order_items_product_id']
+  }
+}
+
+Table order_item_modifiers {
+  id integer [primary key, increment]
+  order_item_id integer [not null]
+  modifier_id integer [not null]
+  modifier_name varchar(50) [not null, note: 'Nombre histórico congelado del extra o exclusión']
+  price_at_sale integer [not null, default: 0, note: 'Precio congelado del extra al momento de la venta']
+
+  indexes {
+    order_item_id [name: 'idx_order_item_modifiers_item_id']
+    modifier_id [name: 'idx_order_item_modifiers_modifier_id']
+  }
+}
+
+// ------------------------------------------------------------------------------
+// 4. RELACIONES E INTEGRIDAD REFERENCIAL (POLITICAS ON DELETE)
+// ------------------------------------------------------------------------------
+Ref: products.category_id > categories.id [delete: restrict]
+Ref: cash_shifts.user_id > users.id [delete: restrict]
+Ref: orders.cash_shift_id > cash_shifts.id [delete: restrict]
+Ref: order_items.order_id > orders.id [delete: cascade]
+Ref: order_items.product_id > products.id [delete: restrict]
+Ref: order_item_modifiers.order_item_id > order_items.id [delete: cascade]
+Ref: order_item_modifiers.modifier_id > modifiers.id [delete: restrict]
+
+// ------------------------------------------------------------------------------
+// 5. REGISTROS INICIALES DE PRUEBA (SEED DATA PARA DBNET / DBDATABASE)
+// ------------------------------------------------------------------------------
+Records users(id, username, password_hash, is_active) {
+  1, 'admin', 'pbkdf2_sha256$sanmartin_secret_hash', true
+}
+
+Records categories(id, name, slug, sort_order, is_active) {
+  1, 'Churrascos', 'churrascos', 1, true
+  2, 'Mechadas', 'mechadas', 2, true
+  3, 'Lomitos', 'lomitos', 3, true
+  4, 'Completos & Ases', 'completos', 4, true
+  5, 'Papas Fritas', 'papas', 5, true
+  6, 'Bebidas', 'bebidas', 6, true
+}
+
+Records products(id, category_id, name, price, original_price, badge, is_available, is_active) {
+  1, 1, 'Churrasco Italiano Gigante', 6500, null, 'Más Vendido ⭐', true, true
+  2, 1, 'Churrasco Barros Luco', 6200, null, 'Favorito 🔥', true, true
+  3, 2, 'Mechada Italiana Campestre', 6800, null, 'Recomendado ⭐', true, true
+  4, 4, 'Completo Italiano Gigante', 3200, null, null, true, true
+  5, 5, 'Papas Fritas Grandes', 3500, null, null, true, true
+  6, 6, 'Coca Cola Original 350ml', 1500, null, null, true, true
+}
+
+Records modifiers(id, name, price, modifier_type, is_available, is_active) {
+  1, 'Queso Mantecoso Extra', 900, 'EXTRA_PAGO', true, true
+  2, 'Palta Hass Extra', 1000, 'EXTRA_PAGO', true, true
+  3, 'Tocino Crocante', 900, 'EXTRA_PAGO', true, true
+  4, 'Doble Carne Vacuno', 1800, 'EXTRA_PAGO', true, true
+  5, 'Sin Mayo', 0, 'EXCLUSION_COCINA', true, true
+  6, 'Sin Ají Verde', 0, 'EXCLUSION_COCINA', true, true
+  7, 'Sin Tomate', 0, 'EXCLUSION_COCINA', true, true
+}
+
+Records cash_shifts(id, uuid, user_id, initial_cash, notes) {
+  1, 'c1a7d6e4-98b2-4d3f-a0e2-8b7c6d5e4f3a', 1, 30000, 'Turno noche viernes - Inicio con $30.000 en sencillo'
+}
+
+Records orders(id, uuid, cash_shift_id, daily_order_number, created_at, consumption_type, payment_method, subtotal, delivery_fee, total_amount, amount_paid, change_given, status, cancelled_at, cancellation_reason) {
+  1, 'e2b8f7a1-12c4-4d8e-9b6f-1a2b3c4d5e6f', 1, 1, '2026-10-27 19:15:00', 'PARA_SERVIR', 'EFECTIVO', 7400, 0, 7400, 10000, 2600, 'COMPLETADA', null, null
+  2, 'f3c9a8b2-23d5-4e9f-8c7a-2b3c4d5e6f7a', 1, 2, '2026-10-27 20:30:00', 'DELIVERY', 'DEBITO_TRANSBANK', 13300, 2000, 15300, 15300, 0, 'COMPLETADA', null, null
+  3, 'a4d0b9c3-34e6-4f0a-9d8b-3c4d5e6f7a8b', 1, 3, '2026-10-27 21:05:00', 'PARA_LLEVAR', 'EFECTIVO', 6500, 0, 6500, null, null, 'ANULADA', '2026-10-27 21:20:00', 'Demora excesiva en plancha (cliente desistio)'
+}
+
+Records order_items(id, order_id, product_id, product_name, quantity, unit_price, notes) {
+  1, 1, 1, 'Churrasco Italiano Gigante', 1, 6500, 'Pan bien tostado'
+  2, 2, 3, 'Mechada Italiana Campestre', 2, 6800, 'Sin sal en papas'
+  3, 3, 1, 'Churrasco Italiano Gigante', 1, 6500, null
+}
+
+Records order_item_modifiers(id, order_item_id, modifier_id, modifier_name, price_at_sale) {
+  1, 1, 1, 'Queso Mantecoso Extra', 900
+  2, 1, 5, 'Sin Mayo', 0
+}
