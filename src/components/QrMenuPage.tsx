@@ -75,11 +75,8 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-heading text-base sm:text-lg font-bold text-white uppercase tracking-wider leading-none">
-                  San Martín
+                  San Martín - Carta QR
                 </h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 uppercase tracking-widest">
-                  Carta QR
-                </span>
               </div>
               <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-red-500 shrink-0" />
