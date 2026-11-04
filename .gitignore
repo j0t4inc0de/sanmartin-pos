@@ -11,6 +11,15 @@ node_modules
 dist
 dist-ssr
 *.local
+.venv/
+__pycache__/
+*.py[cod]
+backend/staticfiles/
+
+# Configuración local y secretos del backend
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
