@@ -5,7 +5,7 @@ export const MENU_CATEGORIES = [
   { id: 'all', name: 'Todos' },
   { id: 'sandwiches', name: 'Sándwiches' },
   { id: 'vianesas', name: 'Vianesas' },
-  { id: 'ases', name: 'Ases' },
+  { id: 'ases', name: 'As' },
   { id: 'chorrillanas', name: 'Chorrillanas' },
   { id: 'acompanamientos', name: 'Acompañamientos' },
   { id: 'salsas', name: 'Salsas' },

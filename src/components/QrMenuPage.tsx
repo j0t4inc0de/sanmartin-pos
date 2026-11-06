@@ -50,7 +50,7 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
   const categories = useMemo(() => {
     return [
       ...MENU_CATEGORIES,
-      { id: 'combos', name: 'Combos & Promos' }
+      { id: 'combos', name: 'Promos' }
     ];
   }, []);
 
