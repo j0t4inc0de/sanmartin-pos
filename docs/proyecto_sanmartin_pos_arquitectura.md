@@ -4,7 +4,7 @@
 > **Ubicación:** Av. Gabriela Oriente #01216, Puente Alto, Chile  
 > **Desarrollado por:** We Are Samod — Soluciones Informáticas & Desarrollo Fullstack  
 > **Servidor Host:** `jota-server` (Ubuntu Linux 6.8 / Red Tailscale)  
-> **Fecha de Actualización:** 27 de Octubre de 2026 (Versión 2.1 — Offline-First & MER Auditado)  
+> **Fecha de Actualización:** 6 de Noviembre de 2026 (Versión 2.2 — Dominio Oficial .CL, Cierre Auto 00:00 & Release 16 Nov)  
 
 ---
 
@@ -55,8 +55,8 @@ El proyecto se encuentra desplegado y funcionando en producción bajo la infraes
 - **Red de Docker Conectada:** `proxy_network` (compartida con `cloudflare-tunnel`)
 - **Puerto Expuesto Frontend:** `80/tcp` (aislado internamente en Docker)
 - **Configuración Nginx:** SPA routing (`try_files $uri $uri/ /index.html;`)
-- **Dominio Actual (Temporal):** `https://sanmartin.wearesamod.com`
-- **Dominio Definitivo Acordado (vía Cloudflare):** `https://foodtruck-sanmartin.com` (~$11.000 CLP/año)
+- **Dominio Oficial Registrado:** `https://sangucheriasanmartin.cl` (Inscrito en NIC Chile, gestionado vía Cloudflare con SSL automático)
+- **Dominio de Contingencia/Desarrollo:** `https://sanmartin.wearesamod.com`
   - `/` ➔ Landing Page Oficial
   - `/menu` ➔ Carta Digital QR
   - `/sistema-sanmartin` (o `/pos`) ➔ Sistema POS y Dashboard (Login único usuario `admin`)
@@ -167,16 +167,21 @@ El Food Truck opera en Puente Alto sobre conexión móvil (4G/Wi-Fi). Ante caíd
 2. **5 Tipos de Consumo:** `PARA_SERVIR`, `PARA_LLEVAR`, `CONSUMO_PROPIO` ($0 en total, colación del personal), `DELIVERY` (+ recargo de envío) y `RETIRO` (pedidos anticipados por WhatsApp).
 3. **Modificadores Asociados al Producto:** En `order_items`, cada sándwich tiene sus `order_item_modifiers` (*Extra Queso $900*, *Sin Mayo $0*) para imprimir tabulados justo debajo del pan en el ticket térmico.
 4. **Inmutabilidad Contable:** Se congelan `product_name`, `unit_price`, `modifier_name` y `price_at_sale` en la venta para que futuras ediciones de la carta no alteren el historial contable.
-5. **Cero Sobreingeniería:** Sin combos por el momento (todo se vende unitario contundente), sin pesaje de ingredientes en gramos, sin tablas externas redundantes para estados.
+5. **Cero Sobreingeniería:** Sin combos por el momento (todo se vende unitario contundente), sin pesaje de ingredientes en gramos, sin tablas externas redundantes para estados. Sin migración de datos antiguos de Tkinter.
+6. **Mecánica de Anulación y Gaveta DINON 9390:** El botón de 1 clic `ANULAR PEDIDO` no borra la orden de la base de datos (queda `status = 'ANULADA'`), pero descuenta el dinero inmediatamente del arqueo de caja. Si el pago original fue en efectivo, el POS envía el comando de pulso RJ11 a la impresora DINON 9390 para abrir automáticamente la gaveta y realizar el reembolso.
+7. **Cierre Automático de Caja (00:00):** Si el personal olvida cerrar turno tras el límite habitual de las 23:30, el sistema ejecuta el cierre automático a las 00:00 registrando la nota: *"Caja cerrada automáticamente por inactividad / sistema"*.
+8. **Diseño de Interfaz Desktop Widescreen:** El POS opera en computador Todo en Uno (All-in-One); ocupa el 100% del ancho de pantalla, organiza las vistas mediante pestañas superiores (sin scrolls verticales largos), elimina botones distractores ("Volver a la web") e incorpora un reloj digital en tiempo real en la barra de sesión activa.
 
 ---
 
-## 7. Hoja de Ruta de Desarrollo (Roadmap Actualizado)
+## 7. Hoja de Ruta de Desarrollo y Entrega Final
 
-| Hito | Alcance | Estado |
-| :---: | :--- | :---: |
-| **Hito 1** | Landing comercial, Carta QR `/menu`, material publicitario y despliegue en `jota-server`. | **100% Completado** ✅ |
-| **Hito 2** | Modelo Entidad-Relación (MER), DDL PostgreSQL 16, modelos Django 5.x y arquitectura Offline-First. | **100% Completado** ✅ |
-| **Hito 3** | Backend Django REST Framework (Endpoints `/api/menu/`, `/api/pos/`, autenticación y migraciones). | **Siguiente Hito** ⏳ |
-| **Hito 4** | Frontend POS Mesón All-in-One (Teclado/Mouse, Kiosk Printing DINON 9390, IndexedDB offline sync). | Programado |
-| **Hito 5** | Conexión en vivo de Carta QR `/menu` y Landing con la API + Dashboard de Cierre de Caja y Horas Punta. | Programado |
+| Hito / Fecha | Alcance | Responsable | Estado |
+| :---: | :--- | :---: | :---: |
+| **Hito 1** | Landing comercial, Carta QR `/menu`, material publicitario y despliegue en `jota-server`. | Juan Erices | **100% Completado** ✅ |
+| **Hito 2** | Modelo Entidad-Relación (MER), DDL PostgreSQL 16, modelos Django 5.x y arquitectura Offline-First. | Juan Erices | **100% Completado** ✅ |
+| **Hito 3** | Dominio oficial `sangucheriasanmartin.cl` comprado en NIC Chile y configurado en Cloudflare. | Juan Erices | **100% Completado** ✅ |
+| **Miércoles 11 Nov** | Cierre de desarrollo frontend POS (desktop widescreen, pestañas, anulación y reloj). | Benjamín Martínez | En desarrollo ⏳ |
+| **Jueves 12 - Viernes 13** | Pruebas integrales y auditoría de flujo (caja, tickets DINON 9390, cierres y anulaciones). | Juan + Benjamín | Programado |
+| **Sábado 14 - Domingo 15** | Despliegue final de base de datos PostgreSQL y backend en `jota-server`. | Juan Erices | Programado |
+| **Lunes 16 Nov 2026** | **Entrega Oficial e Instalación en el Food Truck (Puesta en marcha con Diego)**. | Equipo SAM | **HITO FINAL** 🎯 |
