@@ -8,7 +8,7 @@
 > - **Desarrollo Total:** $230.000 CLP en 2 cuotas:
 >   - **1ra Cuota (Inicio):** $115.000 CLP (ya pagada íntegra a Juan).
 >   - **2da Cuota (Entrega Final):** $115.000 CLP al finalizar el desarrollo ($65.000 CLP para Benjamín y $50.000 CLP para Juan).
-> - **Mantenimiento & Servidor:** $60.000 CLP / mensual (MRR recurrente en `jota-server`).  
+> - **Mantenimiento & Servidor:** $60.000 CLP / mensual (MRR recurrente en `jota-server`: Mes c/Diego: Servidor $20k, Juan $15k, Benja $15k, Diego $10k; Mes s/Diego: Servidor $30k, Juan $15k, Benja $15k).  
 > **Fecha de Actualización:** 6 de Noviembre de 2026 (Versión 2.2 — Dominio Oficial .CL, Cierre Auto 00:00 & Release 16 Nov)  
 
 ---
