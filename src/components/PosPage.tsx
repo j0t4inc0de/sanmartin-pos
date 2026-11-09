@@ -62,9 +62,8 @@ const formatChileClock = (value: Date) => ({
     timeZone: 'America/Santiago',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).format(value),
+    hourCycle: 'h12',
+  }).format(value).replace(/\ba\.\s*m\./i, 'AM').replace(/\bp\.\s*m\./i, 'PM'),
 });
 
 const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
