@@ -3,7 +3,7 @@
 - **Versión:** 1.0 — cierre manual y resumen por medio de pago aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo, autenticación online, turnos, captura online, cierre manual, arqueo de efectivo y resumen por medio de pago disponibles localmente. Persistencia local, sincronización offline, cierre automático e impresión siguen pendientes.
+- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. El catálogo POS se conserva en IndexedDB y se recupera como copia cuando falla la red; persistencia de borrador/ventas, sincronización offline, cierre automático e impresión siguen pendientes.
 
 ---
 
@@ -15,12 +15,12 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 
 ## 2. Estado de partida
 
-- El repositorio contiene un frontend React, TypeScript y Vite para la landing y la carta QR.
-- El menú utiliza datos locales del frontend y el carrito prepara pedidos para WhatsApp.
-- No hay un backend Django ni una base de datos operativa incluidos en este repositorio.
-- Los archivos `docs/init_schema.sql` y `docs/models_django_reference.py` son referencias de diseño; no son un backend ejecutable.
-- La arquitectura propone Django REST Framework y PostgreSQL. También describe un POS de escritorio, impresión térmica y operación sin conexión.
-- Los documentos de pruebas existentes corresponden principalmente al sitio web y no verifican todavía el POS.
+- El repositorio contiene un frontend React, TypeScript y Vite para la landing, la carta QR y el POS en `/pos`.
+- `backend/` contiene una API Django REST Framework y el proyecto usa PostgreSQL para el desarrollo local.
+- El catálogo de caja se obtiene desde `GET /api/pos/catalog/` y se conserva localmente en IndexedDB para recuperarlo si falla la conexión.
+- Las ventas y el borrador aún no se guardan localmente; cotización y registro de ventas requieren conexión.
+- Los archivos `docs/init_schema.sql` y `docs/models_django_reference.py` son referencias de diseño; las migraciones Django definen el esquema ejecutable.
+- La cola de sincronización offline, el cierre automático y la impresión física siguen pendientes.
 
 ## 3. Objetivos del producto
 
@@ -144,6 +144,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 - Enviar automáticamente pendientes cuando vuelva la conexión, con reintentos seguros y espera progresiva ante errores.
 - Hacer que la API acepte UUID idempotentes y devuelva un resultado que permita confirmar cada operación local.
 - Conservar el momento original de la venta y distinguirlo del momento de sincronización.
+- [x] Conservar la última respuesta completa de `GET /api/pos/catalog/` en IndexedDB y recuperarla si falla la red, mostrando la fecha de guardado y avisando que puede estar desactualizada.
 - Mantener catálogo local actualizado desde el servidor para permitir ventas contra la última versión conocida.
 - Definir conflictos: ventas son registros históricos; catálogo y disponibilidad se administran en el servidor; el POS no debe sobrescribir cambios más recientes con una copia vieja.
 - Propagar cambios del servidor a los clientes conectados mediante un mecanismo acordado (consulta periódica inicialmente o eventos en tiempo real si se justifica).

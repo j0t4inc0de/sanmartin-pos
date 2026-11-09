@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Minus, Plus, RefreshCw, ShoppingCart, Trash2 } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
+import { cargarCatalogoPos, guardarCatalogoPos, type PosCatalog as Catalog } from '../services/posLocalStore';
 
 type ConsumptionType = 'PARA_SERVIR' | 'PARA_LLEVAR';
 type PaymentMethod = 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
-interface Modifier { id: number; name: string; price: number; modifier_type: 'EXTRA_PAGO' | 'EXCLUSION_COCINA'; updated_at: string; }
-interface Product { id: number; slug: string; category_id: number; category_name: string; name: string; price: number; updated_at: string; image_url: string; }
-interface Catalog { generated_at: string; categories: { id: number; name: string; slug: string; sort_order: number }[]; products: Product[]; modifiers: Modifier[]; }
+type Product = Catalog['products'][number];
 interface CartModifier { modifier_id: number; quantity_per_unit: number; }
 interface CartLine { key: string; product_id: number; quantity: number; notes: string; modifiers: CartModifier[]; }
 interface Quote { uuid: string; quote_token: string; valid_until: string; requires_confirmation: boolean; items: { product_id: number; product_name: string; quantity: number; unit_price: number; modifiers: { modifier_id: number; modifier_name: string; price_at_sale: number; quantity_per_unit: number; }[]; line_total: number; }[]; subtotal: number; total_amount: number; }
@@ -27,15 +26,38 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale }: { shiftUui
   const [amountReceived, setAmountReceived] = useState('');
   const [category, setCategory] = useState<number | 'all'>('all');
   const [loadingCatalog, setLoadingCatalog] = useState(true);
+  const [catalogNotice, setCatalogNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
   const loadCatalog = async () => {
-    setLoadingCatalog(true); setError('');
-    try { setCatalog(await solicitarApi<Catalog>('/api/pos/catalog/')); }
-    catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo.'); }
-    finally { setLoadingCatalog(false); }
+    setLoadingCatalog(true); setError(''); setCatalogNotice('');
+    let savedCatalog: Awaited<ReturnType<typeof cargarCatalogoPos>> = null;
+    try {
+      savedCatalog = await cargarCatalogoPos();
+      if (savedCatalog) setCatalog(savedCatalog.catalog);
+    } catch {
+      setCatalogNotice('No se pudo acceder al almacenamiento local. El catálogo no quedará disponible sin conexión.');
+    }
+
+    try {
+      const freshCatalog = await solicitarApi<Catalog>('/api/pos/catalog/');
+      setCatalog(freshCatalog);
+      try {
+        await guardarCatalogoPos(freshCatalog);
+        setCatalogNotice('Catálogo actualizado y guardado en este equipo.');
+      } catch {
+        setCatalogNotice('Catálogo cargado desde el servidor, pero no se pudo guardar en este equipo. No estará disponible sin conexión.');
+      }
+    } catch (e) {
+      if (savedCatalog) {
+        const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
+        setCatalogNotice(`Sin conexión al servidor. Usando el catálogo guardado el ${savedDate}; sus precios pueden estar desactualizados.`);
+      } else {
+        setError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo y no hay una copia local disponible.');
+      }
+    } finally { setLoadingCatalog(false); }
   };
   const loadOrders = async () => {
     try { const result = await solicitarApi<OrderHistory>('/api/orders/'); setOrders(result.orders); }
@@ -105,7 +127,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale }: { shiftUui
 
   return <section className="space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Venta en línea</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog}><RefreshCw className="mr-2 inline h-4 w-4"/>Actualizar menú</button></header>
-    <p className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">Esta versión de caja requiere conexión al servidor. Las ventas y el carrito aún no tienen almacenamiento offline; no cobres si la pantalla indica error.</p>
+    <p className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">El catálogo se conserva en este equipo. Las ventas y el carrito todavía requieren conexión y no tienen almacenamiento offline.</p>
+    {catalogNotice && <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">{catalogNotice}</p>}
     {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-200">{error}</div>}{message && <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-950/30 p-3 text-sm text-emerald-200"><Check className="mr-2 inline h-4 w-4"/>{message}</div>}
     <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="space-y-3"><div className="flex gap-2 overflow-x-auto pb-1"><button className={button} type="button" onClick={() => setCategory('all')}>Todos</button>{catalog?.categories.map(c => <button className={button} type="button" key={c.id} onClick={() => setCategory(c.id)}>{c.name}</button>)}</div>
