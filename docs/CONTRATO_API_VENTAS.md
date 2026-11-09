@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.0
-- **Estado:** reglas acordadas; migraciones `0004` y `0005` aplicadas localmente; API online, anulación, cierre manual y resumen por medio de pago implementados; catálogo POS cacheado en IndexedDB; persistencia de borrador/ventas, cola de sincronización offline y cierre automático pendientes
+- **Estado:** reglas acordadas; migraciones `0004` y `0005` aplicadas localmente; API online, anulación, cierre manual y resumen por medio de pago implementados; catálogo POS y borrador editable por turno guardados en IndexedDB; registro local de cobro/venta, cola de sincronización offline y cierre automático pendientes
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
@@ -198,7 +198,8 @@ Los errores de precio deben incluir el carrito recalculado y no registrar ni cob
 - La base exige monto recibido y vuelto consistentes para efectivo; en Transbank y transferencia esos campos quedan vacíos.
 - Mantener `shift_order_number` correlativo por turno. El POS local asigna el folio tanto en línea como offline; PostgreSQL rechaza duplicados mediante la restricción única existente.
 - El frontend conserva la última respuesta de `GET /api/pos/catalog/` en IndexedDB y la recupera si falla la red. Esto solo permite consultar el catálogo conocido; no habilita cotizar, cobrar ni operar turnos offline.
-- Definir la persistencia local del borrador, ventas y cola con IndexedDB antes de implementar el flujo offline. El cliente conservará UUID y snapshots; el servidor marcará `requires_review` al detectar diferencias de catálogo al sincronizar.
+- El frontend guarda y restaura el borrador editable (líneas, cantidades, modificadores, notas y opciones de pago) por UUID de turno en IndexedDB. Si la escritura local falla, bloquea la cotización y el registro online.
+- El borrador editable no es un cobro local: aún falta persistir UUID, folio, snapshots cotizados y estado de pago antes de recibir dinero, además de la venta completa y su cola de sincronización. El servidor marcará `requires_review` al detectar diferencias de catálogo cuando se implemente la sincronización.
 - La cola local conserva el orden de apertura, ventas por folio, anulaciones y cierre. A las 00:30 hora de Santiago, el cierre automático se persiste en el equipo incluso sin conexión. Ante un error de sincronización, pausa solo las operaciones posteriores del mismo turno, mantiene intactos los datos locales y muestra el evento que requiere atención.
 
 ## 9. Decisiones de implementación

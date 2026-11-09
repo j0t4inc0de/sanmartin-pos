@@ -3,7 +3,7 @@
 - **Versión:** 1.0 — cierre manual y resumen por medio de pago aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. El catálogo POS se conserva en IndexedDB y se recupera como copia cuando falla la red; persistencia de borrador/ventas, sincronización offline, cierre automático e impresión siguen pendientes.
+- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. Catálogo y borrador editable del carrito se conservan en IndexedDB; persistencia del cobro/ventas, sincronización offline, cierre automático e impresión siguen pendientes.
 
 ---
 
@@ -123,6 +123,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 - Construir la interfaz de caja pensada para teclado y mouse.
 - Buscar y seleccionar productos, cambiar cantidades y añadir modificadores permitidos.
 - Registrar tipo de consumo y medio de pago.
+- [x] Guardar y restaurar el borrador editable del carrito y sus opciones por turno en IndexedDB. El borrador no constituye una venta ni reemplaza el registro local previo al cobro.
 - Calcular y validar el total en el servidor.
 - Guardar una copia histórica del nombre, precio y modificadores cobrados.
 - Asignar folio correlativo local por turno para ventas conectadas y offline; el servidor valida unicidad.
