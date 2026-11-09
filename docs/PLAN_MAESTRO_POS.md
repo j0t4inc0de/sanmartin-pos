@@ -106,6 +106,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 
 - Implementar autenticación y permisos del operador.
 - Implementar apertura de turno, fondo inicial y cierre.
+- Implementar cierre automático local a las 00:30 (`America/Santiago`), incluso sin internet; bloquear nuevas ventas en el turno cerrado y sincronizar el cierre después de la apertura, las ventas y las anulaciones pendientes.
 - Impedir dos turnos abiertos simultáneamente según la regla aprobada.
 - Mostrar el turno activo y el estado de conexión en la interfaz.
 - Proteger las operaciones administrativas y registrar cambios relevantes.
@@ -157,7 +158,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 **Tareas**
 
 - Verificar la DINON 9390 y el método compatible con Windows, navegador y entorno local.
-- Diseñar y aprobar ticket del cliente y comanda de cocina.
+- Diseñar y aprobar los dos documentos de venta: comprobante para que el cliente retire el pedido y comanda para que cocina lo prepare.
 - Imprimir desde la venta ya persistida localmente, sin depender de que el servidor responda.
 - Registrar el estado de impresión por separado del estado de sincronización de la venta.
 - Implementar reimpresión identificada y manejo de impresora desconectada sin perder ni duplicar la venta.
@@ -312,7 +313,8 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - Los cambios administrativos de catálogo se originan en el servidor. El POS debe descargar la versión vigente; una copia offline antigua no puede reemplazar cambios más nuevos.
 - Los demás clientes reciben cambios desde la API por el mecanismo de actualización acordado; no se asume sincronización instantánea hasta definir e implementar ese mecanismo.
 - El estado de una venta, de su sincronización y de su impresión se muestra por separado.
-- El acceso offline requiere una autenticación online previa en ese equipo; se acordó PIN individual de 24 horas con bloqueo de 15 minutos tras cinco fallos. Falta implementar y validar el almacenamiento local seguro.
+- El POS usa una cuenta general compartida. Tras autenticarse online en el equipo, el acceso offline usa un PIN compartido válido por 24 horas, con bloqueo de 15 minutos tras cinco intentos fallidos. La auditoría identifica la cuenta compartida y el equipo, no a la persona física.
+- El cierre automático ocurre a las 00:30 en la zona `America/Santiago`. El POS lo registra localmente aunque no haya internet, bloquea nuevas ventas en ese turno y encola el cierre después de la apertura, las ventas y sus anulaciones.
 - La primera versión opera con un equipo POS y no incluye combos en la caja. Los combos de la web no se interpretan como artículos de venta del POS.
 
 ## 10. Registro de decisiones
@@ -325,10 +327,11 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Impresión térmica DINON 9390 en primera versión | Confirmado | Se debe validar temprano con el equipo real y separar estado de impresión del estado de venta. |
 | Registro manual del medio de pago | Confirmado | No se integra una pasarela de pago en la primera versión. |
 | Un equipo POS en la primera versión | Confirmado | El diseño debe permitir evaluar varios equipos en una etapa posterior. |
-| Acceso offline con PIN individual, habilitado tras autenticación online y válido 24 horas | Confirmado | PIN no legible en almacenamiento; cinco fallos bloquean nuevos intentos por 15 minutos, sin interrumpir la sesión activa. |
+| Cuenta general compartida para operar el POS | Confirmado | No habrá cuentas individuales para los cajeros ni varios niveles de permisos. El registro identifica la cuenta compartida, la hora y el equipo, no a la persona física. |
+| Acceso offline con PIN compartido tras autenticación online, válido 24 horas | Confirmado | PIN no legible en almacenamiento; cinco fallos bloquean nuevos intentos por 15 minutos, sin interrumpir una sesión activa. |
 | Combos fuera de la caja en la primera versión | Confirmado | Los combos web son contenido promocional y quedan fuera del catálogo operativo del POS inicial. |
 | ¿Cuál es la ruta oficial de sincronización delta del catálogo? | Pendiente de confirmar | Evita contratos distintos entre frontend y backend. |
-| ¿Qué datos y acciones puede realizar el usuario administrador? | Pendiente de confirmar | Define autenticación, permisos y auditoría. |
+| PIN compartido y controles técnicos de acceso offline | Pendiente de implementación | Mantener vigencia, almacenamiento protegido y bloqueo de intentos aunque el acceso corresponda a una cuenta compartida. |
 | ¿Qué sucede si una caída supera la vigencia del catálogo local o se agota el almacenamiento? | Pendiente de definir | Establece límites y alertas para proteger ventas y datos. |
 | Usuario propio basado en `AbstractUser`, administrado por Django | Confirmado | Resuelve el choque entre el SQL de referencia y el sistema de autenticación, y deja espacio para permisos futuros. |
 | Folio correlativo por turno (`shift_order_number`) | Confirmado | Coincide con la unicidad por turno ya descrita y simplifica la operación con un POS. |
@@ -337,7 +340,11 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Efectivo, Transbank (débito/crédito como una categoría) y transferencia; un medio por venta | Confirmado | Registro manual; el POS no procesa pagos electrónicos. |
 | Efectivo registra monto recibido y calcula vuelto; otros medios no guardan `amount_paid` ni `change_given` | Confirmado | El servidor valida el monto y el total de la venta. |
 | Extras y exclusiones por unidad, nota de cocina por línea y extras repetibles | Confirmado | Productos con preparaciones diferentes se separan en líneas. |
-| Anulación con motivo y usuario registrados, solo durante el turno abierto | Confirmado | Solo operadores POS autorizados; la venta no se borra. |
+| Anulación con motivo obligatorio, solo durante el turno abierto | Confirmado | La venta no se borra; se registra hora y cuenta compartida. No se atribuye la acción a una persona específica. |
+| Cierre automático del turno a las 00:30 | Confirmado | Se aplica en hora local `America/Santiago`; funciona localmente sin internet y se sincroniza después de las operaciones previas del turno. |
+| `final_cash` como efectivo esperado calculado por el sistema | Confirmado | Se guarda separado de `counted_cash`, que registra el efectivo contado físicamente. El cierre manual registra ambos y permite calcular la diferencia; el automático deja `counted_cash` vacío. |
+| Impresión de comprobante de venta para cliente y comanda de cocina | Confirmado | Se imprimen al registrar la venta. El comprobante permite retirar el pedido y la comanda informa la preparación a cocina; no son tickets de anulación. |
+| Impresión de tickets al anular una venta | Pendiente de definir | No se implementará por inferencia a partir de los dos tickets normales de venta. |
 | Precio offline diferente del catálogo al sincronizar | Confirmado | Se conserva el cobro, se incluye en caja y se marca para revisión. |
 | Catálogo local sin actualización reciente | Confirmado | Se permite seguir vendiendo con aviso de antigüedad; las diferencias se revisan al sincronizar. |
 | Almacenamiento local cerca del límite o lleno | Confirmado | Avisar; impedir cobrar si la venta no puede persistirse y nunca borrar ventas pendientes. |
@@ -409,8 +416,8 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 
 - [x] Implementar autenticación online de sesión, CSRF, límite de intentos y permiso `sales.can_operate_pos` en la API.
 - [x] Crear la pantalla de inicio de sesión online del POS con sesión Django y token CSRF en memoria.
-- [x] Crear el grupo `Operadores POS` y asignar las cuentas de cajero al permiso autorizado.
-- [x] Definir la política de acceso offline: PIN individual habilitado tras acceso online, vigencia de 24 horas y bloqueo de 15 minutos tras cinco fallos.
+- [x] Asignar el permiso `sales.can_operate_pos` a la cuenta general compartida; no se crean cuentas individuales para los cajeros.
+- [x] Definir la política de acceso offline: PIN compartido habilitado tras acceso online, vigencia de 24 horas y bloqueo de 15 minutos tras cinco fallos.
 - [x] Implementar en backend consulta, apertura y cierre de turnos con restricción de un turno abierto e idempotencia por UUID.
 - [x] Crear la interfaz de apertura/cierre y consulta del turno activo.
 - [x] Validar acceso, apertura/cierre de turno y permisos con los casos POS-01 a POS-12.

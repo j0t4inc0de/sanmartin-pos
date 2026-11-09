@@ -27,9 +27,12 @@
 6. **Soft Delete (`is_active`) vs. Disponibilidad Diaria (`is_available`):**
    * *`is_available`:* Switch rápido del mesón ("se acabó la palta hoy"). Oculta el producto de la carta QR y de la landing de inmediato.
    * *`is_active`:* Descontinuación permanente de la carta sin borrar el registro ni romper llaves foráneas con órdenes antiguas.
-7. **Cierre de Caja Dinámico (Sin columnas acumuladoras redundantes):**
-   * *Motivo:* Guardar totales acumulados (`total_cash`, `total_card`) en `cash_shifts` genera riesgo de desincronización si se anula una orden.
-   * *Solución:* Todas las órdenes están vinculadas a `cash_shift_id`. Al cerrar turno, Django ejecuta una sola agregación limpia e instantánea:
+7. **Cierre de Caja y Arqueo Reproducibles:**
+   * *Motivo:* Los totales por medio de pago se obtienen de las ventas del turno; no se mantienen acumuladores que puedan desincronizarse al anular una venta.
+   * *Solución:* Todas las órdenes están vinculadas a `cash_shift_id`. Al cerrar turno, Django agrega las ventas completadas y conserva `final_cash` como el efectivo esperado calculado por el sistema. El efectivo físico contado se registra aparte en `counted_cash`; la diferencia se calcula para el arqueo.
+   * `final_cash` se calcula con el fondo inicial más la suma de `total_amount` de las ventas completadas pagadas en efectivo. Las anuladas se excluyen porque su estado presupone la devolución; no se descuentan nuevamente.
+   * En un cierre manual se registra el conteo físico. En un cierre automático a las 00:30 hora de Santiago no se inventa el conteo: `counted_cash` queda nulo y se marca que el cierre fue automático.
+   * Las ventas para reportes por medio de pago se agregan de esta forma:
      ```sql
      SELECT payment_method, SUM(total_amount) AS total, COUNT(*) AS cantidad
      FROM orders 
@@ -115,6 +118,9 @@
 * **`opened_at`** (Timestamptz, Not Null, Default `now()`): Apertura del turno. **Al abrir turno, el contador de comandas (`daily_order_number`) se reinicia a 1.**
 * **`closed_at`** (Timestamptz, Nullable): Momento exacto de cierre (un valor `null` indica que el turno está activo).
 * **`initial_cash`** (Integer, Not Null, Default 0): Fondo inicial en sencillo para dar vuelto (ej. `$30.000`).
+* **`final_cash`** (Integer, Nullable hasta el cierre): Efectivo esperado calculado por el sistema al cerrar: fondo inicial más la suma de `total_amount` de las ventas completadas pagadas en efectivo. Las ventas anuladas se excluyen porque su anulación supone devolver el pago.
+* **`counted_cash`** (Integer, Nullable): Efectivo contado físicamente; es obligatorio en un cierre manual y nulo en el cierre automático. La diferencia respecto de `final_cash` se calcula en el arqueo.
+* **`closed_automatically`** (Boolean, Not Null, Default False): Indica si el turno se cerró automáticamente a las 00:30 hora de Santiago.
 * **`notes`** (Text, Nullable): Observaciones del cajero al cerrar (ej. *"Faltaron $300 en monedas al cuadrar"*).
 * **`updated_at`** (Timestamptz, Not Null, Default `now()`): Marca de actualización del turno.
 * *Restricción operativa:* Solo puede existir 1 turno abierto a la vez (`WHERE closed_at IS NULL`).
@@ -144,7 +150,7 @@
   * `'COMPLETADA'`: Todo pedido en mesón nace pagado y listo para plancha.
   * `'ANULADA'`: Botón de 1 clic en el POS para cancelar un pedido desistido, descontándolo del arqueo de caja.
 * **`cancelled_at`** (Timestamptz, Nullable): Momento exacto en que se ejecutó la anulación.
-* **`cancellation_reason`** (Varchar 255, Nullable): Motivo registrado (ej. *"Demora excesiva en plancha"*, *"Error de digitación"*).
+* **`cancellation_reason`** (Varchar 255, Obligatorio al anular): Motivo registrado (ej. *"Demora excesiva en plancha"*, *"Error de digitación"*). La cuenta general compartida queda como cuenta anuladora; no identifica a la persona física.
 * **`updated_at`** (Timestamptz, Not Null, Default `now()`): Timestamp de sincronización o modificación.
 * *Índices:*
   * `uidx_orders_shift_daily_number` (UNIQUE): `(cash_shift_id, daily_order_number)`.

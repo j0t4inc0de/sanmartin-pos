@@ -58,10 +58,10 @@ Todas requieren una sesión válida y el permiso POS.
 |---|---|
 | `GET /api/shifts/current/` | Devuelve el turno abierto del usuario; también indica si existe otro turno abierto. |
 | `POST /api/shifts/open/` | Abre un turno con `uuid`, `opened_at`, `initial_cash` y `notes`. El UUID del cliente permite reintentar sin duplicar la apertura. |
-| `POST /api/shifts/{uuid}/close/` | Cierra el turno propio con `closed_at` y notas opcionales. Repetir el cierre devuelve el estado ya guardado. |
+| `POST /api/shifts/{uuid}/close/` | Cierra el turno de la cuenta compartida con `closed_at`, `final_cash` calculado, `counted_cash` y notas opcionales. Repetir el cierre devuelve el estado ya guardado. En un cierre automático, `counted_cash` queda vacío. |
 
 Los montos se expresan en pesos chilenos enteros y no pueden ser negativos. El servidor impide un segundo turno abierto y responde `409` ante el conflicto. Un usuario no puede consultar ni cerrar el turno perteneciente a otra cuenta.
 
 ## Límite de esta versión
 
-Estas rutas implementan el acceso online y las operaciones básicas del turno. El cierre aún no calcula arqueo; las ventas, el modo offline y la sincronización se implementarán en etapas posteriores. El acceso offline requerirá persistencia local segura en el equipo POS y no se habilita en esta API.
+Estas rutas implementan el acceso online y las operaciones básicas del turno. El arqueo, el cierre automático a las 00:30 hora de Santiago y el acceso offline con PIN compartido aún requieren implementación. El POS debe persistir localmente el cierre sin conexión y sincronizarlo después de la apertura, las ventas y las anulaciones del turno.

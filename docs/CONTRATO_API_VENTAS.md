@@ -22,8 +22,11 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 - Las ventas offline conservan el precio efectivamente cobrado. Si al sincronizar difiere del catálogo vigente, se incluye en la caja y se marca para revisión; no se cambia el precio histórico.
 - Si el catálogo local lleva tiempo sin sincronizar, se permite seguir vendiendo con un aviso visible de antigüedad. Al reconectar, las diferencias de precio se conservan y se marcan para revisión.
 - La venta lleva UUID idempotente y folio correlativo por turno. En V1, el POS asigna y conserva el siguiente folio en almacenamiento local persistente para que el impreso y la sincronización usen el mismo número; el servidor aplica la unicidad por turno.
-- Cada operador podrá volver a entrar offline con un PIN individual que se habilita después de autenticar online en ese equipo. El PIN no se guarda en texto legible y vence 24 horas después de la última autenticación online. Tras cinco intentos incorrectos, el PIN se bloquea durante 15 minutos; una sesión POS ya abierta permanece activa.
-- Una venta completada no se borra. Un operador autorizado puede anularla solo mientras su turno esté abierto; el motivo es obligatorio y se guarda quién la anuló.
+- El POS usa una cuenta general compartida. Después de autenticarla online en el equipo, el acceso offline usa un PIN compartido que no se guarda en texto legible y vence 24 horas después de la última autenticación online. Tras cinco intentos incorrectos, el PIN se bloquea durante 15 minutos; una sesión POS ya abierta permanece activa. La auditoría registra la cuenta compartida y el equipo, no la identidad de la persona física.
+- Una venta completada no se borra. La cuenta compartida puede anularla solo mientras su turno esté abierto; el motivo es obligatorio y se guardan fecha y hora.
+- Una venta confirmada imprime un comprobante para el cliente, que permite retirar el pedido, y una comanda para cocina. Son documentos de venta; no se consideran tickets de anulación. La falla de impresión no revierte ni duplica una venta ya guardada.
+- El cierre automático ocurre a las 00:30 en `America/Santiago`. Si el equipo está offline, cierra localmente el turno, impide nuevas ventas en ese turno y conserva el evento de cierre para sincronizarlo después de la apertura, ventas y anulaciones pendientes.
+- `final_cash` es el efectivo esperado calculado por el sistema: fondo inicial más la suma de `total_amount` de las ventas completadas pagadas en efectivo. Las anuladas se excluyen porque la anulación presupone la devolución; no se descuentan por segunda vez. `counted_cash` es el efectivo contado físicamente. En un cierre manual se exigen ambos valores y se muestra su diferencia; en uno automático `counted_cash` queda vacío porque no hubo conteo físico.
 
 ## 2. Reglas de integridad
 
@@ -35,8 +38,8 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 6. `total_amount` debe coincidir con la suma de líneas y extras. El POS asigna `shift_order_number` de forma secuencial en su almacenamiento local persistente, compartido por ventas en línea y offline. El servidor verifica la unicidad por turno dentro de la transacción y responde `409 Conflict` si el folio ya está asociado a otra venta.
 7. Si se repite una solicitud con el mismo UUID y el mismo contenido, se devuelve la venta existente. Si el UUID ya existe con otro contenido, se responde `409 Conflict` y no se crea otra venta.
 8. La fecha de la operación (`created_at`) conserva el momento local de la venta; `received_at` registra cuándo la recibió el servidor.
-9. La anulación cambia el estado a `ANULADA`, registra fecha, motivo y usuario anulador. No elimina ni modifica las líneas históricas.
-10. La cola sincroniza por turno en este orden: apertura (si está pendiente), ventas por folio ascendente y cierre (si está pendiente). Si una operación falla, conserva los datos locales y pausa las siguientes operaciones del mismo turno hasta resolverla. Los reintentos mantienen el mismo UUID.
+9. La anulación cambia el estado a `ANULADA`, registra fecha, motivo obligatorio y la cuenta compartida. No elimina ni modifica las líneas históricas. La persona física no puede identificarse con una cuenta compartida.
+10. La cola sincroniza por turno en este orden: apertura (si está pendiente), ventas por folio ascendente, anulaciones de esas ventas y cierre (si está pendiente). Si una operación falla, conserva los datos locales y pausa las siguientes operaciones del mismo turno hasta resolverla. Los reintentos mantienen el mismo UUID.
 11. Antes de permitir cobrar, el POS debe comprobar que puede guardar localmente la operación. Si no puede persistir el borrador de cobro, no inicia el pago. Nunca elimina ventas pendientes para liberar espacio.
 
 ## 3. Flujo propuesto en línea
@@ -191,11 +194,11 @@ Los errores de precio deben incluir el carrito recalculado y no registrar ni cob
 
 - La API POS acepta solo `PARA_SERVIR` y `PARA_LLEVAR`; no acepta `DELIVERY`, `RETIRO` ni `CONSUMO_PROPIO`.
 - `TRANSBANK` representa débito y crédito; la base también conserva métodos de pago fuera del POS para compatibilidad del modelo.
-- `Order.cancelled_by` registra quién anuló la venta.
+- `Order.cancelled_by` registra la cuenta compartida usada para anular; no identifica a la persona física.
 - La base exige monto recibido y vuelto consistentes para efectivo; en Transbank y transferencia esos campos quedan vacíos.
 - Mantener `shift_order_number` correlativo por turno. El POS local asigna el folio tanto en línea como offline; PostgreSQL rechaza duplicados mediante la restricción única existente.
 - Definir la persistencia local de ventas con IndexedDB y su cola antes de implementar el flujo offline. El cliente conservará UUID y snapshots; el servidor marcará `requires_review` al detectar diferencias de catálogo al sincronizar.
-- La cola local conserva el orden de apertura, ventas por folio y cierre. Ante un error, pausa solo las operaciones posteriores del mismo turno, mantiene intactos los datos locales y muestra el evento que requiere atención.
+- La cola local conserva el orden de apertura, ventas por folio, anulaciones y cierre. A las 00:30 hora de Santiago, el cierre automático se persiste en el equipo incluso sin conexión. Ante un error de sincronización, pausa solo las operaciones posteriores del mismo turno, mantiene intactos los datos locales y muestra el evento que requiere atención.
 
 ## 9. Decisiones de implementación
 
