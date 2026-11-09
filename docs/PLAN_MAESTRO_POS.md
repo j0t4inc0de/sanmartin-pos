@@ -368,7 +368,8 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - `docs/init_schema.sql`: SQL de referencia del modelo.
 - `docs/models_django_reference.py`: modelos Django de referencia.
 - `docs/PRUEBAS_ACEPTACION_ETAPA_3.md`: casos manuales para aceptar acceso y control de turnos antes de iniciar ventas.
-- `docs/CONTRATO_API_VENTAS.md`: borrador de reglas y contrato para el flujo de ventas del POS, pendiente de revisión antes de cambiar modelos o migraciones.
+- `docs/PRUEBAS_ACEPTACION_CIERRE_CAJA.md`: resultado de aceptación del cierre manual con efectivo esperado, contado y diferencia.
+- `docs/CONTRATO_API_VENTAS.md`: reglas operativas y contrato vigente del flujo de ventas; debe mantenerse alineado con las decisiones aprobadas y el código.
 - `TEST_INFRA.md` y `TEST_READY.md`: documentación histórica de pruebas del frontend; se debe actualizar o complementar para el POS.
 
 ## 13. Avance de implementación
@@ -440,6 +441,7 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 - [ ] Prueba de la DINON 9390, formatos de ticket y reimpresión.
 - [x] Agregar `final_cash`, `counted_cash` y `closed_automatically` mediante migración aditiva `0005` aplicada en PostgreSQL local.
 - [x] Implementar el cierre manual: el backend calcula el efectivo esperado, guarda el conteo físico y devuelve la diferencia.
+- [x] Aceptar manualmente el cierre con una venta en efectivo, una no efectiva y una venta anulada; evidencia en `docs/PRUEBAS_ACEPTACION_CIERRE_CAJA.md`.
 - [ ] Completar arqueo por medio de pago, cierre automático offline y reportes.
 
 #### Etapa 8 — Seguridad y operación
