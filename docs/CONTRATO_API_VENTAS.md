@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.0
-- **Estado:** reglas acordadas; migración `0004_reglas_iniciales_venta` aplicada localmente; API online y captura inicial de ventas en `/pos` implementadas; 14 pruebas automatizadas aprobadas en SQLite temporal; persistencia y sincronización offline pendientes
+- **Estado:** reglas acordadas; migraciones `0004` y `0005` aplicadas localmente; API online, anulación y cierre manual con arqueo de efectivo implementados; persistencia, sincronización offline y cierre automático pendientes
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
@@ -26,7 +26,7 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 - Una venta completada no se borra. La cuenta compartida puede anularla solo mientras su turno esté abierto; el motivo es obligatorio y se guardan fecha y hora.
 - Una venta confirmada imprime un comprobante para el cliente, que permite retirar el pedido, y una comanda para cocina. Son documentos de venta; no se consideran tickets de anulación. La falla de impresión no revierte ni duplica una venta ya guardada.
 - El cierre automático ocurre a las 00:30 en `America/Santiago`. Si el equipo está offline, cierra localmente el turno, impide nuevas ventas en ese turno y conserva el evento de cierre para sincronizarlo después de la apertura, ventas y anulaciones pendientes.
-- `final_cash` es el efectivo esperado calculado por el sistema: fondo inicial más la suma de `total_amount` de las ventas completadas pagadas en efectivo. Las anuladas se excluyen porque la anulación presupone la devolución; no se descuentan por segunda vez. `counted_cash` es el efectivo contado físicamente. En un cierre manual se exigen ambos valores y se muestra su diferencia; en uno automático `counted_cash` queda vacío porque no hubo conteo físico.
+- `final_cash` es el efectivo esperado calculado por el sistema: fondo inicial más la suma de `total_amount` de las ventas completadas pagadas en efectivo. Las anuladas se excluyen porque la anulación presupone la devolución; no se descuentan por segunda vez. `counted_cash` es el efectivo contado físicamente. En un cierre manual se exigen ambos valores y `cash_difference` es `counted_cash - final_cash` (positivo: sobrante; negativo: faltante). En uno automático `counted_cash` queda vacío porque no hubo conteo físico.
 
 ## 2. Reglas de integridad
 

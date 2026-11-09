@@ -1,9 +1,9 @@
 # Plan maestro de desarrollo — San Martín POS
 
-- **Versión:** 0.7 — captura inicial de ventas online en POS
-- **Fecha:** 2 de noviembre de 2026
+- **Versión:** 0.8 — cierre manual con arqueo de efectivo
+- **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo, autenticación online, turnos y captura inicial de ventas online disponibles. Persistencia local, sincronización offline, impresión y arqueo siguen pendientes.
+- **Estado:** Base técnica migrada; catálogo, autenticación online, turnos, captura online y cierre manual con efectivo esperado/contado disponibles localmente. Persistencia local, sincronización offline, cierre automático, impresión y arqueo por medio de pago siguen pendientes.
 
 ---
 
@@ -106,6 +106,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 
 - Implementar autenticación y permisos del operador.
 - Implementar apertura de turno, fondo inicial y cierre.
+- Cerrar manualmente con efectivo contado; calcular `final_cash` en el backend y mostrar la diferencia entre ambos valores.
 - Implementar cierre automático local a las 00:30 (`America/Santiago`), incluso sin internet; bloquear nuevas ventas en el turno cerrado y sincronizar el cierre después de la apertura, las ventas y las anulaciones pendientes.
 - Impedir dos turnos abiertos simultáneamente según la regla aprobada.
 - Mostrar el turno activo y el estado de conexión en la interfaz.
@@ -172,9 +173,9 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 
 **Tareas**
 
-- Calcular totales y cantidades por medio de pago para el turno.
-- Incorporar fondo inicial y tratamiento de anulaciones según reglas aprobadas.
-- Implementar resumen de cierre y consulta de ventas del turno.
+- Completar totales y cantidades por medio de pago para el turno; el efectivo esperado y el conteo físico ya se guardan por separado.
+- Mantener el fondo inicial y excluir ventas anuladas del efectivo esperado, asumiendo que la anulación devolvió el importe.
+- Completar el resumen de cierre y la consulta de ventas del turno.
 - Definir y documentar zona horaria `America/Santiago` para fechas y reportes.
 - Agregar reporte de horas punta solo después de validar fechas y reglas de agregación.
 
@@ -416,7 +417,7 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 
 - [x] Implementar autenticación online de sesión, CSRF, límite de intentos y permiso `sales.can_operate_pos` en la API.
 - [x] Crear la pantalla de inicio de sesión online del POS con sesión Django y token CSRF en memoria.
-- [x] Asignar el permiso `sales.can_operate_pos` a la cuenta general compartida; no se crean cuentas individuales para los cajeros.
+- [ ] Configurar y validar una cuenta general compartida con el permiso `sales.can_operate_pos`; no se crean cuentas individuales para los cajeros.
 - [x] Definir la política de acceso offline: PIN compartido habilitado tras acceso online, vigencia de 24 horas y bloqueo de 15 minutos tras cinco fallos.
 - [x] Implementar en backend consulta, apertura y cierre de turnos con restricción de un turno abierto e idempotencia por UUID.
 - [x] Crear la interfaz de apertura/cierre y consulta del turno activo.
@@ -437,7 +438,9 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 - [ ] Validación de ventas, anulaciones auditables y cálculo de vuelto en el backend.
 - [ ] Persistencia local, cola de sincronización, idempotencia y revisión de precios offline.
 - [ ] Prueba de la DINON 9390, formatos de ticket y reimpresión.
-- [ ] Arqueo por turno, tratamiento de anulaciones/consumo propio y reportes.
+- [x] Agregar `final_cash`, `counted_cash` y `closed_automatically` mediante migración aditiva `0005` aplicada en PostgreSQL local.
+- [x] Implementar el cierre manual: el backend calcula el efectivo esperado, guarda el conteo físico y devuelve la diferencia.
+- [ ] Completar arqueo por medio de pago, cierre automático offline y reportes.
 
 #### Etapa 8 — Seguridad y operación
 

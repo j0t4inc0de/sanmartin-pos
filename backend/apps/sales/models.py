@@ -17,6 +17,9 @@ class CashShift(models.Model):
     opened_at = models.DateTimeField()
     closed_at = models.DateTimeField(null=True, blank=True)
     initial_cash = models.PositiveIntegerField(default=0)
+    final_cash = models.PositiveIntegerField(null=True, blank=True)
+    counted_cash = models.PositiveIntegerField(null=True, blank=True)
+    closed_automatically = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

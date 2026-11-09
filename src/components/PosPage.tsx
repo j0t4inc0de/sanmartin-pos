@@ -15,6 +15,10 @@ interface CashShift {
   opened_at: string;
   closed_at: string | null;
   initial_cash: number;
+  final_cash: number | null;
+  counted_cash: number | null;
+  cash_difference: number | null;
+  closed_automatically: boolean;
   notes: string;
   is_open: boolean;
   updated_at: string;
@@ -47,6 +51,7 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
   const pendingOpeningUuid = useRef<string | null>(null);
   const [user, setUser] = useState<PosUser | null>(null);
   const [shift, setShift] = useState<CashShift | null>(null);
+  const [lastClosedShift, setLastClosedShift] = useState<CashShift | null>(null);
   const [anotherShiftOpen, setAnotherShiftOpen] = useState(false);
   const [nextOrderNumber, setNextOrderNumber] = useState(1);
   const [username, setUsername] = useState('');
@@ -54,6 +59,7 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
   const [initialCash, setInitialCash] = useState('0');
   const [openingNotes, setOpeningNotes] = useState('');
   const [closingNotes, setClosingNotes] = useState('');
+  const [closingCashCount, setClosingCashCount] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -177,6 +183,7 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
       });
       pendingOpeningUuid.current = null;
       setOpeningNotes('');
+      setLastClosedShift(null);
       await refreshShift();
     } catch (error) {
       setErrorMessage(
@@ -189,21 +196,29 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
 
   const handleCloseShift = async () => {
     if (!shift || !window.confirm('¿Confirmas el cierre de este turno?')) return;
+    const countedCash = Number(closingCashCount);
+    if (!Number.isSafeInteger(countedCash) || countedCash < 0) {
+      setErrorMessage('Ingresa el efectivo contado como un monto entero no negativo.');
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMessage('');
     try {
-      await solicitarApi<CashShift>(
+      const closedShift = await solicitarApi<CashShift>(
         `/api/shifts/${shift.uuid}/close/`,
         {
           method: 'POST',
           body: {
             closed_at: new Date().toISOString(),
+            counted_cash: countedCash,
             notes: closingNotes,
           },
         },
       );
+      setLastClosedShift(closedShift);
       setClosingNotes('');
+      setClosingCashCount('');
       await refreshShift();
     } catch (error) {
       setErrorMessage(
@@ -314,6 +329,36 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
               </button>
             </div>
 
+            {!shift && lastClosedShift && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5">
+                <h2 className="font-semibold text-white">Resumen del turno cerrado</h2>
+                <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs uppercase text-gray-400">Efectivo esperado</dt>
+                    <dd className="mt-1 font-semibold text-white">
+                      {formatPrice(lastClosedShift.final_cash ?? 0)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase text-gray-400">Efectivo contado</dt>
+                    <dd className="mt-1 font-semibold text-white">
+                      {formatPrice(lastClosedShift.counted_cash ?? 0)}
+                    </dd>
+                  </div>
+                  {lastClosedShift.cash_difference !== null && (
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs uppercase text-gray-400">Diferencia (contado menos esperado)</dt>
+                      <dd className="mt-1 font-semibold text-white">
+                        {lastClosedShift.cash_difference === 0
+                          ? 'Caja cuadrada'
+                          : `${lastClosedShift.cash_difference > 0 ? 'Sobrante' : 'Faltante'}: ${formatPrice(Math.abs(lastClosedShift.cash_difference))}`}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+
             {shift ? (
               <div className="space-y-5">
               <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} onSale={refreshShift} />
@@ -348,6 +393,23 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
                   )}
                 </dl>
 
+                <label className="mt-5 block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
+                  Efectivo contado físicamente (CLP)
+                  <input
+                    id="pos-counted-cash"
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    required
+                    value={closingCashCount}
+                    onChange={(event) => setClosingCashCount(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none transition focus:border-[#FACC15]"
+                  />
+                  <span className="block text-xs text-gray-500">
+                    El sistema calculará el efectivo esperado y mostrará la diferencia.
+                  </span>
+                </label>
                 <label className="mt-5 block space-y-2 text-sm text-gray-300" htmlFor="pos-closing-notes">
                   Nota de cierre (opcional)
                   <textarea
@@ -367,7 +429,7 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
                   Cerrar turno
                 </button>
                 <p className="mt-3 text-xs text-gray-500">
-                  El arqueo por medio de pago se implementará junto con el flujo de ventas.
+                  El cierre automático a las 00:30 se habilitará al completar el almacenamiento y la sincronización offline.
                 </p>
               </div>
               </div>

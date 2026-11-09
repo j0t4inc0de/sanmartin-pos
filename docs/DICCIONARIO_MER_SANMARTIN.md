@@ -119,7 +119,7 @@
 * **`closed_at`** (Timestamptz, Nullable): Momento exacto de cierre (un valor `null` indica que el turno está activo).
 * **`initial_cash`** (Integer, Not Null, Default 0): Fondo inicial en sencillo para dar vuelto (ej. `$30.000`).
 * **`final_cash`** (Integer, Nullable hasta el cierre): Efectivo esperado calculado por el sistema al cerrar: fondo inicial más la suma de `total_amount` de las ventas completadas pagadas en efectivo. Las ventas anuladas se excluyen porque su anulación supone devolver el pago.
-* **`counted_cash`** (Integer, Nullable): Efectivo contado físicamente; es obligatorio en un cierre manual y nulo en el cierre automático. La diferencia respecto de `final_cash` se calcula en el arqueo.
+* **`counted_cash`** (Integer, Nullable): Efectivo contado físicamente; es obligatorio en un cierre manual y nulo en el cierre automático. La diferencia es `counted_cash - final_cash`; un valor positivo indica sobrante y uno negativo, faltante.
 * **`closed_automatically`** (Boolean, Not Null, Default False): Indica si el turno se cerró automáticamente a las 00:30 hora de Santiago.
 * **`notes`** (Text, Nullable): Observaciones del cajero al cerrar (ej. *"Faltaron $300 en monedas al cuadrar"*).
 * **`updated_at`** (Timestamptz, Not Null, Default `now()`): Marca de actualización del turno.

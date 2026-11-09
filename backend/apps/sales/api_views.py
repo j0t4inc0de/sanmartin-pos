@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.db import IntegrityError, transaction
-from django.db.models import Max
+from django.db.models import Max, Sum
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -172,9 +172,26 @@ class CloseCashShiftView(APIView):
         with transaction.atomic():
             shift = CashShift.objects.select_for_update().get(pk=shift.pk)
             if shift.is_open:
+                cash_sales = Order.objects.filter(
+                    cash_shift=shift,
+                    status=Order.Status.COMPLETADA,
+                    payment_method=Order.PaymentMethod.EFECTIVO,
+                ).aggregate(total=Sum("total_amount"))["total"] or 0
                 shift.closed_at = serializer.validated_data["closed_at"]
+                shift.final_cash = shift.initial_cash + cash_sales
+                shift.counted_cash = serializer.validated_data["counted_cash"]
+                shift.closed_automatically = False
                 shift.notes = serializer.validated_data.get("notes", shift.notes)
-                shift.save(update_fields=["closed_at", "notes", "updated_at"])
+                shift.save(
+                    update_fields=[
+                        "closed_at",
+                        "final_cash",
+                        "counted_cash",
+                        "closed_automatically",
+                        "notes",
+                        "updated_at",
+                    ]
+                )
 
         return Response(CashShiftSerializer(shift).data)
 

@@ -14,6 +14,7 @@ class OpenCashShiftSerializer(serializers.Serializer):
 
 class CloseCashShiftSerializer(serializers.Serializer):
     closed_at = serializers.DateTimeField()
+    counted_cash = serializers.IntegerField(min_value=0)
     notes = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
 
     def validate_closed_at(self, value):
@@ -28,6 +29,12 @@ class CloseCashShiftSerializer(serializers.Serializer):
 class CashShiftSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     is_open = serializers.BooleanField(read_only=True)
+    cash_difference = serializers.SerializerMethodField()
+
+    def get_cash_difference(self, shift):
+        if shift.final_cash is None or shift.counted_cash is None:
+            return None
+        return shift.counted_cash - shift.final_cash
 
     class Meta:
         model = CashShift
@@ -37,6 +44,10 @@ class CashShiftSerializer(serializers.ModelSerializer):
             "opened_at",
             "closed_at",
             "initial_cash",
+            "final_cash",
+            "counted_cash",
+            "cash_difference",
+            "closed_automatically",
             "notes",
             "is_open",
             "updated_at",
