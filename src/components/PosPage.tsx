@@ -94,6 +94,7 @@ export const PosPage = () => {
   const [closingCashCount, setClosingCashCount] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasPendingPayment, setHasPendingPayment] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
 
@@ -234,6 +235,10 @@ export const PosPage = () => {
   };
 
   const handleCloseShift = async () => {
+    if (hasPendingPayment) {
+      setErrorMessage('Resuelve la cotización o venta pendiente antes de cerrar el turno.');
+      return;
+    }
     if (!shift || !window.confirm('¿Confirmas el cierre de este turno?')) return;
     const countedCash = Number(closingCashCount);
     if (!Number.isSafeInteger(countedCash) || countedCash < 0) {
@@ -409,7 +414,7 @@ export const PosPage = () => {
             {shift ? (
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
                 <div className="min-w-0">
-                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} onSale={refreshShift} />
+                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} onSale={refreshShift} onPendingPaymentChange={setHasPendingPayment} />
                 </div>
                 <aside className="min-w-0 space-y-5 2xl:sticky 2xl:top-5">
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6">
@@ -479,11 +484,12 @@ export const PosPage = () => {
                 <button
                   type="button"
                   onClick={handleCloseShift}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || hasPendingPayment}
                   className="mt-4 w-full rounded-xl border border-red-500/30 px-4 py-3 font-bold text-red-200 transition hover:bg-red-950/40 disabled:opacity-50"
                 >
                   Cerrar turno
                 </button>
+                {hasPendingPayment && <p role="alert" className="mt-3 text-xs text-amber-200">Hay una cotización o pago pendiente; resuélvelo antes de cerrar.</p>}
                 <p className="mt-3 text-xs text-gray-500">
                   El cierre automático a las 00:30 se habilitará al completar el almacenamiento y la sincronización offline.
                 </p>

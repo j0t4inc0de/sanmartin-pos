@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.0
-- **Estado:** reglas acordadas; migraciones `0004` y `0005` aplicadas localmente; API online, anulación, cierre manual y resumen por medio de pago implementados; catálogo POS y borrador editable por turno guardados en IndexedDB; registro local de cobro/venta, cola de sincronización offline y cierre automático pendientes
+- **Estado:** reglas acordadas; migraciones `0004` y `0005` aplicadas localmente; API online, anulación, cierre manual y resumen por medio de pago implementados; catálogo, borrador y cotización con UUID/folio respaldados en IndexedDB; recepción del pago se registra localmente antes del POST online; cola de sincronización offline y cierre automático pendientes
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
@@ -199,7 +199,9 @@ Los errores de precio deben incluir el carrito recalculado y no registrar ni cob
 - Mantener `shift_order_number` correlativo por turno. El POS local asigna el folio tanto en línea como offline; PostgreSQL rechaza duplicados mediante la restricción única existente.
 - El frontend conserva la última respuesta de `GET /api/pos/catalog/` en IndexedDB y la recupera si falla la red. Esto solo permite consultar el catálogo conocido; no habilita cotizar, cobrar ni operar turnos offline.
 - El frontend guarda y restaura el borrador editable (líneas, cantidades, modificadores, notas y opciones de pago) por UUID de turno en IndexedDB. Si la escritura local falla, bloquea la cotización y el registro online.
-- El borrador editable no es un cobro local: aún falta persistir UUID, folio, snapshots cotizados y estado de pago antes de recibir dinero, además de la venta completa y su cola de sincronización. El servidor marcará `requires_review` al detectar diferencias de catálogo cuando se implemente la sincronización.
+- Antes de mostrar los controles de pago, el frontend conserva en IndexedDB la cotización firmada, UUID, folio, fecha, tipo de consumo, snapshots cobrados, método y monto recibido. Si no puede guardarlos, no muestra el paso de pago.
+- Al confirmar la recepción, guarda primero el estado `PAGO_RECIBIDO` y luego envía el mismo UUID y folio a `POST /api/orders/`. Si el servidor falla, mantiene el pago local y ofrece reintentar el registro sin volver a cobrar; si la cotización vence, conserva los snapshots para conciliación. Esto aún no es sincronización offline automática: falta la cola y la ruta de reconciliación para pagos que no puedan registrarse con la cotización vigente.
+- El servidor marcará `requires_review` al detectar diferencias de catálogo cuando se implemente la sincronización.
 - La cola local conserva el orden de apertura, ventas por folio, anulaciones y cierre. A las 00:30 hora de Santiago, el cierre automático se persiste en el equipo incluso sin conexión. Ante un error de sincronización, pausa solo las operaciones posteriores del mismo turno, mantiene intactos los datos locales y muestra el evento que requiere atención.
 
 ## 9. Decisiones de implementación

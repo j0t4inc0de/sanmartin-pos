@@ -3,7 +3,7 @@
 - **Versión:** 1.0 — cierre manual y resumen por medio de pago aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. Catálogo y borrador editable del carrito se conservan en IndexedDB; persistencia del cobro/ventas, sincronización offline, cierre automático e impresión siguen pendientes.
+- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. Catálogo, borrador y cotización con UUID/folio se conservan en IndexedDB; la recepción del pago también queda marcada localmente antes de registrar online. Cola de sincronización offline, cierre automático e impresión siguen pendientes.
 
 ---
 
@@ -18,7 +18,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 - El repositorio contiene un frontend React, TypeScript y Vite para la landing, la carta QR y el POS en `/pos`.
 - `backend/` contiene una API Django REST Framework y el proyecto usa PostgreSQL para el desarrollo local.
 - El catálogo de caja se obtiene desde `GET /api/pos/catalog/` y se conserva localmente en IndexedDB para recuperarlo si falla la conexión.
-- Las ventas y el borrador aún no se guardan localmente; cotización y registro de ventas requieren conexión.
+- El borrador, la cotización con identidad y la marca de pago recibido se guardan localmente. La cotización y el registro de venta aún requieren conexión; no existe sincronización automática offline.
 - Los archivos `docs/init_schema.sql` y `docs/models_django_reference.py` son referencias de diseño; las migraciones Django definen el esquema ejecutable.
 - La cola de sincronización offline, el cierre automático y la impresión física siguen pendientes.
 
@@ -124,6 +124,8 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 - Buscar y seleccionar productos, cambiar cantidades y añadir modificadores permitidos.
 - Registrar tipo de consumo y medio de pago.
 - [x] Guardar y restaurar el borrador editable del carrito y sus opciones por turno en IndexedDB. El borrador no constituye una venta ni reemplaza el registro local previo al cobro.
+- [x] Guardar cotización firmada, UUID, folio y snapshots antes de mostrar el pago; después de confirmar la recepción, marcar el pago localmente antes de enviar la venta al servidor.
+- [x] Bloquear el cierre manual del turno mientras haya una cotización o un pago pendiente de resolver en este equipo.
 - Calcular y validar el total en el servidor.
 - Guardar una copia histórica del nombre, precio y modificadores cobrados.
 - Asignar folio correlativo local por turno para ventas conectadas y offline; el servidor valida unicidad.
@@ -437,7 +439,7 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 - [ ] Validar bloqueos y concurrencia de ventas contra PostgreSQL en una base de pruebas separada.
 - [ ] Implementar la persistencia local, la cola y el endpoint de sincronización offline.
 - [x] Interfaz inicial online POS: catálogo, cantidades, extras/exclusiones, notas, consumo, cotización y pago manual.
-- [ ] Guardar carrito/cobro localmente antes de autorizar operación de pago físico.
+- [x] Guardar carrito/cotización e identidad antes de mostrar el pago y respaldar localmente su recepción antes del registro online; una falla de servidor conserva el mismo UUID para reintentar.
 - [ ] Implementar búsqueda rápida y flujo optimizado para teclado y mouse.
 - [ ] Validación de ventas, anulaciones auditables y cálculo de vuelto en el backend.
 - [ ] Persistencia local, cola de sincronización, idempotencia y revisión de precios offline.
