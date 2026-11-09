@@ -18,10 +18,18 @@ interface CashShift {
   final_cash: number | null;
   counted_cash: number | null;
   cash_difference: number | null;
+  sales_summary: PaymentSummaryEntry[];
   closed_automatically: boolean;
   notes: string;
   is_open: boolean;
   updated_at: string;
+}
+
+interface PaymentSummaryEntry {
+  payment_method: string;
+  label: string;
+  total_amount: number;
+  order_count: number;
 }
 
 interface ShiftStateResponse {
@@ -42,6 +50,19 @@ const formatDateTime = (value: string) =>
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+
+const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
+  <ul className="mt-2 space-y-2">
+    {items.map((item) => (
+      <li key={item.payment_method} className="flex items-center justify-between gap-4">
+        <span className="text-gray-300">
+          {item.label} <span className="text-gray-500">({item.order_count})</span>
+        </span>
+        <span className="font-semibold text-white">{formatPrice(item.total_amount)}</span>
+      </li>
+    ))}
+  </ul>
+);
 
 interface PosPageProps {
   onNavigateHome: () => void;
@@ -355,6 +376,12 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
                       </dd>
                     </div>
                   )}
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs uppercase text-gray-400">Ventas completadas por medio de pago</dt>
+                    <dd className="text-sm">
+                      <PaymentSummaryList items={lastClosedShift.sales_summary} />
+                    </dd>
+                  </div>
                 </dl>
               </div>
             )}
@@ -383,6 +410,12 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
                     <dt className="text-xs uppercase text-gray-400">Fondo inicial</dt>
                     <dd className="mt-1 text-sm font-semibold text-white">
                       {formatPrice(shift.initial_cash)}
+                    </dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs uppercase text-gray-400">Ventas completadas por medio de pago</dt>
+                    <dd className="text-sm">
+                      <PaymentSummaryList items={shift.sales_summary} />
                     </dd>
                   </div>
                   {shift.notes && (

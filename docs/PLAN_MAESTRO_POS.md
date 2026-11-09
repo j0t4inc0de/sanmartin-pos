@@ -1,9 +1,9 @@
 # Plan maestro de desarrollo — San Martín POS
 
-- **Versión:** 0.8 — cierre manual con arqueo de efectivo
+- **Versión:** 0.9 — cierre manual y resumen por medio de pago
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo, autenticación online, turnos, captura online y cierre manual con efectivo esperado/contado disponibles localmente. Persistencia local, sincronización offline, cierre automático, impresión y arqueo por medio de pago siguen pendientes.
+- **Estado:** Base técnica migrada; catálogo, autenticación online, turnos, captura online, cierre manual, arqueo de efectivo y resumen por medio de pago disponibles localmente. Persistencia local, sincronización offline, cierre automático e impresión siguen pendientes.
 
 ---
 
@@ -173,7 +173,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 
 **Tareas**
 
-- Completar totales y cantidades por medio de pago para el turno; el efectivo esperado y el conteo físico ya se guardan por separado.
+- [x] Calcular y mostrar totales y cantidades de ventas completadas por efectivo, Transbank y transferencia; las anuladas se excluyen.
 - Mantener el fondo inicial y excluir ventas anuladas del efectivo esperado, asumiendo que la anulación devolvió el importe.
 - Completar el resumen de cierre y la consulta de ventas del turno.
 - Definir y documentar zona horaria `America/Santiago` para fechas y reportes.
@@ -442,7 +442,8 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 - [x] Agregar `final_cash`, `counted_cash` y `closed_automatically` mediante migración aditiva `0005` aplicada en PostgreSQL local.
 - [x] Implementar el cierre manual: el backend calcula el efectivo esperado, guarda el conteo físico y devuelve la diferencia.
 - [x] Aceptar manualmente el cierre con una venta en efectivo, una no efectiva y una venta anulada; evidencia en `docs/PRUEBAS_ACEPTACION_CIERRE_CAJA.md`.
-- [ ] Completar arqueo por medio de pago, cierre automático offline y reportes.
+- [x] Completar el resumen del turno por medio de pago.
+- [ ] Implementar cierre automático offline y reportes.
 
 #### Etapa 8 — Seguridad y operación
 

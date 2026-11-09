@@ -1,7 +1,7 @@
 # Contrato de acceso y turnos del POS
 
-- **Versión:** 1.1
-- **Estado:** apertura y cierre manual con arqueo de efectivo implementados en local; cierre automático y operación offline pendientes
+- **Versión:** 1.2
+- **Estado:** apertura, cierre manual con arqueo de efectivo y resumen por medio de pago implementados en local; cierre automático y operación offline pendientes
 - **Autenticación:** sesión Django y token CSRF
 
 ## Preparar la sesión
@@ -56,9 +56,9 @@ Todas requieren una sesión válida y el permiso POS.
 
 | Método y ruta | Comportamiento |
 |---|---|
-| `GET /api/shifts/current/` | Devuelve el turno abierto del usuario; también indica si existe otro turno abierto. |
+| `GET /api/shifts/current/` | Devuelve el turno abierto de la cuenta compartida, el resumen de ventas completadas por medio de pago y si existe otro turno abierto. |
 | `POST /api/shifts/open/` | Abre un turno con `uuid`, `opened_at`, `initial_cash` y `notes`. El UUID del cliente permite reintentar sin duplicar la apertura. |
-| `POST /api/shifts/{uuid}/close/` | Cierra el turno de la cuenta compartida con `closed_at`, `counted_cash` y notas opcionales. El servidor calcula y devuelve `final_cash` y la diferencia. Repetir el cierre devuelve el estado ya guardado. En un cierre automático, `counted_cash` queda vacío. |
+| `POST /api/shifts/{uuid}/close/` | Cierra el turno de la cuenta compartida con `closed_at`, `counted_cash` y notas opcionales. El servidor calcula y devuelve `final_cash`, la diferencia y el resumen por medio de pago. Repetir el cierre devuelve el estado ya guardado. En un cierre automático, `counted_cash` queda vacío. |
 
 Los montos se expresan en pesos chilenos enteros y no pueden ser negativos. El servidor impide un segundo turno abierto y responde `409` ante el conflicto. Un usuario no puede consultar ni cerrar el turno perteneciente a otra cuenta.
 

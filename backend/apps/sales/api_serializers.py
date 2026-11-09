@@ -1,3 +1,4 @@
+from django.db.models import Count, Sum
 from rest_framework import serializers
 
 from apps.catalog.models import Modifier, Product
@@ -30,11 +31,42 @@ class CashShiftSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     is_open = serializers.BooleanField(read_only=True)
     cash_difference = serializers.SerializerMethodField()
+    sales_summary = serializers.SerializerMethodField()
 
     def get_cash_difference(self, shift):
         if shift.final_cash is None or shift.counted_cash is None:
             return None
         return shift.counted_cash - shift.final_cash
+
+    def get_sales_summary(self, shift):
+        totals = {
+            row["payment_method"]: row
+            for row in Order.objects.filter(
+                cash_shift=shift,
+                status=Order.Status.COMPLETADA,
+                payment_method__in=[
+                    Order.PaymentMethod.EFECTIVO,
+                    Order.PaymentMethod.TRANSBANK,
+                    Order.PaymentMethod.TRANSFERENCIA,
+                ],
+            )
+            .values("payment_method")
+            .annotate(total=Sum("total_amount"), count=Count("id"))
+        }
+        methods = (
+            (Order.PaymentMethod.EFECTIVO, "Efectivo"),
+            (Order.PaymentMethod.TRANSBANK, "Transbank"),
+            (Order.PaymentMethod.TRANSFERENCIA, "Transferencia"),
+        )
+        return [
+            {
+                "payment_method": method,
+                "label": label,
+                "total_amount": totals.get(method, {}).get("total") or 0,
+                "order_count": totals.get(method, {}).get("count") or 0,
+            }
+            for method, label in methods
+        ]
 
     class Meta:
         model = CashShift
@@ -47,6 +79,7 @@ class CashShiftSerializer(serializers.ModelSerializer):
             "final_cash",
             "counted_cash",
             "cash_difference",
+            "sales_summary",
             "closed_automatically",
             "notes",
             "is_open",

@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.0
-- **Estado:** reglas acordadas; migraciones `0004` y `0005` aplicadas localmente; API online, anulación y cierre manual con arqueo de efectivo implementados; persistencia, sincronización offline y cierre automático pendientes
+- **Estado:** reglas acordadas; migraciones `0004` y `0005` aplicadas localmente; API online, anulación, cierre manual y resumen de ventas por medio de pago implementados; persistencia, sincronización offline y cierre automático pendientes
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
