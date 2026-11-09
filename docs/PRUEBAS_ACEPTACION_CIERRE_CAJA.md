@@ -32,6 +32,32 @@ El usuario confirmó que el cierre mostró:
 
 **Estado: aprobado.**
 
+## Caso: resumen de ventas por medio de pago
+
+### Preparación
+
+1. Abrir un turno con fondo inicial de `$10.000`.
+2. Registrar una venta completada en efectivo por `$2.000`.
+3. Registrar una venta completada por Transbank por `$3.000`.
+4. Registrar una venta completada por transferencia por `$4.000`.
+5. Registrar una venta en efectivo por `$1.000` y anularla con motivo.
+6. Revisar el resumen durante el turno y después cerrarlo con `$12.000` contados.
+
+### Resultado esperado
+
+- Efectivo: `$2.000` en 1 venta.
+- Transbank: `$3.000` en 1 venta.
+- Transferencia: `$4.000` en 1 venta.
+- La venta anulada no aparece en los totales ni cantidades de ventas completadas.
+- Efectivo esperado: `$12.000` (`$10.000` de fondo inicial + `$2.000` de venta completada en efectivo).
+- Con `$12.000` contados, la diferencia es cero y la caja queda cuadrada.
+
+### Resultado observado
+
+El usuario confirmó que el resumen y el cierre mostraron el resultado esperado.
+
+**Estado: aprobado.**
+
 ## Alcance de esta aceptación
 
-Esta prueba valida el cierre manual y el cálculo del efectivo esperado para un turno. No valida el cierre automático de las 00:30, el funcionamiento sin conexión, la sincronización ni la impresora DINON 9390.
+Estas pruebas validan el cierre manual, el cálculo del efectivo esperado y el resumen por medio de pago. No validan el cierre automático de las 00:30, el funcionamiento sin conexión, la sincronización ni la impresora DINON 9390.

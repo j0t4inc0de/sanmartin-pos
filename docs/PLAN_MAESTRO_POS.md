@@ -1,6 +1,6 @@
 # Plan maestro de desarrollo — San Martín POS
 
-- **Versión:** 0.9 — cierre manual y resumen por medio de pago
+- **Versión:** 1.0 — cierre manual y resumen por medio de pago aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
 - **Estado:** Base técnica migrada; catálogo, autenticación online, turnos, captura online, cierre manual, arqueo de efectivo y resumen por medio de pago disponibles localmente. Persistencia local, sincronización offline, cierre automático e impresión siguen pendientes.
@@ -369,6 +369,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - `docs/models_django_reference.py`: modelos Django de referencia.
 - `docs/PRUEBAS_ACEPTACION_ETAPA_3.md`: casos manuales para aceptar acceso y control de turnos antes de iniciar ventas.
 - `docs/PRUEBAS_ACEPTACION_CIERRE_CAJA.md`: resultado de aceptación del cierre manual con efectivo esperado, contado y diferencia.
+- `docs/PROMPT_MAESTRO_CONTINUIDAD.md`: prompt completo para retomar el proyecto en otro chat sin perder decisiones ni estado.
 - `docs/CONTRATO_API_VENTAS.md`: reglas operativas y contrato vigente del flujo de ventas; debe mantenerse alineado con las decisiones aprobadas y el código.
 - `TEST_INFRA.md` y `TEST_READY.md`: documentación histórica de pruebas del frontend; se debe actualizar o complementar para el POS.
 
@@ -442,7 +443,7 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 - [x] Agregar `final_cash`, `counted_cash` y `closed_automatically` mediante migración aditiva `0005` aplicada en PostgreSQL local.
 - [x] Implementar el cierre manual: el backend calcula el efectivo esperado, guarda el conteo físico y devuelve la diferencia.
 - [x] Aceptar manualmente el cierre con una venta en efectivo, una no efectiva y una venta anulada; evidencia en `docs/PRUEBAS_ACEPTACION_CIERRE_CAJA.md`.
-- [x] Completar el resumen del turno por medio de pago.
+- [x] Completar y aceptar manualmente el resumen del turno por medio de pago; evidencia en `docs/PRUEBAS_ACEPTACION_CIERRE_CAJA.md`.
 - [ ] Implementar cierre automático offline y reportes.
 
 #### Etapa 8 — Seguridad y operación
