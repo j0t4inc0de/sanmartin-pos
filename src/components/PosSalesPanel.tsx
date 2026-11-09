@@ -44,6 +44,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftLoadError, setDraftLoadError] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [draftLoadAttempt, setDraftLoadAttempt] = useState(0);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
   const [catalogNotice, setCatalogNotice] = useState('');
@@ -82,7 +83,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           setConsumptionType(draft.consumption_type);
           setPaymentMethod(draft.payment_method);
           setAmountReceived(draft.amount_received);
-          setMessage('Borrador de venta restaurado desde este equipo.');
+          setDraftRestored(true);
         }
         if (pendingPayment) {
           setQuote({
@@ -376,12 +377,16 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   return <section className="space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Venta en línea</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog}><RefreshCw className="mr-2 inline h-4 w-4"/>Actualizar menú</button></header>
-    <p className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">El catálogo, el borrador y la cotización se conservan en este equipo. Si el servidor no confirma una venta cobrada, el POS la mantiene para reintentar; la sincronización automática offline aún no está lista.</p>
-    {catalogNotice && <p role="status" className="rounded-lg border border-amber-500/20 bg-amber-950/20 p-3 text-xs text-amber-100">{catalogNotice}</p>}
-    <div className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-xs ${draftSaveStatus === 'error' ? 'border-red-500/30 bg-red-950/30 text-red-200' : 'border-white/10 bg-[#0D0D0D] text-gray-300'}`} role={draftSaveStatus === 'error' ? 'alert' : 'status'}>
-      <span>{draftLoadError ? 'No se pudo leer el borrador o cobro pendiente. Se conserva sin cambios; reintenta antes de continuar.' : draftSaveStatus === 'loading' ? 'Recuperando borrador…' : draftSaveStatus === 'saving' ? 'Guardando borrador en este equipo…' : draftSaveStatus === 'saved' ? 'Borrador guardado en este equipo.' : 'No se pudo guardar el borrador local. El cobro está bloqueado.'}</span>
-      {draftLoadError && <button type="button" className="font-semibold underline" onClick={() => setDraftLoadAttempt(attempt => attempt + 1)}>Reintentar</button>}
-    </div>
+    <aside aria-label="Estado de datos locales" className="space-y-3 rounded-xl border border-white/10 bg-[#101010] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">Respaldo de caja</h3><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">El catálogo, el borrador y la cotización quedan guardados en este equipo. Los cobros se registran con conexión; si el servidor no confirma una venta cobrada, podrás reintentarla. La sincronización automática offline sigue pendiente.</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">Almacenamiento local</span></div>
+      <div className="grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-2">
+        <p role={draftLoadError || draftSaveStatus === 'error' ? 'alert' : 'status'} className={`rounded-lg px-3 py-2 text-xs ${draftLoadError || draftSaveStatus === 'error' ? 'bg-red-950/30 text-red-200' : 'bg-white/[0.035] text-gray-300'}`}>
+          <span className="font-medium text-white">Borrador</span><span className="mx-2 text-gray-600">·</span>{draftLoadError ? 'No se pudo leer; el cobro está bloqueado.' : draftSaveStatus === 'loading' ? 'Recuperando…' : draftSaveStatus === 'saving' ? 'Guardando…' : draftSaveStatus === 'saved' ? draftRestored ? 'Restaurado y guardado en este equipo.' : 'Guardado en este equipo.' : 'No se pudo guardar; el cobro está bloqueado.'}
+          {draftLoadError && <button type="button" className="ml-2 font-semibold underline" onClick={() => setDraftLoadAttempt(attempt => attempt + 1)}>Reintentar</button>}
+        </p>
+        {catalogNotice && <p role="status" className={`rounded-lg px-3 py-2 text-xs ${catalogNotice.startsWith('No se pudo') || catalogNotice.startsWith('Sin conexión') ? 'bg-amber-950/30 text-amber-200' : 'bg-white/[0.035] text-gray-300'}`}><span className="font-medium text-white">Catálogo</span><span className="mx-2 text-gray-600">·</span>{catalogNotice}</p>}
+      </div>
+    </aside>
     {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-200">{error}</div>}{message && <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-950/30 p-3 text-sm text-emerald-200"><Check className="mr-2 inline h-4 w-4"/>{message}</div>}
     {paymentReceivedPending && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100"><span>El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.</span><button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>{busy ? 'Registrando…' : 'Reintentar registro'}</button></div>}
     {paymentRecordWriteFailed && quote && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-100"><span>La recepción del pago no quedó respaldada. No cobres otra vez; mantén esta venta abierta e intenta guardar el registro.</span><button type="button" disabled={busy || pendingPaymentStatus === 'saving'} className="rounded-lg bg-red-200 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>Reintentar respaldo local</button></div>}
