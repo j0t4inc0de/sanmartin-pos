@@ -51,16 +51,21 @@ const formatDateTime = (value: string) =>
     timeStyle: 'short',
   }).format(new Date(value));
 
-const formatChileClock = (value: Date) =>
-  new Intl.DateTimeFormat('es-CL', {
+const formatChileClock = (value: Date) => ({
+  date: new Intl.DateTimeFormat('es-CL', {
     timeZone: 'America/Santiago',
     day: '2-digit',
     month: 'short',
+    year: 'numeric',
+  }).format(value),
+  time: new Intl.DateTimeFormat('es-CL', {
+    timeZone: 'America/Santiago',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     hourCycle: 'h23',
-  }).format(value);
+  }).format(value),
+});
 
 const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
   <ul className="mt-2 space-y-2">
@@ -346,10 +351,13 @@ export const PosPage = () => {
                 <p className="text-xs uppercase tracking-wider text-gray-400">Sesión activa</p>
                 <p className="mt-1 font-semibold text-white">{user.username}</p>
                 </div>
-                <div className="inline-flex items-center gap-2 rounded-xl border border-[#FACC15]/20 bg-[#FACC15]/[0.06] px-3 py-2" aria-label={`Hora de Chile: ${chileClock}`}>
-                  <span className="h-2 w-2 rounded-full bg-[#FACC15] shadow-[0_0_10px_rgba(250,204,21,0.7)]" aria-hidden="true" />
-                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#FACC15]">Chile</span>
-                  <time className="font-mono text-sm tabular-nums text-white" dateTime={new Date().toISOString()}>{chileClock}</time>
+                <div className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.02] px-3 py-2 shadow-inner shadow-black/20" aria-label={`Hora local: ${chileClock.date}, ${chileClock.time}`}>
+                  <span className="grid h-9 w-9 place-items-center rounded-xl border border-[#FACC15]/20 bg-[#FACC15]/[0.08] text-[#FACC15]" aria-hidden="true">
+                    <Clock3 className="h-4 w-4" />
+                  </span>
+                  <span className="text-xs font-medium capitalize tracking-wide text-gray-400">{chileClock.date}</span>
+                  <span className="h-5 w-px bg-white/10" aria-hidden="true" />
+                  <time className="font-heading text-lg tracking-[0.08em] tabular-nums text-white" dateTime={new Date().toISOString()}>{chileClock.time}</time>
                 </div>
               </div>
               <button
