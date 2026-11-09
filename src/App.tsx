@@ -108,7 +108,7 @@ export default function App() {
   }
 
   if (currentRoute === 'pos') {
-    return <PosPage onNavigateHome={() => navigateTo('home')} />;
+    return <PosPage />;
   }
 
   return (

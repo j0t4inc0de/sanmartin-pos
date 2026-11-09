@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, CircleDollarSign, Clock3, LogOut } from 'lucide-react';
+import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
 
@@ -51,6 +51,17 @@ const formatDateTime = (value: string) =>
     timeStyle: 'short',
   }).format(new Date(value));
 
+const formatChileClock = (value: Date) =>
+  new Intl.DateTimeFormat('es-CL', {
+    timeZone: 'America/Santiago',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(value);
+
 const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
   <ul className="mt-2 space-y-2">
     {items.map((item) => (
@@ -64,11 +75,7 @@ const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
   </ul>
 );
 
-interface PosPageProps {
-  onNavigateHome: () => void;
-}
-
-export const PosPage = ({ onNavigateHome }: PosPageProps) => {
+export const PosPage = () => {
   const pendingOpeningUuid = useRef<string | null>(null);
   const [user, setUser] = useState<PosUser | null>(null);
   const [shift, setShift] = useState<CashShift | null>(null);
@@ -84,6 +91,13 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
+
+  useEffect(() => {
+    const updateClock = () => setChileClock(formatChileClock(new Date()));
+    const interval = window.setInterval(updateClock, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const refreshShift = async () => {
     const response = await solicitarApi<ShiftStateResponse>(
@@ -251,9 +265,9 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
   };
 
   return (
-    <main className="min-h-screen bg-[#0D0D0D] px-4 py-8 text-gray-100 sm:py-12">
-      <div className="mx-auto w-full max-w-2xl">
-        <header className="mb-8 flex items-center justify-between gap-4">
+    <main className="min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">
+      <div className="mx-auto w-full max-w-[1600px]">
+        <header className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#FACC15]">
               San Martín
@@ -262,14 +276,6 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
               Punto de venta
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={onNavigateHome}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm text-gray-300 transition-colors hover:bg-white/5 hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Sitio web
-          </button>
         </header>
 
         {errorMessage && (
@@ -288,7 +294,7 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
         ) : !user ? (
           <form
             onSubmit={handleLogin}
-            className="space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-6 shadow-xl sm:p-8"
+            className="mx-auto w-full max-w-xl space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-6 shadow-xl sm:p-8"
           >
             <div>
               <h2 className="font-heading text-xl font-bold uppercase text-white">
@@ -334,10 +340,17 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
           </form>
         ) : (
           <section className="space-y-5">
-            <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#171717] p-4">
-              <div>
+            <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#171717] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3">
+                <div>
                 <p className="text-xs uppercase tracking-wider text-gray-400">Sesión activa</p>
                 <p className="mt-1 font-semibold text-white">{user.username}</p>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-xl border border-[#FACC15]/20 bg-[#FACC15]/[0.06] px-3 py-2" aria-label={`Hora de Chile: ${chileClock}`}>
+                  <span className="h-2 w-2 rounded-full bg-[#FACC15] shadow-[0_0_10px_rgba(250,204,21,0.7)]" aria-hidden="true" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#FACC15]">Chile</span>
+                  <time className="font-mono text-sm tabular-nums text-white" dateTime={new Date().toISOString()}>{chileClock}</time>
+                </div>
               </div>
               <button
                 type="button"
@@ -387,9 +400,12 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
             )}
 
             {shift ? (
-              <div className="space-y-5">
-              <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} onSale={refreshShift} />
-              <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-6 shadow-xl">
+              <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
+                <div className="min-w-0">
+                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} onSale={refreshShift} />
+                </div>
+                <aside className="min-w-0 space-y-5 2xl:sticky 2xl:top-5">
+              <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
@@ -465,6 +481,7 @@ export const PosPage = ({ onNavigateHome }: PosPageProps) => {
                   El cierre automático a las 00:30 se habilitará al completar el almacenamiento y la sincronización offline.
                 </p>
               </div>
+                </aside>
               </div>
             ) : anotherShiftOpen ? (
               <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-6">
