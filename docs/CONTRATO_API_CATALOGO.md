@@ -86,11 +86,9 @@ Las listas de gestión muestran registros activos e inactivos. La interfaz ofrec
 
 El comando agrega categorías y productos faltantes mediante sus slugs y no sobrescribe ni elimina registros existentes. Las promociones actuales siguen fuera de la API de gestión: los combos promocionales de la carta QR son contenido fijo del frontend; `original_price` y `badge` solo son campos de presentación y no programan una promoción ni alteran el precio que cobra el POS.
 
-## Promociones programadas — propuesta para siguiente etapa
+## Promociones programadas — fuera de alcance actual
 
-El contrato actual no incluye promociones por fecha, combos editables ni descuentos en cotizaciones/ventas. Para que la carta QR y la caja no publiquen ni cobren importes distintos, la propuesta es administrar promociones desde **Catálogo** y guardarlas en Django: seleccionar producto(s), nombre visible, precio promocional y una fecha de vigencia local en `America/Santiago`; la oferta comienza y termina automáticamente ese día. El QR muestra el precio vigente y el precio regular, y el POS cotiza/cobra ese mismo precio. El registro de venta conserva el precio efectivamente cobrado y una referencia/snapshot de la promoción; los pagos offline usan el horario local original de la venta para decidir vigencia al sincronizar. Una promoción pausada, vencida o archivada no se ofrece a ventas nuevas; nunca modifica ventas ya cobradas.
-
-La primera entrega debe prevenir dos promociones simultáneas para el mismo producto, validar precio promocional menor al regular, mostrar estados borrador/programada/activa/vencida, y permitir editar, pausar y duplicar una promoción. Los combos de varios productos requieren una definición aparte de composición, selección de variantes y despacho a cocina; no se deben simular con el campo `badge` ni con productos normales hasta definir ese modelo. Esta propuesta cambia la regla actual de “sin descuentos” del contrato de ventas y debe confirmarse antes de implementarse.
+El usuario decidió mantener las promociones y combos actuales de la carta como están y no agregar una opción de programación por fecha ni descuentos en la caja. Los combos actuales siguen definidos como contenido fijo del frontend; `original_price` y `badge` conservan su función actual de presentación. Cualquier cambio futuro requiere revisar el contrato de ventas para mantener el mismo precio en QR, POS y cobros offline.
 
 ## Evolución del contrato
 
