@@ -107,6 +107,115 @@ class OrderApiTests(APITestCase):
             body["amount_received"] = amount
         return self.client.post("/api/orders/", body, format="json")
 
+    def payload_sync_offline(self):
+        return {
+            "uuid": str(uuid4()),
+            "shift_order_number": 1,
+            "shift_uuid": str(self.shift.uuid),
+            "created_at": timezone.now().isoformat(),
+            "offline_created": True,
+            "consumption_type": "PARA_LLEVAR",
+            "payment_method": "EFECTIVO",
+            "amount_received": 15000,
+            "items": [{
+                "product_id": self.product.pk,
+                "product_name": "Sándwich guardado localmente",
+                "quantity": 2,
+                "unit_price": 5000,
+                "notes": "Sin cebolla",
+                "modifiers": [{
+                    "modifier_id": self.extra.pk,
+                    "modifier_name": "Queso guardado localmente",
+                    "quantity_per_unit": 2,
+                    "price_at_sale": 900,
+                }],
+            }],
+        }
+
+    def sync_offline(self, payload):
+        return self.client.post("/api/orders/sync/", payload, format="json")
+
+    def test_sync_offline_preserva_snapshots_calcula_total_y_marca_revision(self):
+        self.product.price = 5500
+        self.product.save(update_fields=["price", "updated_at"])
+        self.extra.price = 1200
+        self.extra.save(update_fields=["price", "updated_at"])
+        payload = self.payload_sync_offline()
+
+        response = self.sync_offline(payload)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["total_amount"], 13600)
+        self.assertEqual(response.data["change_given"], 1400)
+        self.assertTrue(response.data["offline_created"])
+        self.assertTrue(response.data["requires_review"])
+        self.assertEqual(Order.objects.get().items.get().product_name, "Sándwich guardado localmente")
+        self.assertEqual(Order.objects.get().items.get().unit_price, 5000)
+        self.assertEqual(Order.objects.get().items.get().modifiers.count(), 2)
+
+    def test_sync_offline_reintento_idempotente_y_uuid_con_datos_distintos_conflicto(self):
+        payload = self.payload_sync_offline()
+
+        first = self.sync_offline(payload)
+        retry = self.sync_offline(payload)
+        payload["amount_received"] = 16000
+        conflict = self.sync_offline(payload)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_sync_offline_rechaza_efectivo_insuficiente_y_venta_no_offline(self):
+        payload = self.payload_sync_offline()
+        payload["amount_received"] = 9999
+        insufficient = self.sync_offline(payload)
+        payload["amount_received"] = 15000
+        payload["offline_created"] = False
+        not_offline = self.sync_offline(payload)
+
+        self.assertEqual(insufficient.status_code, 400)
+        self.assertEqual(not_offline.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_sync_offline_rechaza_folio_duplicado_con_uuid_distinto(self):
+        first_payload = self.payload_sync_offline()
+        second_payload = self.payload_sync_offline()
+        second_payload["uuid"] = str(uuid4())
+
+        first = self.sync_offline(first_payload)
+        second = self.sync_offline(second_payload)
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_sync_offline_no_acepta_un_turno_cerrado(self):
+        payload = self.payload_sync_offline()
+        created = self.sync_offline(payload)
+        self.shift.closed_at = timezone.now()
+        self.shift.save(update_fields=["closed_at", "updated_at"])
+
+        retry = self.sync_offline(payload)
+        response = self.sync_offline(self.payload_sync_offline())
+
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_sync_offline_requiere_permiso_para_operar_pos(self):
+        unauthorized = User.objects.create_user(
+            username="sin_permiso_sync",
+            password="otra-clave-segura-2026",
+        )
+        self.client.force_authenticate(user=unauthorized)
+
+        response = self.sync_offline(self.payload_sync_offline())
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Order.objects.count(), 0)
+
     def test_cotizacion_calcula_precio_de_modificadores_por_unidad(self):
         _, response = self.cotizar(extra_qty=2)
 

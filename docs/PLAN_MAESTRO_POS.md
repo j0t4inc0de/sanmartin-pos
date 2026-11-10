@@ -336,7 +336,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Acceso offline con PIN compartido de cuatro cifras tras autenticación online, válido 24 horas | Confirmado | La contraseña online se mantiene; el PIN no se guarda en texto legible. Cinco fallos bloquean nuevos intentos por 15 minutos, sin interrumpir una sesión activa. El límite de 10.000 combinaciones requiere mitigación local y se acepta por facilidad de uso. |
 | Combos fuera de la caja en la primera versión | Confirmado | Los combos web son contenido promocional y quedan fuera del catálogo operativo del POS inicial. |
 | ¿Cuál es la ruta oficial de sincronización delta del catálogo? | Pendiente de confirmar | Evita contratos distintos entre frontend y backend. |
-| Verificación local del PIN y controles técnicos de acceso offline | Parcial | PBKDF2-HMAC-SHA-256, sal aleatoria, vigencia y reglas de bloqueo están implementados y probados como primitivas. Faltan IndexedDB, la interfaz y el flujo de acceso; el bloqueo local no protege contra manipulación del perfil del navegador. |
+| Verificación local del PIN y controles técnicos de acceso offline | Parcial | PBKDF2-HMAC-SHA-256, sal aleatoria, vigencia y bloqueo están implementados; el usuario confirmó la prueba del acceso y la vista offline de solo lectura. El bloqueo local no protege contra manipulación del perfil del navegador. |
 | ¿Qué sucede si una caída supera la vigencia del catálogo local o se agota el almacenamiento? | Pendiente de definir | Establece límites y alertas para proteger ventas y datos. |
 | Usuario propio basado en `AbstractUser`, administrado por Django | Confirmado | Resuelve el choque entre el SQL de referencia y el sistema de autenticación, y deja espacio para permisos futuros. |
 | Folio correlativo por turno (`shift_order_number`) | Confirmado | Coincide con la unicidad por turno ya descrita y simplifica la operación con un POS. |
@@ -381,19 +381,19 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 
 - **Confirmado:** Django REST, PostgreSQL, backend en `backend/`, un equipo inicial, sesión offline solo después de autenticación online, impresión en la primera versión, pagos manuales y combos fuera de la caja.
 - **Creado:** estructura Django; aplicaciones `users`, `catalog` y `sales`; migraciones; configuración local; Compose opcional ligado a `127.0.0.1`; proxy Vite para `/api` y `/admin`; API pública de catálogo; API de sesión y operaciones iniciales de turno. Contratos en `docs/CONTRATO_API_CATALOGO.md` y `docs/CONTRATO_API_ACCESO_CAJA.md`.
-- **Etapa 4 — avance:** reglas de negocio acordadas; migraciones `0004` y `0005` aplicadas localmente; API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` guarda y restaura catálogo, borrador editable, cotización firmada y marca de pago recibido en IndexedDB. La prueba de aceptación `docs/PRUEBAS_ACEPTACION_POS_PERSISTENCIA_LOCAL.md` pasó en una base SQLite temporal. Falta el acceso offline por PIN, la cola de ventas offline y su sincronización.
+- **Etapas 4–5 — avance:** API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` persiste catálogo, borrador editable, cotización, marca de pago y acceso PIN en IndexedDB; el modo offline muestra el turno en solo lectura. `POST /api/orders/sync/` ya registra ventas históricas idempotentemente y marca diferencias de catálogo. Faltan la cola de ventas del frontend, sincronización automática y apertura/anulación/cierre offline.
 - **Entorno local preparado:** Python 3.14.10 instalado en el perfil de Windows; entorno virtual creado en `backend/.venv`; dependencias fijadas instaladas; servicio PostgreSQL 16 iniciado y puerto `5433` confirmado. PostgreSQL 18 sigue en `5432`.
 - **Configuración local:** `backend/.env` creado y excluido de Git; `DJANGO_SECRET_KEY` generado localmente y conexión configurada para PostgreSQL 16 en `127.0.0.1:5433`.
 - **Catálogo local:** cargadas desde la carta existente 8 categorías y 64 productos; las promociones web permanecen fuera del catálogo del POS. El cargador solo agrega faltantes y conserva los registros existentes.
 - **Carta web:** landing y `/menu` consultan el catálogo Django mediante el proxy local y muestran estados de carga, error y reintento; categorías y productos ya no se duplican en `src/data/menuData.ts`.
 - **Verificación local:** `manage.py check` no reporta problemas; `npm run build` terminó correctamente; las migraciones están aplicadas y el permiso `sales.can_operate_pos` existe. `/pos`, CSRF y catálogo responden con HTTP 200. La API devuelve 8 categorías y 64 productos. Sin sesión, las rutas protegidas responden HTTP 403.
 - **Etapa 3 — aceptación:** el usuario confirmó la aprobación de POS-01 a POS-11 y POS-12 se verificó localmente con rechazo HTTP 403 para token CSRF inválido. Registro en `docs/PRUEBAS_ACEPTACION_ETAPA_3.md`.
-- **Pendiente de desarrollo:** implementar acceso offline con PIN compartido de cuatro cifras, catálogo delta, captura y cola local de ventas, sincronización e impresión.
+- **Pendiente de desarrollo:** cola durable de ventas offline y sincronización automática, operaciones offline de turnos/anulaciones/cierre, catálogo delta e impresión.
 - **Seguridad:** no se aplicó `docs/init_schema.sql`, no se creó la cuenta de ejemplo y no se conectó el backend a producción.
 - **Seguridad:** la contraseña actual del rol `sanmartin_dev` es solo para desarrollo local; reemplazarla por una clave robusta antes de cualquier despliegue. No usarla en producción.
 - **Verificación del entorno:** se usa Python 3.14.10 en `backend/.venv`; el acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Las pruebas automatizadas del backend se ejecutan en SQLite temporal y no sustituyen la validación de concurrencia en PostgreSQL. Docker no es requisito para el flujo local.
 
-La pantalla `/pos` permite operar ventas online y conserva localmente el borrador y el estado del pago para reintentos. La aceptación temporal cubre el flujo hasta el cierre manual; no acredita acceso ni sincronización offline. El siguiente bloque es implementar el acceso offline por PIN según las reglas ya acordadas y luego la cola durable de operaciones.
+La pantalla `/pos` permite operar ventas online, conserva el borrador y el estado del pago para reintentos, y ofrece acceso offline por PIN en modo de solo lectura. La API de sincronización de ventas offline tiene 20 pruebas en SQLite temporal. El siguiente bloque es implementar la persistencia y cola local de ventas cobradas y conectarla al endpoint; la ruta actual sincroniza solo turnos ya abiertos en el servidor.
 
 ### Seguimiento de la orden de trabajo
 
@@ -437,13 +437,13 @@ La pantalla `/pos` permite operar ventas online y conserva localmente el borrado
 - [x] Implementar la API online de cotización firmada, registro idempotente y anulación auditada.
 - [x] Crear y ejecutar 14 pruebas automatizadas para catálogo POS, cotización, precios, pagos, idempotencia, permisos, CSRF y anulaciones en una base SQLite temporal.
 - [ ] Validar bloqueos y concurrencia de ventas contra PostgreSQL en una base de pruebas separada.
-- [ ] Implementar la persistencia local de turnos, ventas offline, anulaciones y cierres en una cola durable, junto con el endpoint de sincronización.
+- [~] Implementar persistencia local de turnos, ventas offline, anulaciones y cierres en una cola durable, junto con el endpoint de sincronización. La ruta de ventas offline ya está implementada y probada; falta la cola frontend y ordenar apertura/anulaciones/cierre.
 - [x] Interfaz inicial online POS: catálogo, cantidades, extras/exclusiones, notas, consumo, cotización y pago manual.
 - [x] Guardar carrito/cotización e identidad antes de mostrar el pago y respaldar localmente su recepción antes del registro online; una falla de servidor conserva el mismo UUID para reintentar.
 - [x] Aceptar en una base SQLite temporal la restauración del borrador y cotización, el bloqueo del cierre con venta pendiente, el reintento con un solo registro y el cierre manual; evidencia en `docs/PRUEBAS_ACEPTACION_POS_PERSISTENCIA_LOCAL.md`.
 - [ ] Implementar búsqueda rápida y flujo optimizado para teclado y mouse.
 - [ ] Validación de ventas, anulaciones auditables y cálculo de vuelto en el backend.
-- [ ] Persistencia local, cola de sincronización, idempotencia y revisión de precios offline.
+- [~] Endpoint idempotente de sincronización de ventas, preservación de snapshots y revisión por diferencias de catálogo; falta la cola local, reintento automático y estados visibles.
 - [ ] Prueba de la DINON 9390, formatos de ticket y reimpresión.
 - [x] Agregar `final_cash`, `counted_cash` y `closed_automatically` mediante migración aditiva `0005` aplicada en PostgreSQL local.
 - [x] Implementar el cierre manual: el backend calcula el efectivo esperado, guarda el conteo físico y devuelve la diferencia.
@@ -548,7 +548,7 @@ ETAPA 3 — ACCESO Y TURNO
 [x] API de sesión, CSRF y permisos
 [x] Pantalla de acceso online y control de turnos en /pos
 [ ] Crear grupo Operadores POS y asignar cuentas de cajero
-[~] Construir acceso offline con PIN compartido de cuatro cifras; las primitivas criptográficas y reglas temporales están probadas, falta persistencia e interfaz
+[x] Acceso offline con PIN compartido de cuatro cifras; persiste el verificador local y da acceso de solo lectura (el usuario probó el flujo)
 [x] API e interfaz de apertura/cierre; falta arqueo
 [x] Impedir más de un turno abierto según la regla aprobada
 
@@ -564,7 +564,7 @@ ETAPA 4 — VENTAS
 ETAPA 5 — OFFLINE Y SINCRONIZACIÓN
 [ ] Persistir turno, catálogo local y ventas en el equipo
 [ ] Guardar cada venta local antes de imprimir o enviar al servidor
-[ ] Crear cola persistente con UUID e idempotencia
+[~] Endpoint de sincronización de ventas con UUID e idempotencia; falta la cola persistente frontend
 [ ] Reintentar automáticamente al recuperar internet
 [ ] Conservar ventas aunque el catálogo haya cambiado; marcar diferencias para revisión
 [ ] Mostrar conexión, pendientes, errores y última sincronización

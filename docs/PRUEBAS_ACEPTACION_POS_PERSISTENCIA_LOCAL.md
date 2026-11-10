@@ -20,9 +20,13 @@
 ## Límites de esta aceptación
 
 - La caída simulada fue de la API después de cargar la página; no equivale a operación offline completa.
-- Al recargar con la API caída, la sesión online no pudo prepararse. El acceso offline con PIN compartido todavía no está implementado.
-- No se probó la cola de sincronización, conciliación de cotización vencida, cierre automático ni impresora DINON 9390.
+- Al recargar con la API caída en esta aceptación, la sesión online no pudo prepararse. Después se agregó el PIN offline y el usuario confirmó que probó el acceso y funciona; la cola no está conectada a la interfaz.
+- No se probó la cola de sincronización automática, conciliación de cotización vencida, cierre automático ni impresora DINON 9390.
 - La aceptación usó SQLite temporal; no valida bloqueos ni concurrencia de PostgreSQL.
 - El navegador dejó de responder después del diálogo de confirmación del cierre. El cierre se verificó sin repetir la acción mediante el log HTTP `200` y la lectura de la base temporal.
 
 La base de prueba y sus servicios temporales se retiraron al finalizar. No quedaron archivos de prueba en el repositorio.
+
+## Actualización — 9 de noviembre de 2026
+
+Se implementó `POST /api/orders/sync/` para registrar ventas offline en turnos que ya existen y siguen abiertos en el servidor. La suite de `apps.sales` pasó con 20 pruebas sobre SQLite en memoria: conserva snapshots históricos, recalcula el total y vuelto, señala diferencias de catálogo, rechaza efectivo insuficiente y turnos cerrados, y garantiza reintentos idempotentes. Estas pruebas cubren la API; no validan todavía la cola offline desde el navegador ni sincronización de apertura, anulación o cierre.

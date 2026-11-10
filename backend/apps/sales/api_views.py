@@ -16,6 +16,7 @@ from .api_serializers import (
     CancelOrderInputSerializer,
     CashShiftSerializer,
     CloseCashShiftSerializer,
+    OfflineOrderSyncInputSerializer,
     OrderPaymentInputSerializer,
     OrderQuoteInputSerializer,
     OrderReadSerializer,
@@ -521,6 +522,149 @@ class CreateOrderView(APIView):
             OrderReadSerializer(order).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class SyncOfflineOrderView(APIView):
+    permission_classes = [IsAuthenticated, CanOperatePOS]
+
+    def post(self, request):
+        serializer = OfflineOrderSyncInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        items = values["items"]
+        subtotal = sum(
+            item["quantity"] * (
+                item["unit_price"]
+                + sum(
+                    modifier["price_at_sale"] * modifier["quantity_per_unit"]
+                    for modifier in item["modifiers"]
+                )
+            )
+            for item in items
+        )
+        amount_paid = values.get("amount_received") if values["payment_method"] == Order.PaymentMethod.EFECTIVO else None
+        if amount_paid is not None and amount_paid < subtotal:
+            return Response(
+                {"detail": "El efectivo recibido no alcanza para cubrir el total offline."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        change_given = amount_paid - subtotal if amount_paid is not None else None
+
+        try:
+            with transaction.atomic():
+                shift = CashShift.objects.select_for_update().filter(
+                    uuid=values["shift_uuid"], user=request.user
+                ).first()
+                if shift is None:
+                    return Response({"detail": "No se encontró un turno de esta cuenta."}, status=status.HTTP_404_NOT_FOUND)
+                products = {
+                    product.pk: product
+                    for product in Product.objects.select_for_update().filter(
+                        pk__in={item["product_id"] for item in items}
+                    )
+                }
+                modifier_ids = {modifier["modifier_id"] for item in items for modifier in item["modifiers"]}
+                modifiers = {
+                    modifier.pk: modifier
+                    for modifier in Modifier.objects.select_for_update().filter(pk__in=modifier_ids)
+                }
+                review_reasons = []
+                for item in items:
+                    current = products[item["product_id"]]
+                    if not current.is_active or not current.is_available:
+                        review_reasons.append(f"Producto no disponible: {item['product_name']}")
+                    if current.name != item["product_name"] or current.price != item["unit_price"]:
+                        review_reasons.append(f"Precio o nombre cambió: {item['product_name']}")
+                    for modifier_data in item["modifiers"]:
+                        current_modifier = modifiers[modifier_data["modifier_id"]]
+                        if not current_modifier.is_active or not current_modifier.is_available:
+                            review_reasons.append(f"Modificador no disponible: {modifier_data['modifier_name']}")
+                        if current_modifier.name != modifier_data["modifier_name"] or current_modifier.price != modifier_data["price_at_sale"]:
+                            review_reasons.append(f"Precio o nombre de modificador cambió: {modifier_data['modifier_name']}")
+                review_reason = "; ".join(dict.fromkeys(review_reasons))[:255]
+                order = Order.objects.filter(uuid=values["uuid"]).first()
+                if order is not None:
+                    incoming_matches = (
+                        order.cash_shift_id == shift.pk
+                        and order.shift_order_number == values["shift_order_number"]
+                        and order.created_at == values["created_at"]
+                        and order.offline_created
+                        and order.consumption_type == values["consumption_type"]
+                        and order.payment_method == values["payment_method"]
+                        and order.subtotal == subtotal
+                        and order.total_amount == subtotal
+                        and order.amount_paid == amount_paid
+                        and order.change_given == change_given
+                    )
+                    if incoming_matches:
+                        incoming_matches = _lineas_coinciden(order, [
+                            {
+                                "product_id": item["product_id"],
+                                "product_name": item["product_name"],
+                                "quantity": item["quantity"],
+                                "unit_price": item["unit_price"],
+                                "notes": item.get("notes", ""),
+                                "modifiers": [
+                                    {
+                                        "modifier_id": modifier["modifier_id"],
+                                        "modifier_name": modifier["modifier_name"],
+                                        "price_at_sale": modifier["price_at_sale"],
+                                    }
+                                    for modifier in item["modifiers"]
+                                    for _ in range(modifier["quantity_per_unit"])
+                                ],
+                            }
+                            for item in items
+                        ])
+                    if incoming_matches:
+                        return Response(OrderReadSerializer(order).data)
+                    return Response({"detail": "El UUID de venta ya existe con otros datos."}, status=status.HTTP_409_CONFLICT)
+
+                if not shift.is_open:
+                    return Response({"detail": "El turno ya está cerrado; la venta offline requiere conciliación."}, status=status.HTTP_409_CONFLICT)
+
+                order = Order.objects.create(
+                    uuid=values["uuid"],
+                    cash_shift=shift,
+                    shift_order_number=values["shift_order_number"],
+                    created_at=values["created_at"],
+                    offline_created=True,
+                    consumption_type=values["consumption_type"],
+                    payment_method=values["payment_method"],
+                    subtotal=subtotal,
+                    delivery_fee=0,
+                    total_amount=subtotal,
+                    amount_paid=amount_paid,
+                    change_given=change_given,
+                    requires_review=bool(review_reason),
+                    review_reason=review_reason,
+                )
+                for item in items:
+                    order_item = OrderItem.objects.create(
+                        order=order,
+                        product_id=item["product_id"],
+                        product_name=item["product_name"],
+                        quantity=item["quantity"],
+                        unit_price=item["unit_price"],
+                        notes=item.get("notes", ""),
+                    )
+                    OrderItemModifier.objects.bulk_create([
+                        OrderItemModifier(
+                            order_item=order_item,
+                            modifier_id=modifier["modifier_id"],
+                            modifier_name=modifier["modifier_name"],
+                            price_at_sale=modifier["price_at_sale"],
+                        )
+                        for modifier in item["modifiers"]
+                        for _ in range(modifier["quantity_per_unit"])
+                    ])
+        except IntegrityError:
+            existing = Order.objects.filter(uuid=values["uuid"]).first()
+            if existing and existing.cash_shift.user_id == request.user.pk:
+                return Response(OrderReadSerializer(existing).data)
+            return Response({"detail": "El turno o folio ya fue utilizado por otra venta."}, status=status.HTTP_409_CONFLICT)
+
+        return Response(OrderReadSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
 class CancelOrderView(APIView):

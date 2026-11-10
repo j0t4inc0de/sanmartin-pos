@@ -169,6 +169,57 @@ class OrderPaymentInputSerializer(serializers.Serializer):
         return attrs
 
 
+class OfflineOrderModifierInputSerializer(serializers.Serializer):
+    modifier_id = serializers.IntegerField(min_value=1)
+    modifier_name = serializers.CharField(max_length=50)
+    quantity_per_unit = serializers.IntegerField(min_value=1)
+    price_at_sale = serializers.IntegerField(min_value=0)
+
+
+class OfflineOrderItemInputSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField(min_value=1)
+    product_name = serializers.CharField(max_length=100)
+    quantity = serializers.IntegerField(min_value=1)
+    unit_price = serializers.IntegerField(min_value=0)
+    notes = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    modifiers = OfflineOrderModifierInputSerializer(many=True, required=False, default=list)
+
+
+class OfflineOrderSyncInputSerializer(serializers.Serializer):
+    uuid = serializers.UUIDField()
+    shift_order_number = serializers.IntegerField(min_value=1)
+    shift_uuid = serializers.UUIDField()
+    created_at = serializers.DateTimeField()
+    offline_created = serializers.BooleanField()
+    consumption_type = serializers.ChoiceField(choices=["PARA_SERVIR", "PARA_LLEVAR"])
+    payment_method = serializers.ChoiceField(choices=["EFECTIVO", "TRANSBANK", "TRANSFERENCIA"])
+    amount_received = serializers.IntegerField(min_value=0, required=False)
+    items = OfflineOrderItemInputSerializer(many=True, allow_empty=False)
+
+    def validate(self, attrs):
+        if not attrs["offline_created"]:
+            raise serializers.ValidationError({"offline_created": "La ruta de sincronización acepta solo ventas creadas offline."})
+        if attrs["payment_method"] == "EFECTIVO" and "amount_received" not in attrs:
+            raise serializers.ValidationError({"amount_received": "Indica el efectivo recibido."})
+        if attrs["payment_method"] != "EFECTIVO" and "amount_received" in attrs:
+            raise serializers.ValidationError({"amount_received": "Este dato solo se registra para pagos en efectivo."})
+
+        for index, item in enumerate(attrs["items"]):
+            if not Product.objects.filter(pk=item["product_id"]).exists():
+                raise serializers.ValidationError({"items": {index: {"product_id": "El producto ya no existe en el catálogo."}}})
+            seen = set()
+            for modifier_data in item["modifiers"]:
+                modifier = Modifier.objects.filter(pk=modifier_data["modifier_id"]).first()
+                if modifier is None:
+                    raise serializers.ValidationError({"items": {index: {"modifiers": "Un modificador ya no existe en el catálogo."}}})
+                if modifier.pk in seen:
+                    raise serializers.ValidationError({"items": {index: {"modifiers": "Envía cada modificador una sola vez."}}})
+                seen.add(modifier.pk)
+                if modifier.modifier_type == Modifier.ModifierType.EXCLUSION_COCINA and modifier_data["quantity_per_unit"] != 1:
+                    raise serializers.ValidationError({"items": {index: {"modifiers": "Una exclusión de cocina no se puede repetir."}}})
+        return attrs
+
+
 class CancelOrderInputSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=255, min_length=1, trim_whitespace=True)
 
@@ -204,6 +255,7 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "shift_order_number",
             "created_at",
             "received_at",
+            "offline_created",
             "consumption_type",
             "payment_method",
             "subtotal",
