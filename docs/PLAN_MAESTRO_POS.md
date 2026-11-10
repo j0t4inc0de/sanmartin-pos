@@ -3,7 +3,7 @@
 - **Versión:** 1.0 — cierre manual y resumen por medio de pago aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. Catálogo, borrador y cotización con UUID/folio se conservan en IndexedDB; la recepción del pago también queda marcada localmente antes de registrar online. Cola de sincronización offline, cierre automático e impresión siguen pendientes.
+- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. Catálogo, borrador y cotización con UUID/folio se conservan en IndexedDB; la recepción del pago también queda marcada antes del registro online. Una prueba de aceptación aislada confirmó restauración, bloqueo del cierre, reintento tras caída de API y cierre manual. El PIN offline, la cola de sincronización, el cierre automático y la impresión siguen pendientes.
 
 ---
 
@@ -381,7 +381,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 
 - **Confirmado:** Django REST, PostgreSQL, backend en `backend/`, un equipo inicial, sesión offline solo después de autenticación online, impresión en la primera versión, pagos manuales y combos fuera de la caja.
 - **Creado:** estructura Django; aplicaciones `users`, `catalog` y `sales`; migraciones; configuración local; Compose opcional ligado a `127.0.0.1`; proxy Vite para `/api` y `/admin`; API pública de catálogo; API de sesión y operaciones iniciales de turno. Contratos en `docs/CONTRATO_API_CATALOGO.md` y `docs/CONTRATO_API_ACCESO_CAJA.md`.
-- **Etapa 4 — avance:** reglas de negocio acordadas; migración `0004_reglas_iniciales_venta` aplicada en PostgreSQL local el 2026-11-04 tras comprobar que no había ventas previas; API online de catálogo POS, cotización, registro idempotente y anulación implementada; captura online inicial en `/pos`; 14 pruebas automatizadas pasan en SQLite temporal. La persistencia local y sincronización offline siguen pendientes.
+- **Etapa 4 — avance:** reglas de negocio acordadas; migraciones `0004` y `0005` aplicadas localmente; API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` guarda y restaura catálogo, borrador editable, cotización firmada y marca de pago recibido en IndexedDB. La prueba de aceptación `docs/PRUEBAS_ACEPTACION_POS_PERSISTENCIA_LOCAL.md` pasó en una base SQLite temporal. Falta el acceso offline por PIN, la cola de ventas offline y su sincronización.
 - **Entorno local preparado:** Python 3.14.10 instalado en el perfil de Windows; entorno virtual creado en `backend/.venv`; dependencias fijadas instaladas; servicio PostgreSQL 16 iniciado y puerto `5433` confirmado. PostgreSQL 18 sigue en `5432`.
 - **Configuración local:** `backend/.env` creado y excluido de Git; `DJANGO_SECRET_KEY` generado localmente y conexión configurada para PostgreSQL 16 en `127.0.0.1:5433`.
 - **Catálogo local:** cargadas desde la carta existente 8 categorías y 64 productos; las promociones web permanecen fuera del catálogo del POS. El cargador solo agrega faltantes y conserva los registros existentes.
@@ -391,9 +391,9 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - **Pendiente de desarrollo:** implementar PIN offline seguro, catálogo delta, captura y cola local de ventas, sincronización e impresión.
 - **Seguridad:** no se aplicó `docs/init_schema.sql`, no se creó la cuenta de ejemplo y no se conectó el backend a producción.
 - **Seguridad:** la contraseña actual del rol `sanmartin_dev` es solo para desarrollo local; reemplazarla por una clave robusta antes de cualquier despliegue. No usarla en producción.
-- **Verificación:** no se ejecutaron pruebas automatizadas. La terminal original mostraba Python 3.10; se instaló Python 3.14.10 en paralelo y se usó para este backend. El acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Docker no es necesario para este entorno.
+- **Verificación del entorno:** se usa Python 3.14.10 en `backend/.venv`; el acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Las pruebas automatizadas del backend se ejecutan en SQLite temporal y no sustituyen la validación de concurrencia en PostgreSQL. Docker no es requisito para el flujo local.
 
-La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptación están aprobadas. El siguiente paso es revisar el borrador `docs/CONTRATO_API_VENTAS.md`; todavía no se han cambiado modelos, migraciones ni interfaz de ventas.
+La pantalla `/pos` permite operar ventas online y conserva localmente el borrador y el estado del pago para reintentos. La aceptación temporal cubre el flujo hasta el cierre manual; no acredita acceso ni sincronización offline. El siguiente bloque es implementar el acceso offline por PIN según las reglas ya acordadas y luego la cola durable de operaciones.
 
 ### Seguimiento de la orden de trabajo
 
@@ -437,9 +437,10 @@ La pantalla de acceso/turnos está disponible en `/pos` y sus pruebas de aceptac
 - [x] Implementar la API online de cotización firmada, registro idempotente y anulación auditada.
 - [x] Crear y ejecutar 14 pruebas automatizadas para catálogo POS, cotización, precios, pagos, idempotencia, permisos, CSRF y anulaciones en una base SQLite temporal.
 - [ ] Validar bloqueos y concurrencia de ventas contra PostgreSQL en una base de pruebas separada.
-- [ ] Implementar la persistencia local, la cola y el endpoint de sincronización offline.
+- [ ] Implementar la persistencia local de turnos, ventas offline, anulaciones y cierres en una cola durable, junto con el endpoint de sincronización.
 - [x] Interfaz inicial online POS: catálogo, cantidades, extras/exclusiones, notas, consumo, cotización y pago manual.
 - [x] Guardar carrito/cotización e identidad antes de mostrar el pago y respaldar localmente su recepción antes del registro online; una falla de servidor conserva el mismo UUID para reintentar.
+- [x] Aceptar en una base SQLite temporal la restauración del borrador y cotización, el bloqueo del cierre con venta pendiente, el reintento con un solo registro y el cierre manual; evidencia en `docs/PRUEBAS_ACEPTACION_POS_PERSISTENCIA_LOCAL.md`.
 - [ ] Implementar búsqueda rápida y flujo optimizado para teclado y mouse.
 - [ ] Validación de ventas, anulaciones auditables y cálculo de vuelto en el backend.
 - [ ] Persistencia local, cola de sincronización, idempotencia y revisión de precios offline.
@@ -557,7 +558,7 @@ ETAPA 4 — VENTAS
 [x] Validar cotización y total en backend; guardar snapshots de precios y nombres
 [x] Implementar endpoint de anulación con motivo y auditoría
 [ ] Optimizar operación para teclado/mouse y verificar en pruebas guiadas
-[ ] Guardar localmente el borrador antes de cobrar; soportar ventas offline y sincronización
+[~] Guardar localmente borrador, cotización e intención de pago; falta permitir ventas offline y sincronizarlas
 [x] Mantener combos fuera de la caja en la primera versión
 
 ETAPA 5 — OFFLINE Y SINCRONIZACIÓN
