@@ -11,6 +11,7 @@ import { CartDrawer } from './components/CartDrawer';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { QrMenuPage } from './components/QrMenuPage';
 import { PosPage } from './components/PosPage';
+import { AppearanceControls } from './components/AppearanceControls';
 import { CartItem, ComboItem } from './types';
 
 // ponytail: removed UnderConstruction maintenance gate so full landing and QR menu are live
@@ -104,11 +105,11 @@ export default function App() {
   };
 
   if (currentRoute === 'menu') {
-    return <QrMenuPage onNavigateHome={() => navigateTo('home')} />;
+    return <><QrMenuPage onNavigateHome={() => navigateTo('home')} /><AppearanceControls /></>;
   }
 
   if (currentRoute === 'pos') {
-    return <PosPage />;
+    return <><PosPage /><AppearanceControls /></>;
   }
 
   return (
@@ -150,6 +151,7 @@ export default function App() {
 
       {/* Persistent Floating WhatsApp with Status */}
       <FloatingWhatsApp />
+      <AppearanceControls />
     </div>
   );
 }
