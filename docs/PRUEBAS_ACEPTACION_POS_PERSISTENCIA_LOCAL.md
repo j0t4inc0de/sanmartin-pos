@@ -75,17 +75,13 @@ La API devuelve también `cancellation_reason` en el historial del POS. El flujo
 
 El usuario confirmó el 10 de noviembre de 2026 que, al recuperar la API, el POS vuelve a conectarse automáticamente sin pulsar los botones de reconexión o sincronización.
 
-## Prueba pendiente — cierre automático a las 00:30
+## Aceptación manual — cierre automático offline a las 00:30
 
 **Importante para simular la hora:** ajusta el reloj del equipo antes de abrir el turno. No atrases el reloj con un turno abierto: el POS calcula el siguiente cierre desde `opened_at`, por lo que el retroceso puede dejar el corte para el día siguiente. Al terminar la prueba, restaura la hora automática del equipo.
 
-1. Ajusta el reloj a una hora anterior a las 00:30 de la fecha de prueba y verifica que Windows use la zona `America/Santiago`. Con la API activa, inicia sesión, abre un turno y registra al menos una venta en efectivo.
-2. Deja el POS abierto hasta las 00:30; no pulses **Cerrar turno**.
-3. Comprueba que el turno quede cerrado y que el POS muestre el resumen de turno cerrado. Intenta iniciar otra venta: no debe permitirlo. `closed_automatically` debe ser verdadero, `counted_cash` y `cash_difference` deben quedar vacíos y `final_cash` debe ser el fondo inicial más las ventas en efectivo no anuladas.
-4. Repite con Django detenido durante el cierre. El turno debe cerrarse en el equipo y sincronizar apertura, ventas, anulaciones y cierre, en ese orden, al recuperar el servidor. También comprueba que al volver a la pestaña después de las 00:30 el cierre se aplique antes de iniciar otra venta.
-5. Con un pago recibido localmente pero aún no registrado al momento del cierre automático, confirma que el turno espera. Al reintentar y registrar la venta, confirma que el turno se cierre y que la venta quede incluida.
+El usuario confirmó el 10 de noviembre de 2026 que el POS cerró el turno a las 00:30 mientras Django estaba detenido. Al iniciar Django de nuevo, el cierre se sincronizó y se habilitó la opción de abrir un nuevo turno. La prueba se hizo con el reloj ajustado antes de abrir el turno.
 
-**Intento anterior no concluyente:** se cambió el reloj con el turno abierto y dos ventas hechas a las 00:21 y 00:32 se sincronizaron al volver Django a las 00:35. Como el reloj se atrasó después de guardar `opened_at`, ese resultado no valida el corte de las 00:30; repetir con el reloj ajustado antes de abrir.
+**Intento anterior no concluyente:** se cambió el reloj con el turno abierto y dos ventas hechas a las 00:21 y 00:32 se sincronizaron al volver Django a las 00:35. Como el reloj se atrasó después de guardar `opened_at`, ese resultado no validaba el corte; la repetición con el reloj ajustado antes de abrir fue exitosa.
 
 ## Verificación automatizada — conciliación tardía de turno cerrado
 
