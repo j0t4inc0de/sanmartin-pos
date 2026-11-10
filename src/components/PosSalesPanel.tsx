@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Filter, Minus, Plus, RefreshCw, ShoppingBag, ShoppingCart, Trash2, Utensils } from 'lucide-react';
+import { Check, Filter, Minus, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
 import {
@@ -56,6 +56,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('EFECTIVO');
   const [amountReceived, setAmountReceived] = useState('');
   const [category, setCategory] = useState<number | 'all'>('all');
+  const [productSearch, setProductSearch] = useState('');
+  const productSearchRef = useRef<HTMLInputElement>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftLoadError, setDraftLoadError] = useState(false);
@@ -328,7 +330,14 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     return () => window.removeEventListener('online', handleOnline);
   }, [shiftUuid, offlineMode]);
 
-  const products = useMemo(() => catalog?.products.filter(p => category === 'all' || p.category_id === category) ?? [], [catalog, category]);
+  const products = useMemo(() => {
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').trim();
+    const query = normalize(productSearch);
+    return catalog?.products.filter(product =>
+      (category === 'all' || product.category_id === category)
+      && (!query || normalize(product.name).includes(query))
+    ) ?? [];
+  }, [catalog, category, productSearch]);
   const invalidateQuote = () => {
     if (paymentReceivedPending) return;
     paymentWriteVersion.current += 1;
@@ -557,10 +566,36 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && <p role="status" className="rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-300">Guardando localmente los datos del pago; espera antes de recibirlo.</p>}
     {pendingPaymentStatus === 'error' && quote && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-200">No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.</p>}
     <fieldset disabled={busy || syncingOfflineOrders || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed || shiftSyncBlocked || (!offlineMode && offlineOrders.length > 0)} className="pos-sales-fields grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
-      <div className="min-w-0 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-300"><Filter className="h-4 w-4 text-[#FACC15]" />Filtrar productos</h3><span className="text-xs text-gray-500">{products.length} productos</span></div><nav aria-label="Filtrar productos por categoría" className="pos-category-filters flex flex-wrap gap-2">
+      <div className="min-w-0 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-300"><Filter className="h-4 w-4 text-[#FACC15]" />Filtrar productos</h3><span className="text-xs text-gray-500">{products.length} {products.length === 1 ? 'producto' : 'productos'}</span></div>
+        <label className="sr-only" htmlFor="pos-product-search">Buscar producto por nombre</label>
+        <div className="relative">
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            ref={productSearchRef}
+            id="pos-product-search"
+            type="search"
+            autoComplete="off"
+            value={productSearch}
+            onChange={event => setProductSearch(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                setProductSearch('');
+              } else if (event.key === 'Enter' && products.length > 0) {
+                event.preventDefault();
+                void addProduct(products[0]);
+              }
+            }}
+            placeholder="Buscar producto por nombre…"
+            aria-label="Buscar producto por nombre"
+            className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] py-3 pl-10 pr-11 text-sm text-white placeholder:text-gray-500 focus:border-[#FACC15]/60 focus:outline-none focus:ring-2 focus:ring-[#FACC15]/15"
+          />
+          {productSearch && <button type="button" onClick={() => { setProductSearch(''); productSearchRef.current?.focus(); }} aria-label="Limpiar búsqueda" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-400 hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#FACC15]"><X aria-hidden="true" className="h-4 w-4" /></button>}
+        </div>
+        <nav aria-label="Filtrar productos por categoría" className="pos-category-filters flex flex-wrap gap-2">
         <button aria-pressed={category === 'all'} className={`pos-filter-chip ${category === 'all' ? 'is-active' : ''}`} type="button" onClick={() => setCategory('all')}>Todos</button>{catalog?.categories.map(c => <button aria-pressed={category === c.id} className={`pos-filter-chip ${category === c.id ? 'is-active' : ''}`} type="button" key={c.id} onClick={() => setCategory(c.id)}>{c.name}</button>)}
       </nav>
-        {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : <div className="pos-product-grid grid grid-cols-2 gap-2">{products.map(p => <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => void addProduct(p)} className="min-h-20 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-left hover:border-[#FACC15]/50 disabled:opacity-50"><span className="block text-sm font-semibold text-white">{p.name}</span><span className="mt-1 block text-sm text-[#FACC15]">{formatPrice(p.price)}</span></button>)}</div>}
+        {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : products.length ? <div className="pos-product-grid grid grid-cols-2 gap-2">{products.map(p => <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => void addProduct(p)} className="min-h-20 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-left hover:border-[#FACC15]/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FACC15] disabled:opacity-50"><span className="block text-sm font-semibold text-white">{p.name}</span><span className="mt-1 block text-sm text-[#FACC15]">{formatPrice(p.price)}</span></button>)}</div> : <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center"><p className="text-sm font-medium text-gray-300">No encontramos productos</p><p className="mt-1 text-xs text-gray-500">Prueba otro nombre o cambia la categoría.</p>{(productSearch || category !== 'all') && <button type="button" className="mt-3 text-sm font-semibold text-[#FACC15] underline underline-offset-4" onClick={() => { setProductSearch(''); setCategory('all'); productSearchRef.current?.focus(); }}>Limpiar filtros</button>}</div>}
       </div>
       <div className="min-w-0 space-y-4">
         {!lines.length ? <div className="rounded-xl border border-dashed border-white/15 p-6 text-center text-sm text-gray-500"><ShoppingCart className="mx-auto mb-2 h-6 w-6"/>Agrega productos a la venta.</div> : <div className="space-y-3">{lines.map(line => {const currentProduct = catalog?.products.find(p => p.id === line.product_id); const product = currentProduct ?? {name: line.product_name, price: line.unit_price}; return <article key={line.key} className="rounded-xl border border-white/10 bg-[#0D0D0D] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-semibold text-white">{product.name}</p><p className="text-xs text-gray-400">{formatPrice(product.price + modifiersFor(line))} c/u</p>{catalog && !currentProduct && <p className="mt-1 text-xs text-amber-300">Ya no está en el catálogo. Quita esta línea para continuar.</p>}</div><button className="text-gray-500 hover:text-red-300" aria-label="Quitar producto" type="button" onClick={() => removeLine(line.key)}><Trash2 className="h-4 w-4"/></button></div>

@@ -30,9 +30,9 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Trabajo:** agregar una búsqueda visible por nombre de producto, compatible con teclado y mouse, que funcione junto a los filtros de categoría y respete el tema y la escala actuales. Incluir una acción clara para limpiar la búsqueda y un estado vacío útil. La búsqueda debe trabajar sobre el catálogo local para seguir disponible offline.
 
-**Aceptación:** se encuentra un producto por nombre completo y parcial; búsqueda y categoría se combinan; limpiar restaura resultados; Enter/Tab y selección con mouse no rompen el flujo; se puede añadir el resultado sin perder cantidades, notas ni modificadores del carrito; funciona offline y a las escalas aprobadas.
+**Aceptación:** se encuentra un producto por nombre completo y parcial, con o sin acentos; búsqueda y categoría se combinan; Escape y el botón de limpiar restauran resultados; Enter agrega el primer resultado y Tab/mouse permiten navegar y seleccionar productos; añadir productos no pierde cantidades, notas ni modificadores ya ingresados; funciona offline y a las escalas aprobadas.
 
-**Estado:** pendiente. Es el siguiente bloque de desarrollo y no depende de la DINON.
+**Estado:** implementada el 10 de noviembre de 2026; `npm run build` pasó. Falta aceptación manual en `/pos` para confirmar búsqueda, combinación con filtros, teclado, mouse, limpieza, carrito, modo offline y escalas. No depende de la DINON.
 
 ### 2. Sincronización y vigencia del catálogo
 
@@ -98,14 +98,14 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-Empezar la etapa 1: búsqueda rápida por nombre compatible con el catálogo offline, el filtro de categorías, teclado y mouse. La prueba DINON se puede ejecutar cuando esté disponible la máquina sin frenar este trabajo. Al terminar búsqueda y sincronización delta, seguir con la integración de impresión según el resultado físico; luego PostgreSQL, dashboard, aceptación integral y guía.
+Completar la aceptación manual de la búsqueda rápida implementada en `/pos`. La prueba DINON se puede ejecutar cuando esté disponible la máquina sin frenar este trabajo. Después iniciar la etapa 2, sincronización incremental del catálogo; seguir con la integración de impresión según el resultado físico, luego PostgreSQL, dashboard, aceptación integral y guía.
 
 ## Registro de avance
 
 | Etapa | Estado | Evidencia / notas |
 |---|---|---|
 | Tema y escala | Aceptado | Probado y confirmado por el usuario el 10 nov 2026. |
-| Búsqueda rápida | Pendiente | Siguiente bloque de desarrollo. |
+| Búsqueda rápida | Implementada; falta aceptación manual | `npm run build` pasó; verificar los casos de la etapa 1 en `/pos`. |
 | Catálogo incremental | Pendiente | Resolver ruta canónica y propagación. |
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
