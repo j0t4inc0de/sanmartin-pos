@@ -273,7 +273,7 @@ export const PosPage = () => {
     if (user) await syncPendingCloseEvents(user.id);
   };
 
-  const handleReconnect = async () => {
+  const handleReconnect = async (silent = false) => {
     setIsSubmitting(true);
     setErrorMessage('');
     try {
@@ -293,9 +293,46 @@ export const PosPage = () => {
       setHasQueuedOfflineSales(queuedSales.length > 0);
       await guardarTurnoEnCachePos(session.user.id, currentShift);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? `${error.message} Inicia sesión online para reanudar la sincronización.` : 'No se pudo reconectar con el servidor.');
+      if (!silent) setErrorMessage(error instanceof Error ? `${error.message} Inicia sesión online para reanudar la sincronización.` : 'No se pudo reconectar con el servidor.');
     } finally { setIsSubmitting(false); }
   };
+
+  useEffect(() => {
+    if (!user || !offlineMode) return;
+    let cancelled = false;
+    let checking = false;
+
+    const tryReconnect = async () => {
+      if (cancelled || checking || isSubmitting || !navigator.onLine) return;
+      checking = true;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 3000);
+      try {
+        const response = await fetch('/api/auth/csrf/', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (response.ok && !cancelled) await handleReconnect(true);
+      } catch {
+        // The API is still unavailable; the next interval retries without interrupting POS work.
+      } finally {
+        window.clearTimeout(timeoutId);
+        checking = false;
+      }
+    };
+
+    const handleBrowserOnline = () => void tryReconnect();
+    window.addEventListener('online', handleBrowserOnline);
+    const intervalId = window.setInterval(() => void tryReconnect(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('online', handleBrowserOnline);
+    };
+  }, [user, offlineMode, isSubmitting]);
 
   useEffect(() => {
     let cancelled = false;
@@ -682,7 +719,7 @@ export const PosPage = () => {
               </div>
               <button
                 type="button"
-                onClick={handleReconnect}
+                onClick={() => void handleReconnect()}
                 disabled={isSubmitting}
                 className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/25 px-3 py-2 text-sm text-emerald-200 transition hover:bg-emerald-950/30 disabled:opacity-50"
                 hidden={!offlineMode}

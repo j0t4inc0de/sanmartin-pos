@@ -59,14 +59,22 @@ La autenticación online conserva la contraseña. Cuando la API no responde, el 
 
 El usuario confirmó que, al desconectar la API con el POS abierto, el modo offline aparece automáticamente y permite continuar trabajando sin recargar la página.
 
-## Prueba pendiente — anulación offline
+## Aceptación manual — anulación offline
 
-La anulación de una venta creada y aún pendiente en este equipo se conserva como evento local. Para aceptarla manualmente:
+El usuario confirmó el 10 de noviembre de 2026 que la anulación offline y su prueba funcionaron. El motivo se guarda en `orders.cancellation_reason` junto a la venta; no se crea una tabla separada. Para consultarlo en PostgreSQL:
 
-1. Con la API activa, abre un turno y espera a que se guarden el catálogo y la sesión local. Desconecta Django.
-2. Registra una venta offline y, en la lista de ventas pendientes, pulsa **Anular**. Escribe un motivo y confirma.
-3. Comprueba que el folio siga en la cola, aparezca como anulación pendiente y el resumen local descuente el importe. Cierra el turno localmente para comprobar que el cierre queda pendiente.
-4. Reconecta la API. Confirma que la venta se sincronice primero, la anulación después y que el historial muestre la venta anulada con su motivo.
-5. Confirma que el cierre pendiente se envíe después de la anulación y que reintentar la sincronización no duplique la venta ni la anulación.
+```sql
+SELECT uuid, status, cancelled_at, cancellation_reason, cancelled_by_id
+FROM orders
+WHERE uuid = '<UUID de la venta>';
+```
 
-Este flujo offline cubre ventas creadas en la cola local. El historial de ventas creadas online no se guarda localmente para anularlas por primera vez después de recargar sin conexión.
+La API devuelve también `cancellation_reason` en el historial del POS. El flujo offline cubre ventas creadas en la cola local; el historial de ventas creadas online no se guarda localmente para anularlas por primera vez después de recargar sin conexión.
+
+## Prueba pendiente — reconexión automática
+
+1. Inicia sesión online y deja el POS abierto con un turno activo. Desconecta Django sin cerrar ni recargar la página; confirma que se activa el modo offline.
+2. Registra una venta (y, si corresponde, anúlala) offline.
+3. Reinicia Django. Sin tocar **Reconectar y sincronizar** ni **Reintentar sincronización**, espera hasta diez segundos.
+4. Confirma que desaparezca el modo offline, la sesión vuelva a online y las ventas/anulaciones/cierre pendientes se reflejen en la API en orden.
+5. Repite alternando caída de red completa y caída solo de Django; el POS debe seguir permitiendo trabajar offline durante cada caída.

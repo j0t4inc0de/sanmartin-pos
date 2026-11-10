@@ -444,9 +444,11 @@ class OrderApiTests(APITestCase):
 
         self.assertEqual(canceled.status_code, 200)
         self.assertEqual(canceled.data["status"], "ANULADA")
+        self.assertEqual(canceled.data["cancellation_reason"], cancellation_payload["reason"])
         self.assertEqual(canceled.data["cancelled_by"], self.operator.pk)
         self.assertEqual(retry.status_code, 200)
         self.assertEqual(Order.objects.get().status, Order.Status.ANULADA)
+        self.assertEqual(Order.objects.get().cancellation_reason, cancellation_payload["reason"])
 
     def test_no_permite_anular_tras_cerrar_turno(self):
         payload, quote = self.cotizar()

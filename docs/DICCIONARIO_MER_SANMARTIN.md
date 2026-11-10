@@ -150,7 +150,7 @@
   * `'COMPLETADA'`: Todo pedido en mesón nace pagado y listo para plancha.
   * `'ANULADA'`: Botón de 1 clic en el POS para cancelar un pedido desistido, descontándolo del arqueo de caja.
 * **`cancelled_at`** (Timestamptz, Nullable): Momento exacto en que se ejecutó la anulación.
-* **`cancellation_reason`** (Varchar 255, Obligatorio al anular): Motivo registrado (ej. *"Demora excesiva en plancha"*, *"Error de digitación"*). La cuenta general compartida queda como cuenta anuladora; no identifica a la persona física.
+* **`cancellation_reason`** (Varchar 255, Obligatorio al anular): Motivo registrado (ej. *"Demora excesiva en plancha"*, *"Error de digitación"*). Se guarda en la misma fila de `orders` que la venta anulada; consultar `SELECT uuid, status, cancelled_at, cancellation_reason, cancelled_by_id FROM orders WHERE uuid = '<UUID de la venta>';`. La cuenta general compartida queda como cuenta anuladora; no identifica a la persona física.
 * **`updated_at`** (Timestamptz, Not Null, Default `now()`): Timestamp de sincronización o modificación.
 * *Índices:*
   * `uidx_orders_shift_daily_number` (UNIQUE): `(cash_shift_id, daily_order_number)`.
