@@ -366,13 +366,16 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     void Promise.all([loadOfflineOrders(), loadOfflineCancellations()]).then(([queue, cancellations]) => { if (!offlineMode && navigator.onLine && (queue.length || cancellations.length)) void syncOfflineOrders(); }).catch(() => setError('No se pudo consultar la cola de ventas guardadas.'));
     if (!offlineMode) void loadOrders();
     const handleOnline = () => { if (!offlineMode) { void loadCatalog(true); void syncOfflineOrders(); } };
+    const handleCatalogUpdated = () => { if (!offlineMode) void loadCatalog(true); };
     const catalogRefreshTimer = window.setInterval(() => {
       if (!offlineMode && navigator.onLine) void loadCatalog(true);
     }, 60_000);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('pos:catalog-updated', handleCatalogUpdated);
     return () => {
       window.clearInterval(catalogRefreshTimer);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('pos:catalog-updated', handleCatalogUpdated);
     };
   }, [shiftUuid, offlineMode]);
 

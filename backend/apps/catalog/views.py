@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
 
 from apps.sales.permissions import CanOperatePOS
 
@@ -12,6 +13,9 @@ from .serializers import (
     PosCategorySerializer,
     PosModifierSerializer,
     PosProductSerializer,
+    ManageCategorySerializer,
+    ManageModifierSerializer,
+    ManageProductSerializer,
     PublicCategorySerializer,
     PublicProductSerializer,
 )
@@ -172,3 +176,37 @@ class PosCatalogView(APIView):
             },
             headers={"Cache-Control": "no-store"},
         )
+
+
+class ManageCatalogPermissionMixin:
+    permission_classes = [IsAuthenticated, CanOperatePOS]
+
+
+class ManageCategoryListView(ManageCatalogPermissionMixin, ListCreateAPIView):
+    serializer_class = ManageCategorySerializer
+    queryset = Category.objects.all().order_by("sort_order", "name", "id")
+
+
+class ManageCategoryDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIView):
+    serializer_class = ManageCategorySerializer
+    queryset = Category.objects.all()
+
+
+class ManageProductListView(ManageCatalogPermissionMixin, ListCreateAPIView):
+    serializer_class = ManageProductSerializer
+    queryset = Product.objects.select_related("category").all().order_by("category__sort_order", "category_id", "name", "id")
+
+
+class ManageProductDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIView):
+    serializer_class = ManageProductSerializer
+    queryset = Product.objects.select_related("category").all()
+
+
+class ManageModifierListView(ManageCatalogPermissionMixin, ListCreateAPIView):
+    serializer_class = ManageModifierSerializer
+    queryset = Modifier.objects.all().order_by("modifier_type", "name", "id")
+
+
+class ManageModifierDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIView):
+    serializer_class = ManageModifierSerializer
+    queryset = Modifier.objects.all()

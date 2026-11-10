@@ -47,7 +47,7 @@ export const cargarTokenCsrf = async (actualizar = false): Promise<string> => {
 };
 
 interface ApiRequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH';
   body?: unknown;
 }
 

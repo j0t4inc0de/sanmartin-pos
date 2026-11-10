@@ -152,6 +152,7 @@ El Food Truck opera en Puente Alto sobre conexión móvil (4G/Wi-Fi). Ante caíd
 | **`GET`** | `/api/menu/` | Público | Categorías y productos activos/disponibles para la Carta QR y Landing. |
 | **`POST`** | `/api/auth/token/` | Público | Autenticación del usuario único del mesón (`admin`) vía JWT / Session. |
 | **`GET`** | `/api/pos/catalog/` | `sales.can_operate_pos` | Catálogo completo o cambios incrementales con bajas explícitas mediante `?updated_after=...`. |
+| **`GET/POST/PATCH`** | `/api/pos/catalog/manage/{categories,products,modifiers}/` | `sales.can_operate_pos` | Administrar el catálogo desde el POS; conserva registros mediante desactivación y no expone borrado físico. |
 | **`PATCH`** | `/api/pos/products/{id}/availability/` | `admin` | Switch rápido de disponibilidad diaria (`is_available: true/false`). |
 | **`POST`** | `/api/pos/shifts/` | `admin` | Apertura o cierre de turno de caja (gestiona `uuid`, `initial_cash`, `notes`). |
 | **`POST`** | `/api/pos/orders/sync/` | `admin` | Sincronización en lote de órdenes offline o creación en tiempo real con `uuid`. |

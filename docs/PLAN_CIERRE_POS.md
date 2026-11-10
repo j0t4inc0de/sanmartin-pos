@@ -44,6 +44,14 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Prueba manual pendiente:** cambiar el nombre/precio de un producto y verificar la actualización; marcarlo no disponible y confirmar que desaparece junto con su categoría si era el último disponible; desactivar un modificador y confirmar que deja de ofrecerse en una venta nueva; desconectar y reconectar la API y comprobar que el catálogo guardado sigue disponible y se actualiza automáticamente; recargar `/pos` y verificar que borrador, líneas y cola de ventas no se pierden.
 
+### 2.1 Gestión del catálogo desde el POS
+
+**Trabajo:** ofrecer desde el botón **Catálogo** dentro de `/pos` la creación y edición de productos, categorías y modificadores. Los formularios cubren campos operativos existentes en el modelo Django. La escritura requiere conexión, usa el permiso `sales.can_operate_pos` y se actualiza en el backend; no existe una cola offline para cambios de catálogo. Todo operador POS comparte ese permiso según la decisión documentada, por lo que no hay un rol separado de administrador. Los registros se desactivan en vez de borrarse. Los cambios en productos se reflejan también en la carta pública. Las imágenes se gestionan mediante la ruta/URL existente; no se suben archivos. Los modificadores siguen siendo globales porque el esquema no los vincula a productos.
+
+**Aceptación:** crear y actualizar producto, categoría y modificador; comprobar validaciones, estados activos/no disponibles, reflejo en catálogo del POS y carta pública, sincronización automática y protección de usuarios sin permiso. Confirmar que offline se informa que se requiere reconexión y no se presenta como guardado.
+
+**Estado:** implementada el 10 de noviembre de 2026; 9 pruebas de `apps.catalog` y `npm run build` pasaron. Falta aceptación manual de la interfaz en ambos temas.
+
 ### 3. Prueba física de la DINON 9390
 
 **Trabajo del operador con la máquina:** seguir `docs/PROPUESTA_IMPRESION_POS.md`; registrar navegador, dispositivo USB seleccionado, ancho medido, resultado de los dos papeles, corte, acentos y gaveta. La prueba de gaveta se hace solo con autorización/área despejada y sin efectivo dentro.
@@ -109,6 +117,7 @@ Completar la aceptación manual de la búsqueda rápida implementada en `/pos`. 
 | Tema y escala | Aceptado | Probado y confirmado por el usuario el 10 nov 2026. |
 | Búsqueda rápida | Aceptada | El usuario confirmó que se ve bien en ambos temas. |
 | Catálogo incremental | Implementada; falta aceptación manual | Endpoint delta, bajas explícitas, reconexión automática y consulta cada 60 s; 31 pruebas backend y build aprobados. |
+| Gestión del catálogo desde `/pos` | Implementada; falta aceptación manual | CRUD controlado sin borrado físico para productos, categorías y modificadores; gestión online con permiso POS. |
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
 | PostgreSQL concurrencia | Pendiente | Base de pruebas separada. |

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
+import { Boxes, CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
+import { PosCatalogManager } from './PosCatalogManager';
 import { usePosDialogs } from './PosDialogs';
 import { cargarAccesoOfflinePos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
@@ -127,6 +128,7 @@ export const PosPage = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
   const [offlineMode, setOfflineMode] = useState(false);
+  const [catalogManagerOpen, setCatalogManagerOpen] = useState(false);
   const [hasQueuedOfflineSales, setHasQueuedOfflineSales] = useState(false);
   const [autoCloseDue, setAutoCloseDue] = useState(false);
   const [autoCloseWaitingForPayment, setAutoCloseWaitingForPayment] = useState(false);
@@ -927,6 +929,16 @@ export const PosPage = () => {
               </div>
               <button
                 type="button"
+                onClick={() => setCatalogManagerOpen(true)}
+                disabled={offlineMode}
+                title={offlineMode ? 'Conecta el POS para administrar el catálogo' : 'Administrar productos, categorías y modificadores'}
+                className="pos-catalog-open-button inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Boxes className="h-4 w-4" aria-hidden="true" />
+                Catálogo
+              </button>
+              <button
+                type="button"
                 onClick={() => void handleReconnect()}
                 disabled={isSubmitting}
                 className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/25 px-3 py-2 text-sm text-emerald-200 transition hover:bg-emerald-950/30 disabled:opacity-50"
@@ -944,6 +956,8 @@ export const PosPage = () => {
                 Cerrar sesión
               </button>
             </div>
+
+            {catalogManagerOpen && <PosCatalogManager offlineMode={offlineMode} onClose={() => setCatalogManagerOpen(false)} />}
 
             <PosPrinterDiagnostics />
 

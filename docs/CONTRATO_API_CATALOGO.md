@@ -17,7 +17,7 @@ Entregar una fotografía completa de la carta vigente desde Django para la landi
 - La respuesta lleva `Cache-Control: no-store` para que la disponibilidad no quede guardada por una caché HTTP.
 - Los precios CLP son enteros, nunca números decimales.
 - Si el catálogo está vacío, responde `200` con listas vacías.
-- No expone rutas para crear o editar catálogo; esos cambios se hacen desde Django Admin hasta definir permisos administrativos de API.
+- La edición del catálogo se realiza desde el apartado **Catálogo** del POS mediante rutas autenticadas de administración; Django Admin se conserva como herramienta local de soporte.
 - Esta ruta entrega una fotografía completa para la landing y la carta QR. No es la ruta de sincronización del POS.
 
 ## Catálogo autenticado del POS
@@ -32,6 +32,21 @@ Entregar una fotografía completa de la carta vigente desde Django para la landi
 - Desactivar una categoría retira también sus productos del catálogo local. Si un cambio deja una categoría sin productos disponibles, se indica como categoría retirada.
 
 La interfaz `/pos` conserva la última copia del catálogo en IndexedDB, solicita deltas al cargar y reconectar, y vuelve a consultar cada 60 segundos mientras está online. Si no hay conexión, mantiene la copia guardada para la operación offline.
+
+## Administración desde el POS
+
+Las rutas de gestión requieren sesión autenticada y `sales.can_operate_pos`, igual que la operación de caja. El proyecto usa una cuenta compartida sin niveles de permiso separados; por lo tanto, todo usuario autorizado para operar el POS también puede gestionar el catálogo. Los cambios requieren conexión y se escriben directamente en Django/PostgreSQL; no se encolan ni se editan offline.
+
+| Método y ruta | Uso |
+|---|---|
+| `GET/POST /api/pos/catalog/manage/categories/` | Listar todas las categorías (incluidas inactivas) y crear una categoría. |
+| `GET/PATCH /api/pos/catalog/manage/categories/{id}/` | Consultar o actualizar nombre, orden y estado activo. |
+| `GET/POST /api/pos/catalog/manage/products/` | Listar todos los productos y crear uno. |
+| `GET/PATCH /api/pos/catalog/manage/products/{id}/` | Consultar o actualizar datos del producto, categoría, precio, disponibilidad y actividad. |
+| `GET/POST /api/pos/catalog/manage/modifiers/` | Listar todos los modificadores y crear uno. |
+| `GET/PATCH /api/pos/catalog/manage/modifiers/{id}/` | Consultar o actualizar nombre, precio, tipo, disponibilidad y actividad. |
+
+Las listas de gestión muestran registros activos e inactivos. No se exponen operaciones `DELETE`: se desactivan los registros para preservar referencias y snapshots históricos. Una edición de producto/precio o disponibilidad también cambia la carta pública porque el POS y la web usan el mismo catálogo. La edición de imágenes acepta una ruta o URL existente (`image_url`); no carga archivos al servidor. Los modificadores son globales: el esquema actual no los asocia individualmente a productos.
 
 ## Respuesta
 
