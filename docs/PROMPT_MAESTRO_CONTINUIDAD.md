@@ -92,7 +92,7 @@ El propietario del proyecto implementa POS, frontend, backend y base de datos. H
 - En la primera versión se imprime con la **DINON 9390**.
 - Cada venta produce dos documentos normales: comprobante para el cliente, que le permite retirar el pedido, y comanda para cocina, con los detalles de preparación.
 - La venta se persiste localmente antes de imprimir. Un fallo de impresora no debe perder ni duplicar la venta. La reimpresión no crea otra venta.
-- Falta probar el modelo físico, el comando de gaveta y el método de impresión compatible con Windows/navegador. Se solicitó un video del POS actual para comparar el flujo; aún debe verificarse si ya fue recibido.
+- El usuario confirmó que la DINON 9390 está conectada por USB, que el POS actual produce un comprobante para el cliente y una comanda para cocina, y que la gaveta se abre cuando se usa efectivo. El video recibido muestra el cobro en efectivo y un comprobante de retiro impreso; no muestra claramente la segunda comanda ni permite identificar el método USB. Falta confirmar el ancho exacto del rollo, cómo aparece el equipo en Windows, el puerto de la gaveta y el protocolo/método que usa el POS actual. Revisar `docs/PROPUESTA_IMPRESION_POS.md`.
 
 ### Funcionamiento sin conexión
 
