@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
-import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarAccesoOfflinePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -119,31 +119,41 @@ export const PosPage = () => {
     if (user) void guardarTurnoEnCachePos(user.id, response).catch(() => undefined);
   };
 
+  const restoreOfflineSession = useCallback(async (
+    offlineUser: PosUser,
+    knownState?: { shift: CashShift | null; another_shift_open: boolean; next_order_number: number },
+  ) => {
+    const cached = knownState ?? await cargarTurnoDesdeCachePos<CashShift>(offlineUser.id);
+    if (!cached) throw new Error('Este equipo no tiene un estado de caja guardado para trabajar sin conexión.');
+    await guardarAccesoOfflinePos({ user: offlineUser }).catch(() => undefined);
+    await guardarTurnoEnCachePos(offlineUser.id, cached);
+    setUser(offlineUser);
+    setShift(cached.shift);
+    setAnotherShiftOpen(cached.another_shift_open);
+    setNextOrderNumber(cached.next_order_number);
+    setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(cached.shift?.uuid)).length > 0);
+    setPendingShiftEvents(await listarEventosTurnoOfflinePos(offlineUser.id));
+    setOfflineMode(true);
+    setErrorMessage('');
+  }, []);
+
   const activateOfflineMode = useCallback(async () => {
     if (!user || offlineMode || offlineTransitionInProgress.current) return;
     offlineTransitionInProgress.current = true;
     try {
-      await guardarAccesoOfflinePos({ user }).catch(() => undefined);
       const cached = await cargarTurnoDesdeCachePos<CashShift>(user.id);
       const localState = cached ?? {
         shift,
         another_shift_open: anotherShiftOpen,
         next_order_number: nextOrderNumber,
       };
-      await guardarTurnoEnCachePos(user.id, localState);
-      setShift(localState.shift);
-      setAnotherShiftOpen(localState.another_shift_open);
-      setNextOrderNumber(localState.next_order_number);
-      setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(localState.shift?.uuid)).length > 0);
-      setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
-      setOfflineMode(true);
-      setErrorMessage('');
+      await restoreOfflineSession(user, localState);
     } catch {
       setErrorMessage('Se perdió la conexión con la caja y no se pudieron cargar los datos guardados en este equipo.');
     } finally {
       offlineTransitionInProgress.current = false;
     }
-  }, [user, offlineMode, shift, anotherShiftOpen, nextOrderNumber]);
+  }, [user, offlineMode, shift, anotherShiftOpen, nextOrderNumber, restoreOfflineSession]);
 
   useEffect(() => {
     if (!user || offlineMode) return;
@@ -292,7 +302,8 @@ export const PosPage = () => {
     const loadSession = async () => {
       try {
         // Also migrates older local records by removing credential verifier data.
-        await cargarAccesoOfflinePos().catch(() => null);
+        const savedOfflineSession = await cargarAccesoOfflinePos().catch(() => null);
+        if (savedOfflineSession) setUsername(savedOfflineSession.user.username);
         const response = await solicitarApi<{ user: PosUser }>(
           '/api/auth/session/',
         );
@@ -327,18 +338,7 @@ export const PosPage = () => {
             }
             const cached = await cargarTurnoDesdeCachePos<CashShift>(record.user.id);
             if (cancelled) return;
-            if (!cached) {
-              setErrorMessage('No hay un turno guardado en este equipo. Conéctate e inicia sesión para cargar el estado del POS.');
-              return;
-            }
-            setUser(record.user);
-            setShift(cached.shift);
-            setAnotherShiftOpen(cached.another_shift_open);
-            setNextOrderNumber(cached.next_order_number);
-            setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(cached.shift?.uuid)).length > 0);
-            setPendingShiftEvents(await listarEventosTurnoOfflinePos(record.user.id));
-            setOfflineMode(true);
-            setErrorMessage('');
+            await restoreOfflineSession(record.user, cached ?? undefined);
           } catch {
             setErrorMessage('No se pudo leer la sesión y los datos offline guardados en este equipo.');
           }
@@ -379,11 +379,25 @@ export const PosPage = () => {
       const shiftState = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
       await guardarTurnoEnCachePos(response.user.id, shiftState);
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'No se pudo iniciar sesión.',
-      );
+      const apiUnavailable = error instanceof TypeError
+        || (error instanceof ApiError && (error.status >= 500 || error.message === 'No se pudo preparar la sesión segura.'));
+      if (apiUnavailable) {
+        try {
+          const record = await cargarAccesoOfflinePos();
+          if (record && record.user.username.trim().toLocaleLowerCase() === username.trim().toLocaleLowerCase()) {
+            await restoreOfflineSession(record.user);
+            setPassword('');
+            return;
+          }
+          setErrorMessage(record
+            ? `No hay conexión. Este equipo tiene guardada la cuenta «${record.user.username}» para trabajar offline.`
+            : 'No hay conexión y este equipo no tiene una cuenta offline guardada. Se necesita iniciar sesión online una vez en este equipo.');
+        } catch (offlineError) {
+          setErrorMessage(offlineError instanceof Error ? offlineError.message : 'No se pudo abrir el POS offline.');
+        }
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : 'No se pudo iniciar sesión.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -394,7 +408,6 @@ export const PosPage = () => {
     setErrorMessage('');
     try {
       if (!offlineMode) await solicitarApi<void>('/api/auth/logout/', { method: 'POST' });
-      await eliminarAccesoOfflinePos();
       setUser(null);
       setOfflineMode(false);
       setShift(null);
@@ -612,7 +625,7 @@ export const PosPage = () => {
                 Iniciar sesión
               </h2>
               <p className="mt-1 text-sm text-gray-400">
-                Usa tu cuenta autorizada para operar el POS.
+                Con conexión, usa tu contraseña. Si el servidor no responde, se abrirá la cuenta guardada en este equipo.
               </p>
             </div>
 
@@ -634,7 +647,6 @@ export const PosPage = () => {
                 id="pos-password"
                 type="password"
                 autoComplete="current-password"
-                required
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none transition focus:border-[#FACC15]"

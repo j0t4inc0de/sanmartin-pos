@@ -56,7 +56,7 @@ El PIN se eliminó después de la aceptación anterior. Falta confirmar en el na
 1. Con la API activa, inicia sesión online y espera a que el POS guarde el estado local.
 2. Detén Django con `Ctrl+C` y recarga `/pos`.
 3. Confirma que restaura el usuario y el turno directamente, sin pedir contraseña ni PIN, y que puedes seguir operando.
-4. Cierra sesión y comprueba que la identidad local se borra.
+4. Cierra sesión online, detén la API e intenta entrar desde el formulario con el nombre de la cuenta guardada y sin contraseña; debe continuar offline. La contraseña se mantiene obligatoria para autenticar cuando la API responde.
 
 ## Validación pendiente — detectar caída de API sin recargar
 

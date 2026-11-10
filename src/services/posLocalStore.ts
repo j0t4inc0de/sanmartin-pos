@@ -398,17 +398,6 @@ export const cargarAccesoOfflinePos = async (): Promise<PosOfflineAccessRecord |
   });
 };
 
-export const eliminarAccesoOfflinePos = async (): Promise<void> => {
-  const database = await openDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction(OFFLINE_ACCESS_STORE, 'readwrite');
-    transaction.objectStore(OFFLINE_ACCESS_STORE).delete('current');
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo quitar la sesión local.'));
-    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el cierre de la sesión local.'));
-  });
-};
-
 export const guardarTurnoEnCachePos = async <TShift>(
   userId: number,
   state: Omit<PosCachedShiftState<TShift>, 'saved_at'>,

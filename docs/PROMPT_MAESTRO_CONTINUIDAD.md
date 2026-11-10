@@ -65,7 +65,7 @@ El propietario del proyecto implementa POS, frontend, backend y base de datos. H
 ### Cuenta y acceso
 
 - Se utilizará una **cuenta general compartida** por el personal de confianza. No se requieren usuarios individuales ni múltiples niveles de permisos.
-- El inicio online usa la contraseña de la cuenta compartida. Tras autenticarla en el equipo, el POS restaura automáticamente la sesión offline desde el perfil local del navegador y la mantiene hasta cerrar sesión. No solicita PIN ni contraseña adicional sin conexión.
+- El inicio online usa la contraseña de la cuenta compartida. Tras autenticarla en el equipo, el POS guarda la cuenta para restaurar la sesión offline, incluso después de cerrar la sesión de Django. No solicita PIN ni valida la contraseña mientras la API está inaccesible.
 - Consecuencia aceptada: la auditoría registra la cuenta compartida, la hora y el equipo, pero no puede identificar qué persona física ejecutó una anulación.
 - Mantén autenticación y protección CSRF; “sin niveles de permisos” no significa permitir acceso anónimo a las operaciones de caja.
 
