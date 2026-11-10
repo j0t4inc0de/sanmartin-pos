@@ -216,6 +216,41 @@ class OrderApiTests(APITestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Order.objects.count(), 0)
 
+    def test_cierre_manual_requiere_conteo_y_calcula_diferencia(self):
+        response = self.client.post(
+            f"/api/shifts/{self.shift.uuid}/close/",
+            {"closed_at": timezone.now().isoformat(), "counted_cash": 31500},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["final_cash"], 30000)
+        self.assertEqual(response.data["counted_cash"], 31500)
+        self.assertEqual(response.data["cash_difference"], 1500)
+        self.assertFalse(response.data["closed_automatically"])
+
+    def test_cierre_automatico_no_registra_conteo_fisico(self):
+        response = self.client.post(
+            f"/api/shifts/{self.shift.uuid}/close/",
+            {"closed_at": timezone.now().isoformat(), "closed_automatically": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["final_cash"], 30000)
+        self.assertIsNone(response.data["counted_cash"])
+        self.assertTrue(response.data["closed_automatically"])
+
+    def test_cierre_automatico_rechaza_arqueo_fisico(self):
+        response = self.client.post(
+            f"/api/shifts/{self.shift.uuid}/close/",
+            {"closed_at": timezone.now().isoformat(), "closed_automatically": True, "counted_cash": 30000},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(self.shift.is_open)
+
     def test_cotizacion_calcula_precio_de_modificadores_por_unidad(self):
         _, response = self.cotizar(extra_qty=2)
 

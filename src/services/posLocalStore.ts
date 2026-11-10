@@ -126,6 +126,23 @@ export interface PosOfflineOrder {
   sync_error: string | null;
 }
 
+export interface PosOfflineShiftEvent {
+  key: string;
+  user_id: number;
+  shift_uuid: string;
+  event_type: 'OPEN' | 'CLOSE';
+  payload: {
+    opened_at?: string;
+    initial_cash?: number;
+    closed_at?: string;
+    counted_cash?: number | null;
+    closed_automatically?: boolean;
+    notes?: string;
+  };
+  saved_at: string;
+  sync_error: string | null;
+}
+
 interface StoredCatalog {
   key: 'current';
   catalog: PosCatalog;
@@ -149,15 +166,17 @@ interface StoredShiftState<TShift> extends PosCachedShiftState<TShift> {
 }
 
 interface StoredOfflineOrder extends PosOfflineOrder {}
+interface StoredOfflineShiftEvent extends PosOfflineShiftEvent {}
 
 const DATABASE_NAME = 'san-martin-pos';
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 const CATALOG_STORE = 'pos_catalog';
 const DRAFT_STORE = 'pos_sale_drafts';
 const PAYMENT_DRAFT_STORE = 'pos_pending_payments';
 const OFFLINE_ACCESS_STORE = 'pos_offline_access';
 const SHIFT_CACHE_STORE = 'pos_shift_cache';
 const OFFLINE_ORDER_STORE = 'pos_offline_orders';
+const OFFLINE_SHIFT_EVENT_STORE = 'pos_offline_shift_events';
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -189,6 +208,9 @@ const openDatabase = (): Promise<IDBDatabase> => {
         }
         if (!database.objectStoreNames.contains(OFFLINE_ORDER_STORE)) {
           database.createObjectStore(OFFLINE_ORDER_STORE, { keyPath: 'uuid' });
+        }
+        if (!database.objectStoreNames.contains(OFFLINE_SHIFT_EVENT_STORE)) {
+          database.createObjectStore(OFFLINE_SHIFT_EVENT_STORE, { keyPath: 'key' });
         }
       };
       request.onsuccess = () => {
@@ -464,5 +486,87 @@ export const marcarErrorVentaOfflineEnColaPos = async (uuid: string, error: stri
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el error de sincronización.'));
     transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del error de sincronización.'));
+  });
+};
+
+export const guardarEventoTurnoOfflinePos = async (
+  event: Omit<PosOfflineShiftEvent, 'saved_at' | 'sync_error' | 'key'>,
+): Promise<void> => {
+  const database = await openDatabase();
+  const key = `${event.user_id}:${event.shift_uuid}:${event.event_type}`;
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_SHIFT_EVENT_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_SHIFT_EVENT_STORE).put({
+      ...event,
+      key,
+      saved_at: new Date().toISOString(),
+      sync_error: null,
+    } satisfies StoredOfflineShiftEvent);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el evento local del turno.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado local del turno.'));
+  });
+};
+
+export const guardarEventoYTurnoEnCacheOfflinePos = async <TShift>(
+  userId: number,
+  state: Omit<PosCachedShiftState<TShift>, 'saved_at'>,
+  event: Omit<PosOfflineShiftEvent, 'saved_at' | 'sync_error' | 'key'>,
+): Promise<void> => {
+  const database = await openDatabase();
+  const key = `${event.user_id}:${event.shift_uuid}:${event.event_type}`;
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction([SHIFT_CACHE_STORE, OFFLINE_SHIFT_EVENT_STORE], 'readwrite');
+    transaction.objectStore(SHIFT_CACHE_STORE).put({ ...state, key: userId, saved_at: new Date().toISOString() });
+    transaction.objectStore(OFFLINE_SHIFT_EVENT_STORE).put({
+      ...event,
+      key,
+      saved_at: new Date().toISOString(),
+      sync_error: null,
+    } satisfies StoredOfflineShiftEvent);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el evento y el turno offline.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del turno offline.'));
+  });
+};
+
+export const listarEventosTurnoOfflinePos = async (
+  userId: number,
+  eventType?: PosOfflineShiftEvent['event_type'],
+): Promise<PosOfflineShiftEvent[]> => {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_SHIFT_EVENT_STORE, 'readonly');
+    const request = transaction.objectStore(OFFLINE_SHIFT_EVENT_STORE).getAll();
+    request.onsuccess = () => resolve((request.result as StoredOfflineShiftEvent[])
+      .filter(event => event.user_id === userId && (!eventType || event.event_type === eventType))
+      .sort((left, right) => left.saved_at.localeCompare(right.saved_at)));
+    request.onerror = () => reject(request.error ?? new Error('No se pudieron leer los eventos locales del turno.'));
+  });
+};
+
+export const eliminarEventoTurnoOfflinePos = async (event: PosOfflineShiftEvent): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_SHIFT_EVENT_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_SHIFT_EVENT_STORE).delete(event.key);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo retirar el evento sincronizado del turno.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló la limpieza del evento del turno.'));
+  });
+};
+
+export const marcarErrorEventoTurnoOfflinePos = async (event: PosOfflineShiftEvent, error: string): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_SHIFT_EVENT_STORE, 'readwrite');
+    const store = transaction.objectStore(OFFLINE_SHIFT_EVENT_STORE);
+    const request = store.get(event.key);
+    request.onsuccess = () => {
+      if (request.result) store.put({ ...request.result, sync_error: error.slice(0, 255) } satisfies StoredOfflineShiftEvent);
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el error del evento de turno.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del error del evento.'));
   });
 };

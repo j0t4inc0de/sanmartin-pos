@@ -15,8 +15,16 @@ class OpenCashShiftSerializer(serializers.Serializer):
 
 class CloseCashShiftSerializer(serializers.Serializer):
     closed_at = serializers.DateTimeField()
-    counted_cash = serializers.IntegerField(min_value=0)
+    counted_cash = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    closed_automatically = serializers.BooleanField(required=False, default=False)
     notes = serializers.CharField(required=False, allow_blank=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs["closed_automatically"] and attrs.get("counted_cash") is not None:
+            raise serializers.ValidationError({"counted_cash": "El cierre automático no puede incluir arqueo físico."})
+        if not attrs["closed_automatically"] and attrs.get("counted_cash") is None:
+            raise serializers.ValidationError({"counted_cash": "El cierre manual requiere el efectivo contado."})
+        return attrs
 
     def validate_closed_at(self, value):
         shift = self.context["shift"]

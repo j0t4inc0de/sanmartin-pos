@@ -218,8 +218,8 @@ class CloseCashShiftView(APIView):
                 ).aggregate(total=Sum("total_amount"))["total"] or 0
                 shift.closed_at = serializer.validated_data["closed_at"]
                 shift.final_cash = shift.initial_cash + cash_sales
-                shift.counted_cash = serializer.validated_data["counted_cash"]
-                shift.closed_automatically = False
+                shift.counted_cash = serializer.validated_data.get("counted_cash")
+                shift.closed_automatically = serializer.validated_data["closed_automatically"]
                 shift.notes = serializer.validated_data.get("notes", shift.notes)
                 shift.save(
                     update_fields=[

@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.0
-- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS permite cotizar desde el catálogo local, guardar ventas cobradas en una cola IndexedDB y sincronizarlas en orden al reconectar. El usuario aceptó en navegador el recorrido offline de venta y reconexión; apertura/cierre offline siguen pendientes.
+- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS permite abrir/cerrar turnos localmente y sincroniza apertura, ventas en orden y cierre. El usuario aceptó en navegador la venta offline y su sincronización; apertura/cierre offline aún requieren aceptación manual. El cierre automático offline a las 00:30 sigue pendiente.
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 

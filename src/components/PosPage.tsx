@@ -3,7 +3,7 @@ import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
 import { accesoOfflineVigente, crearVerificadorPinOffline, registrarFalloPinOffline, revisarBloqueoPinOffline, verificarPinOffline } from '../services/posOfflineAccess';
-import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, guardarAccesoOfflinePos, guardarTurnoEnCachePos, type PosOfflineAccessRecord } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineAccessRecord, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -101,6 +101,8 @@ export const PosPage = () => {
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineRecord, setOfflineRecord] = useState<PosOfflineAccessRecord | null>(null);
+  const [hasQueuedOfflineSales, setHasQueuedOfflineSales] = useState(false);
+  const [pendingShiftEvents, setPendingShiftEvents] = useState<PosOfflineShiftEvent[]>([]);
   const [pin, setPin] = useState('');
   const [pinConfirmation, setPinConfirmation] = useState('');
   const [pinSetupRequired, setPinSetupRequired] = useState(false);
@@ -121,19 +123,78 @@ export const PosPage = () => {
     if (user) void guardarTurnoEnCachePos(user.id, response).catch(() => undefined);
   };
 
+  const syncPendingOpenEvents = async (userId: number) => {
+    const events = await listarEventosTurnoOfflinePos(userId, 'OPEN');
+    let allSynced = true;
+    for (const event of events) {
+      try {
+        await solicitarApi('/api/shifts/open/', { method: 'POST', body: { uuid: event.shift_uuid, ...event.payload } });
+        await eliminarEventoTurnoOfflinePos(event);
+      } catch (error) {
+        await marcarErrorEventoTurnoOfflinePos(event, error instanceof Error ? error.message : 'No se pudo sincronizar la apertura del turno.');
+        setErrorMessage(error instanceof Error ? error.message : 'La apertura offline sigue pendiente de sincronización.');
+        allSynced = false;
+        break;
+      }
+    }
+    setPendingShiftEvents(await listarEventosTurnoOfflinePos(userId));
+    return allSynced;
+  };
+
+  const syncPendingCloseEvents = async (userId: number) => {
+    const events = await listarEventosTurnoOfflinePos(userId, 'CLOSE');
+    let allSynced = true;
+    for (const event of events) {
+      try {
+        if ((await listarVentasOfflineEnColaPos(event.shift_uuid)).length > 0) {
+          allSynced = false;
+          break;
+        }
+        const closedShift = await solicitarApi<CashShift>(`/api/shifts/${event.shift_uuid}/close/`, {
+          method: 'POST',
+          body: event.payload,
+        });
+        await eliminarEventoTurnoOfflinePos(event);
+        setLastClosedShift(closedShift);
+        setShift(null);
+      } catch (error) {
+        await marcarErrorEventoTurnoOfflinePos(event, error instanceof Error ? error.message : 'No se pudo sincronizar el cierre del turno.');
+        setErrorMessage(error instanceof Error ? error.message : 'El cierre offline sigue pendiente de sincronización.');
+        allSynced = false;
+        break;
+      }
+    }
+    setPendingShiftEvents(await listarEventosTurnoOfflinePos(userId));
+    return allSynced;
+  };
+
   const handleSaleSaved = async (offlineNextOrderNumber?: number) => {
     if (offlineMode && offlineNextOrderNumber) {
       setNextOrderNumber(offlineNextOrderNumber);
       if (user && shift) {
-        void guardarTurnoEnCachePos(user.id, {
-          shift,
+        const queuedOrders = await listarVentasOfflineEnColaPos(shift.uuid);
+        const newOrder = queuedOrders.find(order => order.shift_order_number === offlineNextOrderNumber - 1);
+        const newTotal = newOrder?.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0) ?? 0;
+        const updatedShift = {
+          ...shift,
+          sales_summary: shift.sales_summary.map(item => ({
+            ...item,
+            total_amount: item.total_amount + (newOrder?.payment_method === item.payment_method ? newTotal : 0),
+            order_count: item.order_count + (newOrder?.payment_method === item.payment_method ? 1 : 0),
+          })),
+        };
+        setShift(updatedShift);
+        setHasQueuedOfflineSales(queuedOrders.length > 0);
+        await guardarTurnoEnCachePos(user.id, {
+          shift: updatedShift,
           another_shift_open: anotherShiftOpen,
           next_order_number: offlineNextOrderNumber,
-        }).catch(() => undefined);
+        });
       }
       return;
     }
     await refreshShift();
+    if (user) await syncPendingCloseEvents(user.id);
   };
 
   const handleReconnect = async () => {
@@ -142,12 +203,17 @@ export const PosPage = () => {
     try {
       await cargarTokenCsrf(true);
       const session = await solicitarApi<{ user: PosUser }>('/api/auth/session/');
+      if (!await syncPendingOpenEvents(session.user.id)) throw new Error('La apertura del turno sigue pendiente; reintenta la sincronización.');
+      const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(session.user.id);
+      const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
+      if (queuedSales.length === 0) await syncPendingCloseEvents(session.user.id);
       const currentShift = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
       setUser(session.user);
       setShift(currentShift.shift);
       setAnotherShiftOpen(currentShift.another_shift_open);
       setNextOrderNumber(currentShift.next_order_number);
       setOfflineMode(false);
+      setHasQueuedOfflineSales(queuedSales.length > 0);
       await guardarTurnoEnCachePos(session.user.id, currentShift);
     } catch (error) {
       setErrorMessage(error instanceof Error ? `${error.message} Inicia sesión online para reanudar la sincronización.` : 'No se pudo reconectar con el servidor.');
@@ -165,6 +231,10 @@ export const PosPage = () => {
         );
         if (cancelled) return;
         setUser(response.user);
+        await syncPendingOpenEvents(response.user.id);
+        const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
+        const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
+        if (queuedSales.length === 0) await syncPendingCloseEvents(response.user.id);
         const currentShift = await solicitarApi<ShiftStateResponse>(
           '/api/shifts/current/',
         );
@@ -226,6 +296,10 @@ export const PosPage = () => {
         setOfflineRecord(null);
         setPinSetupRequired(true);
       }
+      await syncPendingOpenEvents(response.user.id);
+      const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
+      const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
+      if (queuedSales.length === 0) await syncPendingCloseEvents(response.user.id);
       await refreshShift();
       const shiftState = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
       await guardarTurnoEnCachePos(response.user.id, shiftState);
@@ -258,6 +332,8 @@ export const PosPage = () => {
         setAnotherShiftOpen(cached.another_shift_open);
         setNextOrderNumber(cached.next_order_number);
         setOfflineMode(true);
+        setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(cached.shift?.uuid)).length > 0);
+        setPendingShiftEvents(await listarEventosTurnoOfflinePos(offlineRecord.user.id));
         setErrorMessage('');
       } else {
         const next = registrarFalloPinOffline(offlineRecord);
@@ -295,6 +371,7 @@ export const PosPage = () => {
       setOfflineMode(false);
       setShift(null);
       setAnotherShiftOpen(false);
+      setPendingShiftEvents([]);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : 'No se pudo cerrar la sesión.',
@@ -317,6 +394,48 @@ export const PosPage = () => {
     const openingUuid = pendingOpeningUuid.current ?? window.crypto.randomUUID();
     pendingOpeningUuid.current = openingUuid;
     try {
+      if (offlineMode) {
+        if (!user) throw new Error('No hay una cuenta offline disponible para abrir este turno.');
+        const openedAt = new Date().toISOString();
+        const localShift: CashShift = {
+          uuid: openingUuid,
+          username: user.username,
+          opened_at: openedAt,
+          closed_at: null,
+          initial_cash: amount,
+          final_cash: null,
+          counted_cash: null,
+          cash_difference: null,
+          sales_summary: [
+            { payment_method: 'EFECTIVO', label: 'Efectivo', total_amount: 0, order_count: 0 },
+            { payment_method: 'TRANSBANK', label: 'Transbank', total_amount: 0, order_count: 0 },
+            { payment_method: 'TRANSFERENCIA', label: 'Transferencia', total_amount: 0, order_count: 0 },
+          ],
+          closed_automatically: false,
+          notes: openingNotes,
+          is_open: true,
+          updated_at: openedAt,
+        };
+        await guardarEventoYTurnoEnCacheOfflinePos(user.id, {
+          shift: localShift,
+          another_shift_open: false,
+          next_order_number: 1,
+        }, {
+          user_id: user.id,
+          shift_uuid: openingUuid,
+          event_type: 'OPEN',
+          payload: { opened_at: openedAt, initial_cash: amount, notes: openingNotes },
+        });
+        setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
+        pendingOpeningUuid.current = null;
+        setShift(localShift);
+        setAnotherShiftOpen(false);
+        setNextOrderNumber(1);
+        setOpeningNotes('');
+        setLastClosedShift(null);
+        setErrorMessage('');
+        return;
+      }
       await solicitarApi<CashShift>('/api/shifts/open/', {
         method: 'POST',
         body: {
@@ -344,7 +463,11 @@ export const PosPage = () => {
       setErrorMessage('Resuelve la cotización o venta pendiente antes de cerrar el turno.');
       return;
     }
-    if (!shift || !window.confirm('¿Confirmas el cierre de este turno?')) return;
+    if (hasQueuedOfflineSales && !offlineMode) {
+      setErrorMessage('Espera a que se sincronicen las ventas offline antes de cerrar el turno.');
+      return;
+    }
+    if (!shift?.is_open || !window.confirm('¿Confirmas el cierre de este turno?')) return;
     const countedCash = Number(closingCashCount);
     if (!Number.isSafeInteger(countedCash) || countedCash < 0) {
       setErrorMessage('Ingresa el efectivo contado como un monto entero no negativo.');
@@ -354,6 +477,38 @@ export const PosPage = () => {
     setIsSubmitting(true);
     setErrorMessage('');
     try {
+      if (offlineMode) {
+        if (!user) throw new Error('No hay una cuenta offline disponible para guardar el cierre.');
+        const closedAt = new Date().toISOString();
+        const expectedCash = shift.initial_cash + (shift.sales_summary.find(item => item.payment_method === 'EFECTIVO')?.total_amount ?? 0);
+        const closedShift: CashShift = {
+          ...shift,
+          closed_at: closedAt,
+          final_cash: expectedCash,
+          counted_cash: countedCash,
+          cash_difference: countedCash - expectedCash,
+          closed_automatically: false,
+          notes: closingNotes || shift.notes,
+          is_open: false,
+          updated_at: closedAt,
+        };
+        await guardarEventoYTurnoEnCacheOfflinePos(user.id, {
+          shift: closedShift,
+          another_shift_open: false,
+          next_order_number: nextOrderNumber,
+        }, {
+          user_id: user.id,
+          shift_uuid: shift.uuid,
+          event_type: 'CLOSE',
+          payload: { closed_at: closedAt, counted_cash: countedCash, closed_automatically: false, notes: closingNotes },
+        });
+        setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
+        setShift(closedShift);
+        setLastClosedShift(closedShift);
+        setClosingNotes('');
+        setClosingCashCount('');
+        return;
+      }
       const closedShift = await solicitarApi<CashShift>(
         `/api/shifts/${shift.uuid}/close/`,
         {
@@ -373,6 +528,20 @@ export const PosPage = () => {
       setErrorMessage(
         error instanceof Error ? error.message : 'No se pudo cerrar el turno.',
       );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRetryPendingShiftClose = async () => {
+    if (!user || offlineMode || isSubmitting || hasQueuedOfflineSales) return;
+    setIsSubmitting(true);
+    setErrorMessage('');
+    try {
+      const synced = await syncPendingCloseEvents(user.id);
+      if (synced) await refreshShift();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo reintentar el cierre del turno.');
     } finally {
       setIsSubmitting(false);
     }
@@ -410,7 +579,7 @@ export const PosPage = () => {
             <div><h2 className="font-heading text-xl font-bold uppercase text-white">Acceso offline</h2><p className="mt-1 text-sm text-gray-400">{offlineRecord.user.username} · vence 24 horas después del último inicio online.</p></div>
             <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-offline-pin">PIN de 4 números<input id="pos-offline-pin" type="password" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{4}" maxLength={4} required value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none focus:border-[#FACC15]" /></label>
             <button type="submit" disabled={isSubmitting || revisarBloqueoPinOffline(offlineRecord).locked} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{isSubmitting ? 'Validando…' : 'Entrar sin conexión'}</button>
-            <p className="text-xs text-gray-500">El acceso offline es de solo lectura. Para operar, vuelve a conectarte e inicia sesión con contraseña.</p>
+            <p className="text-xs text-gray-500">Las ventas se guardan en este equipo y se sincronizan al reconectar. La apertura y el cierre offline también quedan en cola.</p>
           </form>
         ) : !user ? (
           <form
@@ -469,7 +638,7 @@ export const PosPage = () => {
                 <p className="text-xs uppercase tracking-wider text-gray-400">Sesión activa</p>
                 <p className="mt-1 font-semibold text-white">{user.username}</p>
                 </div>
-                {offlineMode && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">Modo offline · ventas en cola</span>}
+                {offlineMode && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">Modo offline · cambios guardados en este equipo</span>}
                 <div className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.02] px-3 py-2 shadow-inner shadow-black/20" aria-label={`Hora local: ${chileClock.date}, ${chileClock.time}`}>
                   <span className="grid h-9 w-9 place-items-center rounded-xl border border-[#FACC15]/20 bg-[#FACC15]/[0.08] text-[#FACC15]" aria-hidden="true">
                     <Clock3 className="h-4 w-4" />
@@ -499,7 +668,7 @@ export const PosPage = () => {
               </button>
             </div>
 
-            {!shift && lastClosedShift && (
+            {(!shift || !shift.is_open) && lastClosedShift && (
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5">
                 <h2 className="font-semibold text-white">Resumen del turno cerrado</h2>
                 <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
@@ -535,18 +704,19 @@ export const PosPage = () => {
               </div>
             )}
 
-            {offlineMode && !shift && <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">No hay un turno guardado para mostrar. Conéctate para consultar la caja.</div>}
-            {shift ? (
+            {offlineMode && !shift && <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">No hay un turno guardado. Puedes abrir un turno localmente mientras no haya otro evento de caja pendiente.</div>}
+            {pendingShiftEvents.length > 0 && <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">Hay {pendingShiftEvents.length} {pendingShiftEvents.length === 1 ? 'evento de turno pendiente' : 'eventos de turno pendientes'}.</p><p className="mt-1 text-xs text-amber-100/75">{pendingShiftEvents.some(event => event.event_type === 'OPEN') ? 'La apertura se enviará al reconectar.' : 'El cierre se enviará después de sincronizar todas las ventas de este turno.'}{pendingShiftEvents.find(event => event.sync_error)?.sync_error && ` ${pendingShiftEvents.find(event => event.sync_error)?.sync_error}`}</p></div>{!offlineMode && pendingShiftEvents.some(event => event.event_type === 'CLOSE') && <button type="button" onClick={() => void handleRetryPendingShiftClose()} disabled={isSubmitting || hasQueuedOfflineSales} className="shrink-0 rounded-lg border border-amber-200/30 px-3 py-2 text-xs font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50">{hasQueuedOfflineSales ? 'Sincronizando ventas primero' : 'Reintentar cierre'}</button>}</div>}
+            {shift?.is_open ? (
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
                 <div className="min-w-0">
-                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} />
+                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} />
                 </div>
                 <aside className="min-w-0 space-y-5 2xl:sticky 2xl:top-5">
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
-                      Turno abierto
+                      {offlineMode ? 'Turno local' : 'Turno abierto'}
                     </p>
                     <h2 className="mt-1 font-heading text-2xl font-bold text-white">
                       Caja activa
@@ -579,7 +749,7 @@ export const PosPage = () => {
                   )}
                 </dl>
 
-                {!offlineMode && <><label className="mt-5 block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
+                <label className="mt-5 block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
                   Efectivo contado físicamente (CLP)
                   <input
                     id="pos-counted-cash"
@@ -609,13 +779,12 @@ export const PosPage = () => {
                 <button
                   type="button"
                   onClick={handleCloseShift}
-                  disabled={isSubmitting || hasPendingPayment}
+                  disabled={isSubmitting || hasPendingPayment || pendingShiftEvents.some(item => item.event_type === 'CLOSE')}
                   className="mt-4 w-full rounded-xl border border-red-500/30 px-4 py-3 font-bold text-red-200 transition hover:bg-red-950/40 disabled:opacity-50"
                 >
                   Cerrar turno
                 </button>
-                </>}
-                {offlineMode && <p className="mt-5 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400">Información del turno guardada localmente. El cierre de caja requiere conexión.</p>}
+                {offlineMode && <p className="mt-3 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400">El cierre quedará pendiente y se enviará después de sincronizar las ventas de este turno.</p>}
                 {hasPendingPayment && <p role="alert" className="mt-3 text-xs text-amber-200">Hay una cotización o pago pendiente; resuélvelo antes de cerrar.</p>}
                 <p className="mt-3 text-xs text-gray-500">
                   El cierre automático a las 00:30 se habilitará al completar el almacenamiento y la sincronización offline.
@@ -623,6 +792,8 @@ export const PosPage = () => {
               </div>
                 </aside>
               </div>
+            ) : shift && offlineMode ? (
+              <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">Este turno ya quedó cerrado en el equipo. Espera a que se sincronice para abrir otro.</div>
             ) : anotherShiftOpen ? (
               <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-6">
                 <h2 className="font-heading text-xl font-bold text-white">Hay otro turno abierto</h2>
@@ -630,17 +801,19 @@ export const PosPage = () => {
                   La regla de caja permite un solo turno abierto. Solicita al responsable que lo cierre antes de abrir otro.
                 </p>
               </div>
-            ) : offlineMode ? null : (
+            ) : pendingShiftEvents.some(item => item.event_type === 'OPEN') ? (
+              <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">La apertura del turno sigue pendiente. Reintenta la sincronización antes de iniciar otra caja.</div>
+            ) : (
               <form
                 onSubmit={handleOpenShift}
                 className="space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-6 shadow-xl"
               >
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">
-                    Caja cerrada
+                    {offlineMode ? 'Apertura offline' : 'Caja cerrada'}
                   </p>
                   <h2 className="mt-1 font-heading text-2xl font-bold text-white">
-                    Abrir turno
+                    {offlineMode ? 'Abrir turno en este equipo' : 'Abrir turno'}
                   </h2>
                 </div>
 
@@ -672,11 +845,11 @@ export const PosPage = () => {
 
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || pendingShiftEvents.some(item => item.event_type === 'OPEN')}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
                 >
                   <CircleDollarSign className="h-5 w-5" />
-                  {isSubmitting ? 'Abriendo…' : 'Abrir turno'}
+                  {isSubmitting ? 'Abriendo…' : offlineMode ? 'Abrir turno offline' : 'Abrir turno'}
                 </button>
               </form>
             )}
