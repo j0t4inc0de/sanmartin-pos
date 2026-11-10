@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
 
 from apps.catalog.models import Category, Modifier, Product
+from .api_serializers import CashShiftSerializer
 from .models import CashShift, Order, OrderItem
 
 
@@ -190,19 +191,77 @@ class OrderApiTests(APITestCase):
         self.assertEqual(second.status_code, 409)
         self.assertEqual(Order.objects.count(), 1)
 
-    def test_sync_offline_no_acepta_un_turno_cerrado(self):
+    def test_sync_offline_a_turno_cerrado_concilia_efectivo_y_reintento(self):
+        close = self.client.post(
+            f"/api/shifts/{self.shift.uuid}/close/",
+            {"closed_at": timezone.now().isoformat(), "counted_cash": 31500},
+            format="json",
+        )
+        payload = self.payload_sync_offline()
+
+        response = self.sync_offline(payload)
+        retry = self.sync_offline(payload)
+
+        self.assertEqual(close.status_code, 200)
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["requires_review"])
+        self.assertIn("después del cierre del turno", response.data["review_reason"])
+        self.assertEqual(retry.status_code, 200)
+        self.assertEqual(Order.objects.count(), 1)
+        self.shift.refresh_from_db()
+        self.assertEqual(self.shift.final_cash, 43600)
+        self.assertEqual(self.shift.counted_cash, 31500)
+        self.assertEqual(CashShiftSerializer(self.shift).data["cash_difference"], -12100)
+
+    def test_anulacion_offline_conciliada_en_turno_cerrado_recalcula_efectivo(self):
+        close = self.client.post(
+            f"/api/shifts/{self.shift.uuid}/close/",
+            {"closed_at": timezone.now().isoformat(), "counted_cash": 31500},
+            format="json",
+        )
         payload = self.payload_sync_offline()
         created = self.sync_offline(payload)
-        self.shift.closed_at = timezone.now()
-        self.shift.save(update_fields=["closed_at", "updated_at"])
 
-        retry = self.sync_offline(payload)
-        response = self.sync_offline(self.payload_sync_offline())
+        cancellation_payload = {"reason": "Cliente desistió mientras no había conexión"}
+        canceled = self.client.post(
+            f"/api/orders/{payload['uuid']}/cancel/",
+            cancellation_payload,
+            format="json",
+        )
+        retry = self.client.post(
+            f"/api/orders/{payload['uuid']}/cancel/",
+            cancellation_payload,
+            format="json",
+        )
 
+        self.assertEqual(close.status_code, 200)
         self.assertEqual(created.status_code, 201)
+        self.assertEqual(canceled.status_code, 200)
         self.assertEqual(retry.status_code, 200)
-        self.assertEqual(response.status_code, 409)
-        self.assertEqual(Order.objects.count(), 1)
+        self.assertEqual(canceled.data["status"], "ANULADA")
+        self.assertIn("anulada después del cierre", canceled.data["review_reason"])
+        self.shift.refresh_from_db()
+        self.assertEqual(self.shift.final_cash, 30000)
+        self.assertEqual(self.shift.counted_cash, 31500)
+        self.assertEqual(CashShiftSerializer(self.shift).data["cash_difference"], 1500)
+
+    def test_apertura_reintentada_devuelve_turno_ya_cerrado_si_contenido_coincide(self):
+        payload = {
+            "uuid": str(self.shift.uuid),
+            "opened_at": self.shift.opened_at.isoformat(),
+            "initial_cash": self.shift.initial_cash,
+            "notes": self.shift.notes,
+        }
+        self.shift.closed_at = timezone.now()
+        self.shift.save(update_fields=("closed_at", "updated_at"))
+
+        retry = self.client.post("/api/shifts/open/", payload, format="json")
+        payload["initial_cash"] = self.shift.initial_cash + 1
+        conflict = self.client.post("/api/shifts/open/", payload, format="json")
+
+        self.assertEqual(retry.status_code, 200)
+        self.assertFalse(retry.data["is_open"])
+        self.assertEqual(conflict.status_code, 409)
 
     def test_sync_offline_requiere_permiso_para_operar_pos(self):
         unauthorized = User.objects.create_user(
@@ -228,6 +287,18 @@ class OrderApiTests(APITestCase):
         self.assertEqual(response.data["counted_cash"], 31500)
         self.assertEqual(response.data["cash_difference"], 1500)
         self.assertFalse(response.data["closed_automatically"])
+
+    def test_consulta_detalle_de_turno_cerrado_requiere_propietario(self):
+        response = self.client.get(f"/api/shifts/{self.shift.uuid}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["uuid"], str(self.shift.uuid))
+
+        other = User.objects.create_user(username="otro_operador", password="clave-segura-para-pruebas")
+        permission = Permission.objects.get(content_type__app_label="sales", codename="can_operate_pos")
+        other.user_permissions.add(permission)
+        self.client.force_authenticate(user=other)
+        forbidden = self.client.get(f"/api/shifts/{self.shift.uuid}/")
+        self.assertEqual(forbidden.status_code, 404)
 
     def test_cierre_automatico_no_registra_conteo_fisico(self):
         response = self.client.post(

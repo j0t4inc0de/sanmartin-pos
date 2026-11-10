@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.2
-- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS restaura la sesión automáticamente y permite abrir/cerrar turnos localmente; sincroniza apertura, ventas en orden, anulaciones y cierre. El usuario aceptó el acceso offline, detección de caída, venta, reconexión, apertura/cierre, anulación offline y reconexión automática. El cierre automático a las 00:30 está implementado y pendiente de aceptación manual.
+- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo o ventas tardías para revisión. El POS restaura la sesión automáticamente y permite abrir/cerrar turnos localmente; sincroniza apertura, ventas en orden, anulaciones y cierre. El usuario aceptó el acceso offline, detección de caída, venta, reconexión, apertura/cierre, anulación offline y reconexión automática. El cierre automático a las 00:30 está implementado y pendiente de aceptación manual.
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
@@ -27,6 +27,8 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 - Una venta confirmada imprime un comprobante para el cliente, que permite retirar el pedido, y una comanda para cocina. Son documentos de venta; no se consideran tickets de anulación. La falla de impresión no revierte ni duplica una venta ya guardada.
 - El cierre automático ocurre a las 00:30 en `America/Santiago`. Si el equipo está offline, cierra localmente el turno, impide nuevas ventas en ese turno y conserva el evento de cierre para sincronizarlo después de la apertura, ventas y anulaciones pendientes.
 - Si hay un pago recibido localmente que todavía no quedó registrado como venta, el cierre automático espera a que se registre o sincronice. No descarta ese pago ni cierra el turno debajo de una venta pendiente.
+- La cola normal sincroniza ventas y anulaciones antes del cierre. Si el servidor ya cerró el turno por una intervención externa o un estado previo inconsistente, `POST /api/orders/sync/` conserva la venta offline y la marca con `requires_review` y `review_reason`. Recalcula `final_cash` con las ventas en efectivo completadas y deja `counted_cash` sin cambios.
+- Una anulación offline de esa venta tardía también se acepta en el turno cerrado si la venta está marcada para conciliación. Se conservan el motivo y la cuenta anuladora, se amplía la revisión y se recalcula el efectivo esperado. Las anulaciones normales posteriores al cierre siguen rechazadas.
 - `final_cash` es el efectivo esperado calculado por el sistema: fondo inicial más la suma de `total_amount` de las ventas completadas pagadas en efectivo. Las anuladas se excluyen porque la anulación presupone la devolución; no se descuentan por segunda vez. `counted_cash` es el efectivo contado físicamente. En un cierre manual se exigen ambos valores y `cash_difference` es `counted_cash - final_cash` (positivo: sobrante; negativo: faltante). En uno automático `counted_cash` queda vacío porque no hubo conteo físico.
 
 ## 2. Reglas de integridad
@@ -64,7 +66,8 @@ Todas las rutas requieren sesión autenticada, CSRF y permiso POS.
 | `GET /api/orders/` | Consultar las últimas 50 ventas del operador autenticado y el UUID de su turno abierto. |
 | `POST /api/orders/quote/` | Validar carrito y devolver una cotización firmada con precios y total vigentes, más aviso cuando el carrito deba actualizarse. No registra una venta. |
 | `POST /api/orders/` | Registrar una venta pagada en línea usando el UUID, folio, cotización y datos de pago; es idempotente. |
-| `POST /api/orders/sync/` | Recibir una venta creada offline con UUID y snapshots históricos; compara contra el catálogo actual, marca diferencias para revisión y es idempotente. En esta etapa requiere que el turno ya exista y siga abierto en el servidor. |
+| `POST /api/orders/sync/` | Recibir una venta offline con UUID y snapshots históricos; es idempotente y marca diferencias de catálogo. Si el turno ya está cerrado, conserva la venta con marca de conciliación y recalcula el efectivo esperado. |
+| `GET /api/shifts/{uuid}/` | Consultar el resumen de un turno propio ya cerrado, incluso después de conciliar operaciones offline tardías. |
 | `POST /api/orders/{uuid}/cancel/` | Anular una venta del turno abierto del operador con motivo obligatorio. |
 
 ## 5. Ejemplo de cotización
@@ -161,7 +164,7 @@ La sincronización offline usa otro formato y nunca cambia los snapshots cobrado
 }
 ```
 
-El servidor recalcula subtotal, total y vuelto a partir de los snapshots que se cobraron y verifica la aritmética; no confía en totales enviados por el cliente. Compara nombres, precios y disponibilidad con el catálogo actual. Si hay diferencias, guarda la venta sin alterar los snapshots, la incluye en el turno y marca `requires_review` con el motivo. Repetir el mismo UUID y contenido devuelve la venta existente; usarlo con otros datos devuelve `409`. La primera implementación solo acepta turnos ya abiertos en el servidor; la apertura y el cierre originados sin conexión quedan pendientes de una cola ordenada de operaciones.
+El servidor recalcula subtotal, total y vuelto desde los snapshots cobrados y verifica la aritmética; no confía en totales enviados por el cliente. Compara nombres, precios y disponibilidad con el catálogo actual. Si hay diferencias, guarda la venta sin alterar los snapshots y marca `requires_review`. Si la venta llega cuando el turno ya está cerrado, también queda marcada para revisión, se recalcula `final_cash` y se mantiene `counted_cash` intacto. Repetir el mismo UUID y contenido devuelve la venta existente; usarlo con otros datos devuelve `409`. La apertura y el cierre offline se procesan en una cola ordenada.
 
 Respuesta resumida propuesta:
 
@@ -186,7 +189,7 @@ Respuesta resumida propuesta:
 
 - `400 Bad Request`: datos inválidos, cantidad no positiva, modificador incompatible/no disponible, efectivo insuficiente o nota demasiado larga.
 - `403 Forbidden`: falta sesión o permiso POS.
-- `409 Conflict`: turno cerrado, cotización vencida, precios cambiados que requieren nueva confirmación o UUID reutilizado con contenido distinto.
+- `409 Conflict`: turno cerrado en una operación que no admite conciliación, cotización vencida, precios cambiados que requieren nueva confirmación o UUID reutilizado con contenido distinto.
 - `404 Not Found`: producto, modificador o venta inexistente/no accesible.
 
 Los errores de precio deben incluir el carrito recalculado y no registrar ni cobrar otra venta. Los errores nunca deben incluir contraseñas, tokens CSRF ni secretos.
@@ -212,4 +215,4 @@ Los errores de precio deben incluir el carrito recalculado y no registrar ni cob
 - Mantener un contador local persistente por turno para asignar el folio. El backend valida la restricción única y nunca renumera silenciosamente una comanda ya impresa.
 - Mantener en una cola duradera la apertura (si está pendiente), ventas por folio y cierre. Ante un error, pausar operaciones posteriores del mismo turno y conservar todos los registros para reintento.
 
-La API implementa catálogo POS, cotización firmada, registro online idempotente, sincronización idempotente de ventas offline y anulación auditada. `/pos` conserva ventas y anulaciones en colas locales; al reconectar, envía las ventas por folio, luego las anulaciones y permite sincronizar el cierre solo cuando ambas colas estén vacías. El usuario aceptó manualmente los flujos de anulación offline y reconexión automática. El POS cierra localmente a las 00:30 (`America/Santiago`) sin arqueo físico y encola el cierre para sincronizarlo tras las operaciones del turno; falta su aceptación manual. Las pruebas de `apps.sales` se ejecutan en SQLite temporal y no prueban concurrencia de PostgreSQL. Siguen pendientes conciliación de ventas asociadas a turnos cerrados e impresión física.
+La API implementa catálogo POS, cotización firmada, registro online idempotente, sincronización idempotente de ventas offline y anulación auditada. `/pos` conserva ventas y anulaciones en colas locales; al reconectar, envía las ventas por folio, luego las anulaciones y permite sincronizar el cierre solo cuando ambas colas estén vacías. Como salvaguarda, también recupera una cola asociada a un turno que el servidor ya cerró, conservando los datos y señalando la revisión. El usuario aceptó manualmente los flujos de anulación offline y reconexión automática. El POS cierra localmente a las 00:30 (`America/Santiago`) sin arqueo físico y encola el cierre para sincronizarlo tras las operaciones del turno; falta su aceptación manual. Las pruebas de `apps.sales` se ejecutan en SQLite temporal y no prueban concurrencia de PostgreSQL. Sigue pendiente la aceptación manual del cierre automático y la impresión física.

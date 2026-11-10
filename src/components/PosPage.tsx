@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
-import { cargarAccesoOfflinePos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -160,7 +160,9 @@ export const PosPage = () => {
     setShift(cached.shift);
     setAnotherShiftOpen(cached.another_shift_open);
     setNextOrderNumber(cached.next_order_number);
-    setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(cached.shift?.uuid)).length > 0);
+    const queuedSales = await listarVentasOfflineEnColaPos(cached.shift?.uuid);
+    const queuedCancellations = await listarAnulacionesOfflinePos(cached.shift?.uuid);
+    setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
     setPendingShiftEvents(await listarEventosTurnoOfflinePos(offlineUser.id));
     setOfflineMode(true);
     setErrorMessage('');
@@ -273,6 +275,43 @@ export const PosPage = () => {
     return allSynced;
   };
 
+  const syncOfflineOperationsForClosedShift = async (userId: number, shiftUuid: string) => {
+    const sales = await listarVentasOfflineEnColaPos(shiftUuid);
+    for (const order of sales) {
+      try {
+        const { saved_at: _savedAt, sync_error: _syncError, ...payload } = order;
+        await solicitarApi('/api/orders/sync/', { method: 'POST', body: payload });
+        await eliminarVentaOfflineDeColaPos(order.uuid);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo conciliar una venta del turno cerrado.';
+        await marcarErrorVentaOfflineEnColaPos(order.uuid, message);
+        setErrorMessage(`${message} La venta sigue guardada en este equipo.`);
+        throw error;
+      }
+    }
+    const cancellations = await listarAnulacionesOfflinePos(shiftUuid);
+    for (const cancellation of cancellations) {
+      try {
+        await solicitarApi(`/api/orders/${cancellation.order_uuid}/cancel/`, { method: 'POST', body: { reason: cancellation.reason } });
+        await eliminarAnulacionOfflinePos(cancellation.order_uuid);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo conciliar una anulación del turno cerrado.';
+        await marcarErrorAnulacionOfflinePos(cancellation.order_uuid, message);
+        setErrorMessage(`${message} La anulación sigue guardada en este equipo.`);
+        throw error;
+      }
+    }
+    const closeEvents = (await listarEventosTurnoOfflinePos(userId, 'CLOSE')).filter(event => event.shift_uuid === shiftUuid);
+    if (closeEvents.length && !await syncPendingCloseEvents(userId)) {
+      throw new Error('El cierre del turno sigue pendiente de conciliación.');
+    }
+    const closedShift = await solicitarApi<CashShift>(`/api/shifts/${shiftUuid}/`);
+    setLastClosedShift(closedShift);
+    setPendingShiftEvents(await listarEventosTurnoOfflinePos(userId));
+    setHasQueuedOfflineSales(false);
+    return closedShift;
+  };
+
   const handleSaleSaved = async (offlineNextOrderNumber?: number, offlineCancellation?: { payment_method: string; total_amount: number }) => {
     if (offlineMode && (offlineNextOrderNumber || offlineCancellation)) {
       if (offlineNextOrderNumber) setNextOrderNumber(offlineNextOrderNumber);
@@ -314,12 +353,18 @@ export const PosPage = () => {
       const queuedCancellations = cachedShift?.shift ? await listarAnulacionesOfflinePos(cachedShift.shift.uuid) : [];
       if (queuedSales.length === 0 && queuedCancellations.length === 0) await syncPendingCloseEvents(session.user.id);
       const currentShift = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
+      if (cachedShift?.shift && currentShift.shift?.uuid !== cachedShift.shift.uuid) {
+        setShift(null);
+        setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
+        await syncOfflineOperationsForClosedShift(session.user.id, cachedShift.shift.uuid);
+        await guardarTurnoEnCachePos(session.user.id, { ...currentShift, shift: null });
+      }
       setUser(session.user);
       setShift(currentShift.shift);
       setAnotherShiftOpen(currentShift.another_shift_open);
       setNextOrderNumber(currentShift.next_order_number);
       setOfflineMode(false);
-      setHasQueuedOfflineSales(queuedSales.length > 0);
+      setHasQueuedOfflineSales(currentShift.shift?.uuid === cachedShift?.shift?.uuid && (queuedSales.length > 0 || queuedCancellations.length > 0));
       await guardarTurnoEnCachePos(session.user.id, currentShift);
     } catch (error) {
       if (!silent) setErrorMessage(error instanceof Error ? `${error.message} Inicia sesión online para reanudar la sincronización.` : 'No se pudo reconectar con el servidor.');
@@ -367,6 +412,7 @@ export const PosPage = () => {
     let cancelled = false;
 
     const loadSession = async () => {
+      let serverConfirmedCachedShiftClosed = false;
       try {
         // Also migrates older local records by removing credential verifier data.
         const savedOfflineSession = await cargarAccesoOfflinePos().catch(() => null);
@@ -380,10 +426,19 @@ export const PosPage = () => {
         await syncPendingOpenEvents(response.user.id);
         const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
         const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
-        if (queuedSales.length === 0) await syncPendingCloseEvents(response.user.id);
+        const queuedCancellations = cachedShift?.shift ? await listarAnulacionesOfflinePos(cachedShift.shift.uuid) : [];
+        if (queuedSales.length === 0 && queuedCancellations.length === 0) await syncPendingCloseEvents(response.user.id);
         const currentShift = await solicitarApi<ShiftStateResponse>(
           '/api/shifts/current/',
         );
+        if (cachedShift?.shift && currentShift.shift?.uuid !== cachedShift.shift.uuid) {
+          serverConfirmedCachedShiftClosed = true;
+          setShift(null);
+          setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
+          const closedShift = await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid);
+          setLastClosedShift(closedShift);
+          await guardarTurnoEnCachePos(response.user.id, { ...currentShift, shift: null });
+        }
         if (!cancelled) {
           setShift(currentShift.shift);
           setAnotherShiftOpen(currentShift.another_shift_open);
@@ -392,7 +447,11 @@ export const PosPage = () => {
         }
       } catch (error) {
         if (cancelled) return;
-        if (error instanceof ApiError && error.status === 403) {
+        if (serverConfirmedCachedShiftClosed) {
+          setShift(null);
+          setOfflineMode(false);
+          setErrorMessage(error instanceof Error ? `El turno ya está cerrado en el servidor. La cola local permanece guardada para reintentar: ${error.message}` : 'El turno ya está cerrado en el servidor; las operaciones locales quedan guardadas para reintentar.');
+        } else if (error instanceof ApiError && error.status === 403) {
           setUser(null);
           setShift(null);
         } else {
@@ -425,6 +484,7 @@ export const PosPage = () => {
     event.preventDefault();
     setIsSubmitting(true);
     setErrorMessage('');
+    let serverConfirmedCachedShiftClosed = false;
 
     try {
       const response = await solicitarApi<{ user: PosUser }>(
@@ -441,11 +501,26 @@ export const PosPage = () => {
       await syncPendingOpenEvents(response.user.id);
       const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
       const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
-      if (queuedSales.length === 0) await syncPendingCloseEvents(response.user.id);
+      const queuedCancellations = cachedShift?.shift ? await listarAnulacionesOfflinePos(cachedShift.shift.uuid) : [];
+      if (queuedSales.length === 0 && queuedCancellations.length === 0) await syncPendingCloseEvents(response.user.id);
       await refreshShift();
       const shiftState = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
+      if (cachedShift?.shift && shiftState.shift?.uuid !== cachedShift.shift.uuid) {
+        serverConfirmedCachedShiftClosed = true;
+        setShift(null);
+        setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
+        const closedShift = await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid);
+        setLastClosedShift(closedShift);
+        await guardarTurnoEnCachePos(response.user.id, { ...shiftState, shift: null });
+      }
       await guardarTurnoEnCachePos(response.user.id, shiftState);
     } catch (error) {
+      if (serverConfirmedCachedShiftClosed) {
+        setShift(null);
+        setOfflineMode(false);
+        setErrorMessage(error instanceof Error ? `El turno ya está cerrado en el servidor. La cola local permanece guardada para reintentar: ${error.message}` : 'El turno ya está cerrado en el servidor; las operaciones locales quedan guardadas para reintentar.');
+        return;
+      }
       const apiUnavailable = error instanceof TypeError
         || (error instanceof ApiError && (error.status >= 500 || error.message === 'No se pudo preparar la sesión segura.'));
       if (apiUnavailable) {
@@ -491,6 +566,10 @@ export const PosPage = () => {
 
   const handleOpenShift = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (hasQueuedOfflineSales) {
+      setErrorMessage('Sincroniza las ventas y anulaciones pendientes del turno anterior antes de abrir otra caja.');
+      return;
+    }
     const amount = Number(initialCash);
     if (!Number.isSafeInteger(amount) || amount < 0) {
       setErrorMessage('El fondo inicial debe ser un monto entero no negativo.');
@@ -964,6 +1043,8 @@ export const PosPage = () => {
               </div>
             ) : pendingShiftEvents.some(item => item.event_type === 'OPEN') ? (
               <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">La apertura del turno sigue pendiente. Reintenta la sincronización antes de iniciar otra caja.</div>
+            ) : hasQueuedOfflineSales ? (
+              <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100"><p className="font-semibold">Hay operaciones offline de un turno cerrado pendientes de conciliación.</p><p className="mt-1 text-amber-100/75">Los datos siguen guardados en este equipo. Sincronízalos antes de abrir otra caja.</p><button type="button" onClick={() => void handleReconnect()} disabled={isSubmitting} className="mt-3 rounded-lg border border-amber-200/30 px-3 py-2 text-xs font-semibold text-amber-100 disabled:opacity-50">Reintentar conciliación</button></div>
             ) : (
               <form
                 onSubmit={handleOpenShift}

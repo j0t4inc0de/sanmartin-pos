@@ -82,3 +82,9 @@ El usuario confirmó el 10 de noviembre de 2026 que, al recuperar la API, el POS
 3. Comprueba que el turno quede cerrado, las nuevas ventas no estén disponibles, `closed_automatically` sea verdadero, `counted_cash` y `cash_difference` queden vacíos y `final_cash` sea el fondo inicial más las ventas en efectivo no anuladas.
 4. Repite con Django detenido durante el cierre. El turno debe cerrarse en el equipo y sincronizar apertura, ventas, anulaciones y cierre, en ese orden, al recuperar el servidor.
 5. Con un pago recibido localmente pero aún no registrado al momento del cierre automático, confirma que el turno espera. Al reintentar y registrar la venta, confirma que el turno se cierre y que la venta quede incluida.
+
+## Verificación automatizada — conciliación tardía de turno cerrado
+
+La API ahora conserva una venta offline si el servidor ya cerró el turno, la marca `requires_review`, añade el motivo en `review_reason` y recalcula `final_cash` sin alterar `counted_cash`. Una anulación offline asociada se conserva auditada y vuelve a calcular el esperado. La cola se reintenta aunque la API informe que no hay turno abierto.
+
+La suite `python manage.py test apps.sales --settings=config.test_settings` pasó con 26 pruebas en SQLite temporal, incluidas venta tardía, reintento idempotente, recálculo de diferencia, anulación posterior y consulta autenticada del turno. Este caso es una salvaguarda: el flujo normal sincroniza primero ventas y anulaciones y cierra el turno al final.

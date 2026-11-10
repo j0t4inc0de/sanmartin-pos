@@ -149,6 +149,14 @@ class CurrentCashShiftView(APIView):
         )
 
 
+class CashShiftDetailView(APIView):
+    permission_classes = [IsAuthenticated, CanOperatePOS]
+
+    def get(self, request, shift_uuid):
+        shift = get_object_or_404(CashShift, uuid=shift_uuid, user=request.user)
+        return Response(CashShiftSerializer(shift).data)
+
+
 class OpenCashShiftView(APIView):
     permission_classes = [IsAuthenticated, CanOperatePOS]
 
@@ -159,7 +167,12 @@ class OpenCashShiftView(APIView):
 
         existing = CashShift.objects.filter(uuid=values["uuid"]).first()
         if existing:
-            if existing.user_id == request.user.pk and existing.is_open:
+            if (
+                existing.user_id == request.user.pk
+                and existing.opened_at == values["opened_at"]
+                and existing.initial_cash == values["initial_cash"]
+                and existing.notes == values.get("notes", "")
+            ):
                 return Response(CashShiftSerializer(existing).data)
             return Response(
                 {"detail": "El identificador de turno ya fue utilizado."},
@@ -607,6 +620,9 @@ class SyncOfflineOrderView(APIView):
                     for modifier in Modifier.objects.select_for_update().filter(pk__in=modifier_ids)
                 }
                 review_reasons = []
+                late_for_closed_shift = not shift.is_open
+                if late_for_closed_shift:
+                    review_reasons.append("Venta offline sincronizada después del cierre del turno; requiere conciliación.")
                 for item in items:
                     current = products[item["product_id"]]
                     if not current.is_active or not current.is_available:
@@ -625,9 +641,6 @@ class SyncOfflineOrderView(APIView):
                     if _venta_offline_idempotente_coincide(order, shift, values, subtotal, amount_paid, change_given):
                         return Response(OrderReadSerializer(order).data)
                     return Response({"detail": "El UUID de venta ya existe con otros datos."}, status=status.HTTP_409_CONFLICT)
-
-                if not shift.is_open:
-                    return Response({"detail": "El turno ya está cerrado; la venta offline requiere conciliación."}, status=status.HTTP_409_CONFLICT)
 
                 order = Order.objects.create(
                     uuid=values["uuid"],
@@ -664,6 +677,14 @@ class SyncOfflineOrderView(APIView):
                         for modifier in item["modifiers"]
                         for _ in range(modifier["quantity_per_unit"])
                     ])
+                if late_for_closed_shift:
+                    cash_sales = Order.objects.filter(
+                        cash_shift=shift,
+                        status=Order.Status.COMPLETADA,
+                        payment_method=Order.PaymentMethod.EFECTIVO,
+                    ).aggregate(total=Sum("total_amount"))["total"] or 0
+                    shift.final_cash = shift.initial_cash + cash_sales
+                    shift.save(update_fields=("final_cash", "updated_at"))
         except IntegrityError:
             existing = Order.objects.filter(uuid=values["uuid"]).first()
             if existing and existing.cash_shift.user_id == request.user.pk and _venta_offline_idempotente_coincide(existing, existing.cash_shift, values, subtotal, amount_paid, change_given):
@@ -702,7 +723,13 @@ class CancelOrderView(APIView):
                 )
 
             shift = CashShift.objects.select_for_update().get(pk=order.cash_shift_id)
-            if not shift.is_open:
+            late_offline_reconciliation = (
+                not shift.is_open
+                and order.offline_created
+                and order.requires_review
+                and "después del cierre del turno" in order.review_reason
+            )
+            if not shift.is_open and not late_offline_reconciliation:
                 return Response(
                     {"detail": "Solo se puede anular una venta mientras el turno está abierto."},
                     status=status.HTTP_409_CONFLICT,
@@ -712,15 +739,19 @@ class CancelOrderView(APIView):
             order.cancelled_at = timezone.now()
             order.cancellation_reason = reason
             order.cancelled_by = request.user
-            order.save(
-                update_fields=(
-                    "status",
-                    "cancelled_at",
-                    "cancellation_reason",
-                    "cancelled_by",
-                    "updated_at",
-                )
-            )
+            fields = ["status", "cancelled_at", "cancellation_reason", "cancelled_by", "updated_at"]
+            if late_offline_reconciliation:
+                order.review_reason = "; ".join(filter(None, [order.review_reason, "Venta offline anulada después del cierre; validar conciliación."]))[:255]
+                fields.append("review_reason")
+            order.save(update_fields=fields)
+            if late_offline_reconciliation:
+                cash_sales = Order.objects.filter(
+                    cash_shift=shift,
+                    status=Order.Status.COMPLETADA,
+                    payment_method=Order.PaymentMethod.EFECTIVO,
+                ).aggregate(total=Sum("total_amount"))["total"] or 0
+                shift.final_cash = shift.initial_cash + cash_sales
+                shift.save(update_fields=("final_cash", "updated_at"))
 
         order.refresh_from_db()
         return Response(OrderReadSerializer(order).data)

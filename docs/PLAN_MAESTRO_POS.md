@@ -1,9 +1,9 @@
 # Plan maestro de desarrollo — San Martín POS
 
-- **Versión:** 1.5 — cierre automático offline
+- **Versión:** 1.6 — conciliación de ventas offline tardías
 - **Fecha:** 10 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; autenticación online con contraseña, detección de caída de API sin recargar, inicio offline desde la cuenta guardada, turnos y ventas online/offline, anulaciones locales de ventas en cola, reconexión automática y cierre manual disponibles. El usuario confirmó las pruebas de sesión, venta, reconexión, apertura/cierre y anulación offline. El cierre automático a las 00:30 está implementado y pendiente de aceptación manual; siguen pendientes conciliación de turnos cerrados e impresión.
+- **Estado:** Base técnica migrada; autenticación online con contraseña, detección de caída de API sin recargar, inicio offline desde la cuenta guardada, turnos y ventas online/offline, anulaciones locales de ventas en cola, reconexión automática y cierre automático disponibles. El usuario confirmó las pruebas de sesión, venta, reconexión, apertura/cierre y anulación offline. El cierre automático a las 00:30 está pendiente de aceptación manual. La conciliación defensiva de ventas y anulaciones recibidas después del cierre del servidor está implementada; la prueba física de impresión sigue pendiente por disponibilidad de la DINON.
 
 ---
 
@@ -20,7 +20,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 - El catálogo de caja se obtiene desde `GET /api/pos/catalog/` y se conserva localmente en IndexedDB para recuperarlo si falla la conexión.
 - El borrador, las cotizaciones, la sesión previamente autenticada, los eventos de apertura/cierre y las ventas cobradas se guardan localmente. Al recuperar conexión, la apertura se sincroniza antes que las ventas y el cierre después de vaciar la cola.
 - Los archivos `docs/init_schema.sql` y `docs/models_django_reference.py` son referencias de diseño; las migraciones Django definen el esquema ejecutable.
-- La apertura, ventas, anulaciones de ventas en cola, reconexión automática y cierre offline están implementados y aceptados manualmente. El cierre automático requiere aceptación manual. Siguen pendientes conciliación de turnos cerrados e impresión física.
+- La apertura, ventas, anulaciones de ventas en cola, reconexión automática y cierre offline están implementados y aceptados manualmente. El cierre automático requiere aceptación manual. La conciliación de ventas offline tardías está implementada y automatizada; sigue pendiente la impresión física.
 
 ## 3. Objetivos del producto
 
@@ -354,6 +354,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Catálogo local sin actualización reciente | Confirmado | Se permite seguir vendiendo con aviso de antigüedad; las diferencias se revisan al sincronizar. |
 | Almacenamiento local cerca del límite o lleno | Confirmado | Avisar; impedir cobrar si la venta no puede persistirse y nunca borrar ventas pendientes. |
 | Orden de sincronización de operaciones del turno | Confirmado | Apertura, ventas por folio ascendente, anulaciones y cierre. Si una falla, se conservan datos y se pausan las operaciones posteriores de ese turno. |
+| Venta offline sincronizada después de que el servidor cerró el turno | Salvaguarda confirmada (10 nov 2026) | No debe ocurrir en el flujo normal; si sucede, se conserva marcada para revisión, se recalcula el efectivo esperado y no se altera el conteo físico. |
 
 ## 11. Fuera del alcance inicial salvo aprobación
 
@@ -381,19 +382,19 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 
 - **Confirmado:** Django REST, PostgreSQL, backend en `backend/`, un equipo inicial, sesión offline solo después de autenticación online, impresión en la primera versión, pagos manuales y combos fuera de la caja.
 - **Creado:** estructura Django; aplicaciones `users`, `catalog` y `sales`; migraciones; configuración local; Compose opcional ligado a `127.0.0.1`; proxy Vite para `/api` y `/admin`; API pública de catálogo; API de sesión y operaciones iniciales de turno. Contratos en `docs/CONTRATO_API_CATALOGO.md` y `docs/CONTRATO_API_ACCESO_CAJA.md`.
-- **Etapas 4–5 — avance:** API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` persiste catálogo, borrador, cotización, sesión local, eventos de turnos, ventas y anulaciones offline en IndexedDB. Las anulaciones se sincronizan después de las ventas y antes del cierre. El usuario aceptó el acceso offline, detección de caída, venta, reconexión, apertura/cierre y anulación offline, incluida la reconexión automática. El siguiente bloque es validar el cierre automático y luego cubrir conciliación para ventas asociadas a turnos ya cerrados.
+- **Etapas 4–5 — avance:** API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` persiste catálogo, borrador, cotización, sesión local, eventos de turnos, ventas y anulaciones offline en IndexedDB. Las anulaciones se sincronizan después de las ventas y antes del cierre. El usuario aceptó el acceso offline, detección de caída, venta, reconexión, apertura/cierre y anulación offline, incluida la reconexión automática. La salvaguarda para ventas sincronizadas en turnos cerrados quedó implementada y probada automáticamente. Falta la aceptación manual del cierre automático; después se continúa con preparación de impresión y prueba física cuando haya acceso a la DINON 9390.
 - **Entorno local preparado:** Python 3.14.10 instalado en el perfil de Windows; entorno virtual creado en `backend/.venv`; dependencias fijadas instaladas; servicio PostgreSQL 16 iniciado y puerto `5433` confirmado. PostgreSQL 18 sigue en `5432`.
 - **Configuración local:** `backend/.env` creado y excluido de Git; `DJANGO_SECRET_KEY` generado localmente y conexión configurada para PostgreSQL 16 en `127.0.0.1:5433`.
 - **Catálogo local:** cargadas desde la carta existente 8 categorías y 64 productos; las promociones web permanecen fuera del catálogo del POS. El cargador solo agrega faltantes y conserva los registros existentes.
 - **Carta web:** landing y `/menu` consultan el catálogo Django mediante el proxy local y muestran estados de carga, error y reintento; categorías y productos ya no se duplican en `src/data/menuData.ts`.
 - **Verificación local:** `manage.py check` no reporta problemas; `npm run build` terminó correctamente; las migraciones están aplicadas y el permiso `sales.can_operate_pos` existe. `/pos`, CSRF y catálogo responden con HTTP 200. La API devuelve 8 categorías y 64 productos. Sin sesión, las rutas protegidas responden HTTP 403.
 - **Etapa 3 — aceptación:** el usuario confirmó la aprobación de POS-01 a POS-11 y POS-12 se verificó localmente con rechazo HTTP 403 para token CSRF inválido. Registro en `docs/PRUEBAS_ACEPTACION_ETAPA_3.md`.
-- **Pendiente de desarrollo:** operaciones offline de turnos/anulaciones/cierre, conciliación de turnos cerrados, catálogo delta e impresión.
+- **Pendiente de desarrollo:** catálogo delta, búsqueda rápida para teclado y mouse, impresión térmica y validación integral. El cierre automático requiere aceptación manual; la prueba física de la DINON 9390 depende de disponer del equipo.
 - **Seguridad:** no se aplicó `docs/init_schema.sql`, no se creó la cuenta de ejemplo y no se conectó el backend a producción.
 - **Seguridad:** la contraseña actual del rol `sanmartin_dev` es solo para desarrollo local; reemplazarla por una clave robusta antes de cualquier despliegue. No usarla en producción.
 - **Verificación del entorno:** se usa Python 3.14.10 en `backend/.venv`; el acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Las pruebas automatizadas del backend se ejecutan en SQLite temporal y no sustituyen la validación de concurrencia en PostgreSQL. Docker no es requisito para el flujo local.
 
-La pantalla `/pos` permite operar ventas online, detecta la caída de la API sin recargar y reanuda automáticamente la sesión y las colas al recuperarla. A las 00:30 (`America/Santiago`) guarda el cierre localmente, calcula el efectivo esperado sin arqueo físico y lo sincroniza después de apertura, ventas y anulaciones. El usuario aceptó el modo offline, anulaciones y reconexión automática; el cierre automático requiere aceptación manual.
+La pantalla `/pos` permite operar ventas online, detecta la caída de la API sin recargar y reanuda automáticamente la sesión y las colas al recuperarla. A las 00:30 (`America/Santiago`) guarda el cierre localmente, calcula el efectivo esperado sin arqueo físico y lo sincroniza después de apertura, ventas y anulaciones. También puede conciliar una venta offline tardía asociada a un turno cerrado, marcada para revisión. El usuario aceptó el modo offline, anulaciones y reconexión automática; el cierre automático requiere aceptación manual.
 
 ### Seguimiento de la orden de trabajo
 
@@ -445,6 +446,7 @@ La pantalla `/pos` permite operar ventas online, detecta la caída de la API sin
 - [ ] Implementar búsqueda rápida y flujo optimizado para teclado y mouse.
 - [ ] Validación de ventas, anulaciones auditables y cálculo de vuelto en el backend.
 - [x] Endpoint idempotente de sincronización de ventas, preservación de snapshots y revisión por diferencias de catálogo; el usuario aceptó el recorrido offline en navegador.
+- [x] Conciliar de forma idempotente ventas y anulaciones offline de un turno ya cerrado, marcar el motivo de revisión, ajustar el efectivo esperado sin alterar el conteo y recuperar la cola aunque no haya un turno abierto; 26 pruebas de `apps.sales` pasan en SQLite temporal.
 - [ ] Prueba de la DINON 9390, formatos de ticket y reimpresión.
 - [x] Agregar `final_cash`, `counted_cash` y `closed_automatically` mediante migración aditiva `0005` aplicada en PostgreSQL local.
 - [x] Implementar el cierre manual: el backend calcula el efectivo esperado, guarda el conteo físico y devuelve la diferencia.
