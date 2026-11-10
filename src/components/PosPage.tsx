@@ -3,6 +3,7 @@ import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
+import { usePosDialogs } from './PosDialogs';
 import { cargarAccesoOfflinePos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
@@ -105,6 +106,7 @@ const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
 );
 
 export const PosPage = () => {
+  const { confirm } = usePosDialogs();
   const pendingOpeningUuid = useRef<string | null>(null);
   const offlineTransitionInProgress = useRef(false);
   const [user, setUser] = useState<PosUser | null>(null);
@@ -655,7 +657,8 @@ export const PosPage = () => {
       setErrorMessage('Espera a que se sincronicen las ventas offline antes de cerrar el turno.');
       return;
     }
-    if (!shift?.is_open || !window.confirm('¿Confirmas el cierre de este turno?')) return;
+    if (!shift?.is_open) return;
+    if (!await confirm({ title: 'Cerrar turno', message: 'Confirma el cierre de este turno. Se guardará el efectivo contado y el resumen de caja.', confirmLabel: 'Cerrar turno', tone: 'warning' })) return;
     const countedCash = Number(closingCashCount);
     if (!Number.isSafeInteger(countedCash) || countedCash < 0) {
       setErrorMessage('Ingresa el efectivo contado como un monto entero no negativo.');
@@ -822,7 +825,7 @@ export const PosPage = () => {
   }, [shift, user, cerrarTurnoAutomaticamente]);
 
   return (
-    <main className="min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">
+    <main className="pos-shell min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">
       <div className="mx-auto w-full max-w-[1600px]">
         <header className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Minus, Plus, RefreshCw, ShoppingCart, Trash2 } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
+import { usePosDialogs } from './PosDialogs';
 import {
   cargarBorradorVentaPos,
   cargarCobroPendientePos,
@@ -38,6 +39,7 @@ const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
 export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, onBeforeCreateSale, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; onBeforeCreateSale: () => Promise<boolean>; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
+  const { confirm, prompt } = usePosDialogs();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [offlineOrders, setOfflineOrders] = useState<PosOfflineOrder[]>([]);
@@ -378,7 +380,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         }; }),
         } });
       }
-      if (response.requires_confirmation && !window.confirm(`El catálogo cambió. Confirma el precio actualizado de ${formatPrice(response.total_amount)} antes de continuar al pago.`)) {
+      if (response.requires_confirmation && !await confirm({ title: 'Precio actualizado', message: `El catálogo cambió. Revisa el nuevo total de ${formatPrice(response.total_amount)} y confirma antes de continuar al pago.`, confirmLabel: 'Aceptar precio', tone: 'warning' })) {
         setMessage('Cotización cancelada; no se habilitó el paso de pago.');
         return;
       }
@@ -453,7 +455,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   };
 
   const discardExpiredQuote = async () => {
-    if (!quote || !window.confirm('Confirma que el cliente no pagó. Se descartará esta cotización vencida para permitir una nueva.')) return;
+    if (!quote || !await confirm({ title: 'Descartar cotización', message: 'Confirma que el cliente no pagó. Se descartará esta cotización vencida y podrás preparar una nueva.', confirmLabel: 'Descartar cotización', tone: 'warning' })) return;
     try {
       await eliminarCobroPendientePos(shiftUuid);
       setQuote(null);
@@ -505,10 +507,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   };
 
   const cancelOrder = async (order: OrderHistoryItem) => {
-    const reason = window.prompt(`Motivo obligatorio para anular la venta #${order.shift_order_number}:`);
+    const reason = await prompt({ title: `Anular venta #${order.shift_order_number}`, message: 'Indica el motivo para conservarlo junto al registro de la venta.', inputLabel: 'Motivo de anulación', placeholder: 'Ej.: pedido duplicado', confirmLabel: 'Continuar', tone: 'danger' });
     if (reason === null) return;
-    if (!reason.trim()) { setError('Escribe un motivo para anular la venta.'); return; }
-    if (!window.confirm(`¿Confirmas anular la venta #${order.shift_order_number} por ${formatPrice(order.total_amount)}?`)) return;
+    if (!await confirm({ title: 'Confirmar anulación', message: `Se anulará la venta #${order.shift_order_number} por ${formatPrice(order.total_amount)}. El motivo quedará guardado en el historial.`, confirmLabel: 'Anular venta', tone: 'danger' })) return;
     setBusy(true); setError(''); setMessage('');
     try {
       await solicitarApi(`/api/orders/${order.uuid}/cancel/`, { method: 'POST', body: { reason: reason.trim() } });
@@ -519,10 +520,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   };
 
   const cancelOfflineOrder = async (order: PosOfflineOrder) => {
-    const reason = window.prompt(`Motivo obligatorio para anular la venta #${order.shift_order_number}:`);
+    const reason = await prompt({ title: `Anular venta #${order.shift_order_number}`, message: 'Indica el motivo para guardar la anulación en este equipo y sincronizarla al recuperar conexión.', inputLabel: 'Motivo de anulación', placeholder: 'Ej.: pedido duplicado', confirmLabel: 'Continuar', tone: 'danger' });
     if (reason === null) return;
-    if (!reason.trim()) { setError('Escribe un motivo para anular la venta.'); return; }
-    if (!window.confirm(`¿Confirmas anular la venta #${order.shift_order_number}? La venta se conservará para sincronizar su registro y anulación.`)) return;
+    if (!await confirm({ title: 'Confirmar anulación offline', message: `La anulación de la venta #${order.shift_order_number} quedará guardada en este equipo y se enviará al reconectar.`, confirmLabel: 'Guardar anulación', tone: 'danger' })) return;
     const total = order.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0);
     try {
       await guardarAnulacionOfflinePos({ order_uuid: order.uuid, shift_uuid: order.shift_uuid, shift_order_number: order.shift_order_number, reason: reason.trim(), requested_at: new Date().toISOString() });

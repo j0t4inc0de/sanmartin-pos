@@ -12,6 +12,7 @@ import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { QrMenuPage } from './components/QrMenuPage';
 import { PosPage } from './components/PosPage';
 import { AppearanceControls } from './components/AppearanceControls';
+import { PosDialogProvider } from './components/PosDialogs';
 import { CartItem, ComboItem } from './types';
 
 // ponytail: removed UnderConstruction maintenance gate so full landing and QR menu are live
@@ -109,7 +110,7 @@ export default function App() {
   }
 
   if (currentRoute === 'pos') {
-    return <><PosPage /><AppearanceControls /></>;
+    return <PosDialogProvider><PosPage /><AppearanceControls /></PosDialogProvider>;
   }
 
   return (

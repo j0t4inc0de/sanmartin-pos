@@ -274,6 +274,87 @@ html[data-theme="light"] .appearance-trigger:hover {
   border-color: #c89b26;
 }
 
+.pos-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(3 7 14 / 68%);
+  backdrop-filter: blur(5px);
+  animation: pos-dialog-fade-in 140ms ease-out;
+}
+
+.pos-dialog {
+  width: min(100%, 29rem);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 1.25rem;
+  padding: 1.5rem;
+  color: #f8fafc;
+  background: linear-gradient(145deg, #1c232d, #11161d 78%);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 48%), inset 0 1px 0 rgb(255 255 255 / 4%);
+  animation: pos-dialog-rise 180ms ease-out;
+}
+
+.pos-dialog-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+  border-radius: .9rem;
+}
+
+.pos-dialog-icon.is-primary { color: #facc15; background: rgb(250 204 21 / 10%); border-color: rgb(250 204 21 / 16%); }
+.pos-dialog-icon.is-warning { color: #fbbf24; background: rgb(245 158 11 / 10%); border-color: rgb(245 158 11 / 18%); }
+.pos-dialog-icon.is-danger { color: #f87171; background: rgb(239 68 68 / 10%); border-color: rgb(239 68 68 / 18%); }
+.pos-dialog-title { color: #f8fafc; font-size: 1.125rem; font-weight: 700; line-height: 1.4; }
+.pos-dialog-message { margin-top: .5rem; color: #b6c0ce; font-size: .875rem; line-height: 1.65; }
+.pos-dialog-label { display: block; margin-top: 1.25rem; color: #d8e0ea; font-size: .8125rem; font-weight: 600; }
+.pos-dialog-input { display: block; width: 100%; margin-top: .5rem; border: 1px solid #394556; border-radius: .75rem; padding: .75rem .875rem; color: #f8fafc; background: #11161d; outline: none; }
+.pos-dialog-input:focus { border-color: #d4a817; box-shadow: 0 0 0 3px rgb(250 204 21 / 14%); }
+.pos-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .625rem; margin-top: 1.5rem; }
+.pos-dialog-secondary, .pos-dialog-primary { min-height: 2.625rem; border-radius: .75rem; padding: .625rem 1rem; font-size: .8125rem; font-weight: 700; transition: background-color 140ms, border-color 140ms, transform 140ms; }
+.pos-dialog-secondary { color: #d5dde7; background: #252d38; border: 1px solid #394556; }
+.pos-dialog-secondary:hover { background: #303b49; }
+.pos-dialog-primary { color: #171717; background: #facc15; border: 1px solid #facc15; }
+.pos-dialog-primary:hover { background: #eab308; border-color: #eab308; }
+.pos-dialog-primary.is-danger { color: white; background: #b4232b; border-color: #c53940; }
+.pos-dialog-primary.is-danger:hover { background: #cf3038; }
+.pos-dialog-primary.is-warning { color: #171717; background: #f4bd3c; border-color: #f4bd3c; }
+.pos-dialog-primary:disabled { cursor: not-allowed; opacity: .45; }
+.pos-dialog-secondary:focus-visible, .pos-dialog-primary:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
+
+.pos-shell [role="alert"] {
+  border-radius: .875rem;
+  border-left: 3px solid currentColor;
+  padding: .75rem 1rem;
+  line-height: 1.55;
+}
+
+@keyframes pos-dialog-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pos-dialog-rise { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+html[data-theme="light"] .pos-dialog {
+  color: #172334;
+  background: linear-gradient(145deg, #ffffff, #f4f6f9 82%);
+  border-color: #d9e0e9;
+  box-shadow: 0 28px 90px rgb(15 23 42 / 28%), inset 0 1px 0 white;
+}
+
+html[data-theme="light"] .pos-dialog-title { color: #172334; }
+html[data-theme="light"] .pos-dialog-message { color: #526174; }
+html[data-theme="light"] .pos-dialog-label { color: #334155; }
+html[data-theme="light"] .pos-dialog-input { color: #172334; background: white; border-color: #cbd5e1; }
+html[data-theme="light"] .pos-dialog-secondary { color: #334155; background: #eef2f6; border-color: #d5dde7; }
+html[data-theme="light"] .pos-dialog-secondary:hover { background: #e2e8f0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-dialog-backdrop, .pos-dialog { animation: none; }
+}
+
 .font-heading {
   font-family: 'Oswald', sans-serif;
   letter-spacing: 0.02em;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Printer, Usb, Wallet } from 'lucide-react';
+import { usePosDialogs } from './PosDialogs';
 
 type UsbEndpoint = { direction: 'in' | 'out'; type: string; endpointNumber: number };
 type UsbAlternate = { interfaceClass: number; interfaceSubclass: number; interfaceProtocol: number; endpoints: UsbEndpoint[] };
@@ -35,6 +36,7 @@ const kitchenSlip = () => append(
 );
 
 export function PosPrinterDiagnostics() {
+  const { confirm } = usePosDialogs();
   const [device, setDevice] = useState<UsbDevice | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -73,7 +75,7 @@ export function PosPrinterDiagnostics() {
 
   const printSample = async () => { setBusy(true); setError(''); setMessage('Enviando comprobante de cliente y comanda de cocina…'); try { await send(append(customerSlip(), kitchenSlip())); setMessage('Muestra enviada: deben salir dos papeles. No se registró ninguna venta ni se abrió la gaveta.'); } catch (e) { setMessage(''); setError(e instanceof Error ? e.message : 'Falló la impresión de prueba.'); } finally { setBusy(false); } };
   const testDrawer = async () => {
-    if (!window.confirm('Prueba de gaveta: se enviará un pulso eléctrico a la salida RJ11 de la impresora. Asegura el área y confirma que la gaveta compatible esté conectada. ¿Continuar?')) return;
+    if (!await confirm({ title: 'Probar gaveta de dinero', message: 'Se enviará un pulso eléctrico a la salida RJ11 de la impresora. Asegura el área y verifica que la gaveta compatible esté conectada antes de continuar.', confirmLabel: 'Enviar pulso', tone: 'warning' })) return;
     setBusy(true); setError(''); setMessage('Enviando pulso de prueba a la gaveta…');
     try { await send(ESC(27, 112, 0, 25, 250)); setMessage('Pulso enviado. Confirma físicamente si la gaveta abrió.'); }
     catch (e) { setMessage(''); setError(e instanceof Error ? e.message : 'No se pudo probar la gaveta.'); }
