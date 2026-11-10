@@ -65,13 +65,23 @@ html[data-theme="light"] [class*="bg-black/20"] {
   background-color: #eef2f6 !important;
 }
 
-html[data-theme="light"] [class*="from-[#161616]"],
-html[data-theme="light"] [class*="from-[#171717]"],
-html[data-theme="light"] [class*="from-[#1C1C1C]"],
-html[data-theme="light"] [class*="to-[#121212]"],
-html[data-theme="light"] [class*="to-[#141414]"],
-html[data-theme="light"] [class*="to-[#171717]"] {
+html[data-theme="light"] [class*="from-[#161616]"]:not([class~="absolute"]),
+html[data-theme="light"] [class*="from-[#171717]"]:not([class~="absolute"]),
+html[data-theme="light"] [class*="from-[#1C1C1C]"]:not([class~="absolute"]),
+html[data-theme="light"] [class*="to-[#121212]"]:not([class~="absolute"]),
+html[data-theme="light"] [class*="to-[#141414]"]:not([class~="absolute"]),
+html[data-theme="light"] [class*="to-[#171717]"]:not([class~="absolute"]) {
   background-image: linear-gradient(135deg, #ffffff, #edf1f6) !important;
+}
+
+/* Keep the product photo visible; retain only a restrained fade behind overlaid labels. */
+html[data-theme="light"] [class~="absolute"][class*="from-[#161616]"] {
+  background-image: linear-gradient(to top, rgb(15 23 42 / 62%), rgb(15 23 42 / 8%) 76%, transparent) !important;
+}
+
+html[data-theme="light"] .relative > [class*="bg-[#0D0D0D]"] {
+  background-color: rgb(15 23 42 / 94%) !important;
+  border-color: rgb(255 255 255 / 24%) !important;
 }
 
 html[data-theme="light"] [class*="bg-amber-950/"] {
@@ -161,11 +171,6 @@ html[data-theme="light"] ::-webkit-scrollbar-thumb {
   color: #a9b5c5;
 }
 
-.appearance-badge {
-  color: #b9c5d4;
-  background: rgb(148 163 184 / 12%);
-}
-
 .appearance-segment {
   background: rgb(2 6 23 / 35%);
 }
@@ -222,11 +227,6 @@ html[data-theme="light"] .appearance-trigger {
 html[data-theme="light"] .appearance-popover > div:first-child p,
 html[data-theme="light"] .appearance-popover legend {
   color: #64748b;
-}
-
-html[data-theme="light"] .appearance-badge {
-  color: #526174;
-  background: #eef2f6;
 }
 
 html[data-theme="light"] .appearance-segment {

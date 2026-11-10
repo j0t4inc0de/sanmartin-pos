@@ -47,7 +47,6 @@ export function AppearanceControls() {
     {open && <section className="appearance-popover mb-3 w-[min(21rem,calc(100vw-2rem))] rounded-2xl p-4" aria-label="Ajustes de apariencia">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div><h2 className="text-sm font-bold">Apariencia</h2><p className="mt-0.5 text-xs">Personaliza cómo ves esta página</p></div>
-        <span className="appearance-badge rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wider">Se guarda aquí</span>
       </div>
       <div className="space-y-4">
         <fieldset><legend className="mb-2 text-xs font-semibold uppercase tracking-wider">Tema</legend><div className="appearance-segment grid grid-cols-2 gap-1 rounded-xl p-1">
