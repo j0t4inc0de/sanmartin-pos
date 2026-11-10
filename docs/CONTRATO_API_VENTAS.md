@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.0
-- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS guarda catálogo, borrador, cotización y pago recibido en IndexedDB, y el PIN offline abre vista de solo lectura; todavía falta persistir ventas offline en cola y conectarla al endpoint.
+- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS permite cotizar desde el catálogo local, guardar ventas cobradas en una cola IndexedDB y sincronizarlas en orden al reconectar; apertura/cierre offline y aceptación manual del flujo completo siguen pendientes.
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
@@ -50,7 +50,7 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 4. Antes de mostrar el paso de pago, el POS verifica espacio y guarda localmente un borrador de cobro con UUID y folio reservado. Si falla esta escritura, no se cobra.
 5. El operador cobra manualmente por el medio elegido. Para efectivo ingresa cuánto recibió el cliente.
 6. Después de confirmar que se recibió el pago, el POS convierte localmente ese borrador en venta completada, calcula el vuelto y lo agrega a la cola. En línea, intenta enviarlo al backend; sin conexión, conserva la venta y continúa operando.
-7. En línea, el POS envía la venta a `POST /api/orders/`. Si se creó durante una desconexión, la envía a `POST /api/orders/sync/` al recuperar conexión. El backend valida folio, UUID, turno y aritmética; luego guarda cabecera, líneas y modificadores en una sola transacción.
+7. En línea, el POS envía la venta a `POST /api/orders/`. Si se creó durante una desconexión, la conserva en IndexedDB y la envía a `POST /api/orders/sync/` en orden de folio al recuperar conexión. El backend valida folio, UUID, turno y aritmética; luego guarda cabecera, líneas y modificadores en una sola transacción.
 
 La cotización debe quedar asociada al usuario y turno, vencer a los cinco minutos y estar firmada por el servidor para que el cliente no pueda alterar precios entre la cotización y el registro. Si ya se recibió el pago y la cotización vence antes de registrar la venta, el POS conserva el cobro local y lo envía por el flujo de sincronización/reconciliación; nunca descarta una venta cobrada. La operación inicial de un solo equipo evita dos generadores de folio para el mismo turno; para incorporar más equipos se debe reemplazar por una asignación central o por rangos reservados.
 
@@ -211,4 +211,4 @@ Los errores de precio deben incluir el carrito recalculado y no registrar ni cob
 - Mantener un contador local persistente por turno para asignar el folio. El backend valida la restricción única y nunca renumera silenciosamente una comanda ya impresa.
 - Mantener en una cola duradera la apertura (si está pendiente), ventas por folio y cierre. Ante un error, pausar operaciones posteriores del mismo turno y conservar todos los registros para reintento.
 
-La API implementa catálogo POS, cotización firmada, registro online idempotente, sincronización idempotente de ventas offline y anulación auditada; `/pos` conserva localmente catálogo, borrador, cotización y marca de pago recibido. Las pruebas de `apps.sales` se ejecutan en SQLite temporal y no prueban concurrencia de PostgreSQL. Siguen pendientes la cola durable y su conexión automática al endpoint, sincronización de apertura/anulación/cierre, conciliación de ventas asociadas a turnos cerrados, cierre automático e impresión física.
+La API implementa catálogo POS, cotización firmada, registro online idempotente, sincronización idempotente de ventas offline y anulación auditada; `/pos` conserva el catálogo y una cola durable de ventas cobradas, e intenta sincronizar al reconectar. Las pruebas de `apps.sales` se ejecutan en SQLite temporal y no prueban concurrencia de PostgreSQL. Siguen pendientes apertura/anulación/cierre offline, conciliación de ventas asociadas a turnos cerrados, cierre automático e impresión física; la aceptación manual del nuevo flujo del navegador queda por realizar.

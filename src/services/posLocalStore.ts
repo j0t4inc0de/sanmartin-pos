@@ -48,6 +48,7 @@ export interface PosSaleDraft {
 
 export interface PosPendingPaymentDraft {
   status: 'PREPARADO' | 'PAGO_RECIBIDO';
+  offline_created?: boolean;
   shift_uuid: string;
   uuid: string;
   shift_order_number: number;
@@ -62,6 +63,7 @@ export interface PosPendingPaymentDraft {
       product_name: string;
       quantity: number;
       unit_price: number;
+      notes?: string;
       modifiers: {
         modifier_id: number;
         modifier_name: string;
@@ -103,6 +105,27 @@ export interface PosCachedShiftState<TShift> {
   saved_at: string;
 }
 
+export interface PosOfflineOrder {
+  uuid: string;
+  shift_order_number: number;
+  shift_uuid: string;
+  created_at: string;
+  offline_created: true;
+  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
+  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
+  amount_received?: number;
+  items: {
+    product_id: number;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    notes: string;
+    modifiers: { modifier_id: number; modifier_name: string; quantity_per_unit: number; price_at_sale: number }[];
+  }[];
+  saved_at: string;
+  sync_error: string | null;
+}
+
 interface StoredCatalog {
   key: 'current';
   catalog: PosCatalog;
@@ -125,13 +148,16 @@ interface StoredShiftState<TShift> extends PosCachedShiftState<TShift> {
   key: number;
 }
 
+interface StoredOfflineOrder extends PosOfflineOrder {}
+
 const DATABASE_NAME = 'san-martin-pos';
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 const CATALOG_STORE = 'pos_catalog';
 const DRAFT_STORE = 'pos_sale_drafts';
 const PAYMENT_DRAFT_STORE = 'pos_pending_payments';
 const OFFLINE_ACCESS_STORE = 'pos_offline_access';
 const SHIFT_CACHE_STORE = 'pos_shift_cache';
+const OFFLINE_ORDER_STORE = 'pos_offline_orders';
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -160,6 +186,9 @@ const openDatabase = (): Promise<IDBDatabase> => {
         }
         if (!database.objectStoreNames.contains(SHIFT_CACHE_STORE)) {
           database.createObjectStore(SHIFT_CACHE_STORE, { keyPath: 'key' });
+        }
+        if (!database.objectStoreNames.contains(OFFLINE_ORDER_STORE)) {
+          database.createObjectStore(OFFLINE_ORDER_STORE, { keyPath: 'uuid' });
         }
       };
       request.onsuccess = () => {
@@ -288,6 +317,7 @@ export const cargarCobroPendientePos = async (
         amount_received: stored.amount_received,
         payment_received_at: stored.payment_received_at,
         status: stored.status,
+        offline_created: stored.offline_created,
         saved_at: stored.saved_at,
       });
     };
@@ -381,5 +411,58 @@ export const cargarTurnoDesdeCachePos = async <TShift>(
       resolve(state);
     };
     request.onerror = () => reject(request.error ?? new Error('No se pudo leer el estado local del turno.'));
+  });
+};
+
+export const guardarVentaOfflineEnColaPos = async (
+  order: Omit<PosOfflineOrder, 'saved_at' | 'sync_error'>,
+): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction([OFFLINE_ORDER_STORE, PAYMENT_DRAFT_STORE, DRAFT_STORE], 'readwrite');
+    transaction.objectStore(OFFLINE_ORDER_STORE).put({ ...order, saved_at: new Date().toISOString(), sync_error: null } satisfies StoredOfflineOrder);
+    transaction.objectStore(PAYMENT_DRAFT_STORE).delete(order.shift_uuid);
+    transaction.objectStore(DRAFT_STORE).delete(order.shift_uuid);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar la venta offline.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado de la venta offline.'));
+  });
+};
+
+export const listarVentasOfflineEnColaPos = async (shiftUuid?: string): Promise<PosOfflineOrder[]> => {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_ORDER_STORE, 'readonly');
+    const request = transaction.objectStore(OFFLINE_ORDER_STORE).getAll();
+    request.onsuccess = () => resolve((request.result as StoredOfflineOrder[])
+      .filter(order => !shiftUuid || order.shift_uuid === shiftUuid)
+      .sort((left, right) => left.shift_order_number - right.shift_order_number));
+    request.onerror = () => reject(request.error ?? new Error('No se pudo leer la cola de ventas offline.'));
+  });
+};
+
+export const eliminarVentaOfflineDeColaPos = async (uuid: string): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_ORDER_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_ORDER_STORE).delete(uuid);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo retirar la venta sincronizada de la cola local.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló la limpieza de la cola local.'));
+  });
+};
+
+export const marcarErrorVentaOfflineEnColaPos = async (uuid: string, error: string): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_ORDER_STORE, 'readwrite');
+    const store = transaction.objectStore(OFFLINE_ORDER_STORE);
+    const request = store.get(uuid);
+    request.onsuccess = () => {
+      if (request.result) store.put({ ...request.result, sync_error: error.slice(0, 255) } satisfies StoredOfflineOrder);
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el error de sincronización.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del error de sincronización.'));
   });
 };

@@ -9,9 +9,14 @@ import {
   guardarCobroPendientePos,
   guardarCatalogoPos,
   eliminarCobroPendientePos,
+  eliminarVentaOfflineDeColaPos,
+  listarVentasOfflineEnColaPos,
+  marcarErrorVentaOfflineEnColaPos,
+  guardarVentaOfflineEnColaPos,
   type PosCatalog as Catalog,
   type PosPendingPaymentDraft,
   type PosSaleDraft,
+  type PosOfflineOrder,
 } from '../services/posLocalStore';
 
 type ConsumptionType = 'PARA_SERVIR' | 'PARA_LLEVAR';
@@ -19,7 +24,7 @@ type PaymentMethod = 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
 type Product = Catalog['products'][number];
 interface CartModifier { modifier_id: number; modifier_name: string; price_at_sale: number; quantity_per_unit: number; }
 interface CartLine { key: string; product_id: number; product_name: string; unit_price: number; quantity: number; notes: string; modifiers: CartModifier[]; }
-interface Quote { uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; total_amount: number; }
+interface Quote { uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; total_amount: number; }
 type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confirmation' | 'items' | 'subtotal' | 'total_amount'>;
 interface Sale { uuid: string; shift_order_number: number; total_amount: number; payment_method: PaymentMethod; amount_paid: number | null; change_given: number | null; }
 interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; payment_method: PaymentMethod; total_amount: number; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; }
@@ -28,9 +33,12 @@ interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | n
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
-export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, offlineMode = false }: { shiftUuid: string; nextOrderNumber: number; onSale: () => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; offlineMode?: boolean }) => {
+export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, offlineMode = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; offlineMode?: boolean }) => {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
+  const [offlineOrders, setOfflineOrders] = useState<PosOfflineOrder[]>([]);
+  const [syncingOfflineOrders, setSyncingOfflineOrders] = useState(false);
+  const syncInProgress = useRef(false);
   const [lines, setLines] = useState<CartLine[]>([]);
   const [consumptionType, setConsumptionType] = useState<ConsumptionType>('PARA_LLEVAR');
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -55,8 +63,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const paymentWriteVersion = useRef(0);
 
   useEffect(() => {
-    onPendingPaymentChange(!draftLoaded || draftLoadError || quote !== null);
-  }, [draftLoaded, draftLoadError, quote, onPendingPaymentChange]);
+    onPendingPaymentChange(!draftLoaded || draftLoadError || quote !== null || offlineOrders.length > 0);
+  }, [draftLoaded, draftLoadError, quote, offlineOrders, onPendingPaymentChange]);
 
   const currentDraft = (): Omit<PosSaleDraft, 'saved_at'> => ({
     shift_uuid: shiftUuid,
@@ -93,6 +101,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
             created_at: pendingPayment.created_at,
             consumption_type: pendingPayment.consumption_type,
             price_confirmation_accepted: pendingPayment.price_confirmation_accepted,
+          offline_created: pendingPayment.offline_created,
           });
           setPaymentMethod(pendingPayment.payment_method);
           setAmountReceived(pendingPayment.amount_received);
@@ -153,6 +162,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     try {
       await guardarCobroPendientePos({
         status,
+        offline_created: targetQuote.offline_created,
         shift_uuid: shiftUuid,
         uuid,
         shift_order_number,
@@ -172,6 +182,42 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
   };
 
+  const queueOfflineSale = async (targetQuote: Quote): Promise<boolean> => {
+    try {
+      await guardarVentaOfflineEnColaPos({
+        uuid: targetQuote.uuid,
+        shift_order_number: targetQuote.shift_order_number,
+        shift_uuid: shiftUuid,
+        created_at: targetQuote.created_at,
+        offline_created: true,
+        consumption_type: targetQuote.consumption_type,
+        payment_method: paymentMethod,
+        ...(paymentMethod === 'EFECTIVO' ? { amount_received: Number(amountReceived) } : {}),
+        items: targetQuote.items.map((item, index) => ({
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          notes: item.notes ?? lines[index]?.notes ?? '',
+          modifiers: item.modifiers,
+        })),
+      });
+      setPendingPaymentStatus('idle');
+      setPaymentReceivedPending(false);
+      setPaymentRecordWriteFailed(false);
+      setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
+      setMessage(`Venta #${targetQuote.shift_order_number} guardada en este equipo y pendiente de sincronización.`);
+      setLines([]); setQuote(null); setAmountReceived('');
+      await onSale(targetQuote.shift_order_number + 1);
+      if (!offlineMode && navigator.onLine) void syncOfflineOrders();
+      return true;
+    } catch (error) {
+      setPaymentReceivedPending(true);
+      setError(error instanceof Error ? error.message : 'No se pudo guardar la venta en la cola offline. No vuelvas a cobrar.');
+      return false;
+    }
+  };
+
   const loadCatalog = async () => {
     setLoadingCatalog(true); setError(''); setCatalogNotice('');
     let savedCatalog: Awaited<ReturnType<typeof cargarCatalogoPos>> = null;
@@ -183,7 +229,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
 
     if (offlineMode) {
-      if (!savedCatalog) setError('No hay un catálogo guardado disponible sin conexión.');
+      if (savedCatalog) {
+        const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
+        setCatalogNotice(`Sin conexión. Usando catálogo guardado el ${savedDate}; revisa los precios en la próxima sincronización.`);
+      } else setError('No hay un catálogo guardado disponible sin conexión.');
       setLoadingCatalog(false);
       return;
     }
@@ -210,7 +259,46 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     try { const result = await solicitarApi<OrderHistory>('/api/orders/'); setOrders(result.orders); }
     catch (e) { setError(e instanceof Error ? e.message : 'No se pudo consultar el historial del turno.'); }
   };
-  useEffect(() => { void loadCatalog(); if (!offlineMode) void loadOrders(); }, [shiftUuid, offlineMode]);
+  const loadOfflineOrders = async () => {
+    const queue = await listarVentasOfflineEnColaPos(shiftUuid);
+    setOfflineOrders(queue);
+    return queue;
+  };
+  const syncOfflineOrders = async () => {
+    if (offlineMode || !navigator.onLine || syncInProgress.current) return;
+    syncInProgress.current = true;
+    setSyncingOfflineOrders(true);
+    try {
+      const queue = await loadOfflineOrders();
+      let syncFailed = false;
+      for (const order of queue) {
+        try {
+          const { saved_at: _savedAt, sync_error: _syncError, ...payload } = order;
+          await solicitarApi('/api/orders/sync/', { method: 'POST', body: payload });
+          await eliminarVentaOfflineDeColaPos(order.uuid);
+        } catch (error) {
+          await marcarErrorVentaOfflineEnColaPos(order.uuid, error instanceof Error ? error.message : 'No se pudo sincronizar.');
+          syncFailed = true;
+          break;
+        }
+      }
+      const remaining = await loadOfflineOrders();
+      if (navigator.onLine && !syncFailed) {
+        await loadOrders();
+        if (queue.length && remaining.length === 0) await onSale();
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'No se pudo procesar la cola local.');
+    } finally { syncInProgress.current = false; setSyncingOfflineOrders(false); }
+  };
+  useEffect(() => {
+    void loadCatalog();
+    void loadOfflineOrders().then(queue => { if (!offlineMode && navigator.onLine && queue.length) void syncOfflineOrders(); }).catch(() => setError('No se pudo consultar la cola de ventas guardadas.'));
+    if (!offlineMode) void loadOrders();
+    const handleOnline = () => { if (!offlineMode) void syncOfflineOrders(); };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [shiftUuid, offlineMode]);
 
   const products = useMemo(() => catalog?.products.filter(p => category === 'all' || p.category_id === category) ?? [], [catalog, category]);
   const invalidateQuote = () => {
@@ -238,24 +326,41 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       }
       const uuid = crypto.randomUUID();
       const createdAt = new Date().toISOString();
-      const response = await solicitarApi<QuoteResponse>('/api/orders/quote/', { method: 'POST', body: {
+      let response: QuoteResponse;
+      if (offlineMode) {
+        const items = lines.map(line => {
+          const product = catalog.products.find(item => item.id === line.product_id)!;
+          const modifiers = line.modifiers.map(entry => {
+            const modifier = catalog.modifiers.find(item => item.id === entry.modifier_id)!;
+            return { modifier_id: modifier.id, modifier_name: modifier.name, price_at_sale: modifier.price, quantity_per_unit: entry.quantity_per_unit };
+          });
+          const extrasPerUnit = modifiers.reduce((sum, modifier) => sum + modifier.price_at_sale * modifier.quantity_per_unit, 0);
+          return { product_id: product.id, product_name: product.name, quantity: line.quantity, unit_price: product.price, modifiers, line_total: line.quantity * (product.price + extrasPerUnit) };
+        });
+        const subtotal = items.reduce((sum, item) => sum + item.line_total, 0);
+        response = { quote_token: '', valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), requires_confirmation: false, items, subtotal, total_amount: subtotal };
+      } else {
+        response = await solicitarApi<QuoteResponse>('/api/orders/quote/', { method: 'POST', body: {
         uuid, shift_order_number: nextOrderNumber, created_at: createdAt, consumption_type: consumptionType,
         items: lines.map(line => { const product = catalog!.products.find(p => p.id === line.product_id)!; return {
           product_id: product.id, expected_name: product.name, expected_unit_price: product.price, expected_updated_at: product.updated_at,
           quantity: line.quantity, notes: line.notes, modifiers: line.modifiers.map(entry => { const modifier = catalog!.modifiers.find(m => m.id === entry.modifier_id)!; return { modifier_id: modifier.id, expected_name: modifier.name, expected_price: modifier.price, expected_updated_at: modifier.updated_at, quantity_per_unit: entry.quantity_per_unit }; }),
         }; }),
-      } });
+        } });
+      }
       if (response.requires_confirmation && !window.confirm(`El catálogo cambió. Confirma el precio actualizado de ${formatPrice(response.total_amount)} antes de continuar al pago.`)) {
         setMessage('Cotización cancelada; no se habilitó el paso de pago.');
         return;
       }
       const quotedOrder: Quote = {
         ...response,
+        items: response.items.map((item, index) => ({ ...item, notes: lines[index].notes })),
         uuid,
         shift_order_number: nextOrderNumber,
         created_at: createdAt,
         consumption_type: consumptionType,
         price_confirmation_accepted: true,
+        offline_created: offlineMode,
       };
       if (!await persistPendingPayment(quotedOrder, paymentMethod, amountReceived, 'PREPARADO')) {
         setError('No se pudo guardar localmente la cotización, el UUID y el folio. El paso de pago no se habilitó.');
@@ -268,6 +373,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const registerSavedPayment = async () => {
     if (!quote) return;
+    if (offlineMode || quote.offline_created) {
+      await queueOfflineSale(quote);
+      return;
+    }
     setBusy(true); setError(''); setMessage('');
     try {
       const sale = await solicitarApi<Sale>('/api/orders/', { method: 'POST', body: {
@@ -335,7 +444,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
     const received = Number(amountReceived);
     if (paymentMethod === 'EFECTIVO' && (!Number.isSafeInteger(received) || received < quote.total_amount)) { setError('El efectivo recibido debe ser un monto entero que cubra el total.'); return; }
-    if (Date.now() >= new Date(quote.valid_until).getTime()) {
+    if (!quote.offline_created && Date.now() >= new Date(quote.valid_until).getTime()) {
       setPreparedQuoteExpired(true);
       setError('La cotización venció. Confirma si el pago ya se recibió antes de descartarla o registrarla para conciliación.');
       return;
@@ -382,8 +491,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => sum + (catalog?.modifiers.find(m => m.id === value.modifier_id)?.price ?? value.price_at_sale) * value.quantity_per_unit, 0);
 
   return <section className="space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
-    <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Catálogo guardado' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Sin conexión' : 'Actualizar menú'}</button></header>
-    {offlineMode && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">Vista local de solo lectura. Las ventas, cotizaciones y cambios de caja requieren conexión.</div>}
+    <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Venta offline' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Catálogo guardado' : 'Actualizar menú'}</button></header>
+    {offlineMode && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">Modo offline: puedes registrar la venta en este equipo. No cierres el turno hasta sincronizar todas las ventas pendientes.</div>}
+    {offlineOrders.length > 0 && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{offlineOrders.length} {offlineOrders.length === 1 ? 'venta pendiente' : 'ventas pendientes'} de sincronización</strong><span>{syncingOfflineOrders ? 'Sincronizando…' : offlineMode ? 'Se enviarán al reconectar' : 'Reintento automático al recuperar conexión'}</span>{!offlineMode && <button type="button" className="rounded-lg border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50" disabled={syncingOfflineOrders || !navigator.onLine} onClick={() => void syncOfflineOrders()}>Reintentar sincronización</button>}</div>{offlineOrders.some(order => order.sync_error) && <p className="mt-2 text-xs text-amber-200">{offlineOrders.find(order => order.sync_error)?.sync_error} · Las ventas siguientes esperan que se resuelva este folio.</p>}</div>}
     <aside aria-label="Estado de datos locales" className="space-y-3 rounded-xl border border-white/10 bg-[#101010] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">Respaldo de caja</h3><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">El catálogo, el borrador y la cotización quedan guardados en este equipo. Los cobros se registran con conexión; si el servidor no confirma una venta cobrada, podrás reintentarla. La sincronización automática offline sigue pendiente.</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">Almacenamiento local</span></div>
       <div className="grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-2">
@@ -400,7 +510,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     {preparedQuoteExpired && <div role="alert" className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100"><p>La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.</p><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>El pago se recibió</button><button type="button" disabled={busy} className="rounded-lg border border-white/20 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={() => void discardExpiredQuote()}>El cliente no pagó; descartar</button></div></div>}
     {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && <p role="status" className="rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-300">Guardando localmente los datos del pago; espera antes de recibirlo.</p>}
     {pendingPaymentStatus === 'error' && quote && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-200">No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.</p>}
-    <fieldset disabled={offlineMode || busy || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed} className="grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
+    <fieldset disabled={busy || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed || (!offlineMode && offlineOrders.length > 0)} className="grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="space-y-3"><div className="flex gap-2 overflow-x-auto pb-1"><button className={button} type="button" onClick={() => setCategory('all')}>Todos</button>{catalog?.categories.map(c => <button className={button} type="button" key={c.id} onClick={() => setCategory(c.id)}>{c.name}</button>)}</div>
         {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : <div className="grid grid-cols-2 gap-2">{products.map(p => <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => addProduct(p)} className="min-h-20 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-left hover:border-[#FACC15]/50 disabled:opacity-50"><span className="block text-sm font-semibold text-white">{p.name}</span><span className="mt-1 block text-sm text-[#FACC15]">{formatPrice(p.price)}</span></button>)}</div>}
       </div>
@@ -413,7 +523,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           <input className="mt-3 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-xs text-white" maxLength={150} placeholder="Nota para cocina (opcional)" value={line.notes} onChange={e => updateLine(line.key, l => ({...l, notes: e.target.value}))}/>
         </article>;})}</div>}
         <button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()} className="w-full rounded-xl bg-[#FACC15] px-4 py-3 font-bold text-black disabled:opacity-40">{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar venta'}</button>
-        {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>Total validado</span><span>{formatPrice(quote.total_amount)}</span></div><p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · Válida hasta {new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización, UUID y folio respaldados en este equipo.</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de cobrar.</p>}
+        {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>{quote.offline_created ? 'Total calculado con catálogo local' : 'Total validado'}</span><span>{formatPrice(quote.total_amount)}</span></div><p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · {quote.offline_created ? 'Venta y folio guardados localmente antes del cobro.' : `Válida hasta ${new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización respaldada en este equipo.`}</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de cobrar.</p>}
           <label className="block text-sm text-gray-300">Medio de pago<select className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" value={paymentMethod} onChange={e => updatePaymentMethod(e.target.value as PaymentMethod)}><option value="EFECTIVO">Efectivo</option><option value="TRANSBANK">Transbank (débito/crédito)</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
           {paymentMethod === 'EFECTIVO' && <label className="block text-sm text-gray-300">Efectivo recibido<input className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" type="number" min={quote.total_amount} step="1" inputMode="numeric" value={amountReceived} onChange={e => updateAmountReceived(e.target.value)}/></label>}
           {!paymentReceivedPending && !preparedQuoteExpired && <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void saveSale()} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Guardando venta…' : 'Confirmar recepción del pago'}</button>}

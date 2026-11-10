@@ -84,6 +84,44 @@ def _venta_idempotente_coincide(order, quote, payment_method, amount_received):
     )
 
 
+def _venta_offline_idempotente_coincide(order, shift, values, subtotal, amount_paid, change_given):
+    payload_items = [
+        {
+            "product_id": item["product_id"],
+            "product_name": item["product_name"],
+            "quantity": item["quantity"],
+            "unit_price": item["unit_price"],
+            "notes": item.get("notes", ""),
+            "modifiers": [
+                {
+                    "modifier_id": modifier["modifier_id"],
+                    "modifier_name": modifier["modifier_name"],
+                    "price_at_sale": modifier["price_at_sale"],
+                }
+                for modifier in item["modifiers"]
+                for _ in range(modifier["quantity_per_unit"])
+            ],
+        }
+        for item in values["items"]
+    ]
+    return bool(
+        str(shift.uuid) == str(values["shift_uuid"])
+        and order.cash_shift_id == shift.pk
+        and order.shift_order_number == values["shift_order_number"]
+        and order.created_at == values["created_at"]
+        and order.offline_created
+        and order.status == Order.Status.COMPLETADA
+        and order.consumption_type == values["consumption_type"]
+        and order.payment_method == values["payment_method"]
+        and order.subtotal == subtotal
+        and order.delivery_fee == 0
+        and order.total_amount == subtotal
+        and order.amount_paid == amount_paid
+        and order.change_given == change_given
+        and _lineas_coinciden(order, payload_items)
+    )
+
+
 class CurrentCashShiftView(APIView):
     permission_classes = [IsAuthenticated, CanOperatePOS]
 
@@ -584,39 +622,7 @@ class SyncOfflineOrderView(APIView):
                 review_reason = "; ".join(dict.fromkeys(review_reasons))[:255]
                 order = Order.objects.filter(uuid=values["uuid"]).first()
                 if order is not None:
-                    incoming_matches = (
-                        order.cash_shift_id == shift.pk
-                        and order.shift_order_number == values["shift_order_number"]
-                        and order.created_at == values["created_at"]
-                        and order.offline_created
-                        and order.consumption_type == values["consumption_type"]
-                        and order.payment_method == values["payment_method"]
-                        and order.subtotal == subtotal
-                        and order.total_amount == subtotal
-                        and order.amount_paid == amount_paid
-                        and order.change_given == change_given
-                    )
-                    if incoming_matches:
-                        incoming_matches = _lineas_coinciden(order, [
-                            {
-                                "product_id": item["product_id"],
-                                "product_name": item["product_name"],
-                                "quantity": item["quantity"],
-                                "unit_price": item["unit_price"],
-                                "notes": item.get("notes", ""),
-                                "modifiers": [
-                                    {
-                                        "modifier_id": modifier["modifier_id"],
-                                        "modifier_name": modifier["modifier_name"],
-                                        "price_at_sale": modifier["price_at_sale"],
-                                    }
-                                    for modifier in item["modifiers"]
-                                    for _ in range(modifier["quantity_per_unit"])
-                                ],
-                            }
-                            for item in items
-                        ])
-                    if incoming_matches:
+                    if _venta_offline_idempotente_coincide(order, shift, values, subtotal, amount_paid, change_given):
                         return Response(OrderReadSerializer(order).data)
                     return Response({"detail": "El UUID de venta ya existe con otros datos."}, status=status.HTTP_409_CONFLICT)
 
@@ -660,7 +666,7 @@ class SyncOfflineOrderView(APIView):
                     ])
         except IntegrityError:
             existing = Order.objects.filter(uuid=values["uuid"]).first()
-            if existing and existing.cash_shift.user_id == request.user.pk:
+            if existing and existing.cash_shift.user_id == request.user.pk and _venta_offline_idempotente_coincide(existing, existing.cash_shift, values, subtotal, amount_paid, change_given):
                 return Response(OrderReadSerializer(existing).data)
             return Response({"detail": "El turno o folio ya fue utilizado por otra venta."}, status=status.HTTP_409_CONFLICT)
 

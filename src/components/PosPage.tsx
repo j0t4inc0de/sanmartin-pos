@@ -121,6 +121,39 @@ export const PosPage = () => {
     if (user) void guardarTurnoEnCachePos(user.id, response).catch(() => undefined);
   };
 
+  const handleSaleSaved = async (offlineNextOrderNumber?: number) => {
+    if (offlineMode && offlineNextOrderNumber) {
+      setNextOrderNumber(offlineNextOrderNumber);
+      if (user && shift) {
+        void guardarTurnoEnCachePos(user.id, {
+          shift,
+          another_shift_open: anotherShiftOpen,
+          next_order_number: offlineNextOrderNumber,
+        }).catch(() => undefined);
+      }
+      return;
+    }
+    await refreshShift();
+  };
+
+  const handleReconnect = async () => {
+    setIsSubmitting(true);
+    setErrorMessage('');
+    try {
+      await cargarTokenCsrf(true);
+      const session = await solicitarApi<{ user: PosUser }>('/api/auth/session/');
+      const currentShift = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
+      setUser(session.user);
+      setShift(currentShift.shift);
+      setAnotherShiftOpen(currentShift.another_shift_open);
+      setNextOrderNumber(currentShift.next_order_number);
+      setOfflineMode(false);
+      await guardarTurnoEnCachePos(session.user.id, currentShift);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? `${error.message} Inicia sesión online para reanudar la sincronización.` : 'No se pudo reconectar con el servidor.');
+    } finally { setIsSubmitting(false); }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -436,7 +469,7 @@ export const PosPage = () => {
                 <p className="text-xs uppercase tracking-wider text-gray-400">Sesión activa</p>
                 <p className="mt-1 font-semibold text-white">{user.username}</p>
                 </div>
-                {offlineMode && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">Modo offline · solo lectura</span>}
+                {offlineMode && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">Modo offline · ventas en cola</span>}
                 <div className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.02] px-3 py-2 shadow-inner shadow-black/20" aria-label={`Hora local: ${chileClock.date}, ${chileClock.time}`}>
                   <span className="grid h-9 w-9 place-items-center rounded-xl border border-[#FACC15]/20 bg-[#FACC15]/[0.08] text-[#FACC15]" aria-hidden="true">
                     <Clock3 className="h-4 w-4" />
@@ -446,6 +479,15 @@ export const PosPage = () => {
                   <time className="font-heading text-lg tracking-[0.08em] tabular-nums text-white" dateTime={new Date().toISOString()}>{chileClock.time}</time>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={handleReconnect}
+                disabled={isSubmitting}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/25 px-3 py-2 text-sm text-emerald-200 transition hover:bg-emerald-950/30 disabled:opacity-50"
+                hidden={!offlineMode}
+              >
+                {isSubmitting ? 'Conectando…' : 'Reconectar y sincronizar'}
+              </button>
               <button
                 type="button"
                 onClick={handleLogout}
@@ -497,7 +539,7 @@ export const PosPage = () => {
             {shift ? (
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
                 <div className="min-w-0">
-                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} onSale={refreshShift} onPendingPaymentChange={setHasPendingPayment} />
+                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} />
                 </div>
                 <aside className="min-w-0 space-y-5 2xl:sticky 2xl:top-5">
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6">
