@@ -362,7 +362,7 @@ html[data-theme="light"] .appearance-trigger:hover {
 .pos-info-disclosure > summary:focus-visible { outline: 2px solid #facc15; outline-offset: 3px; border-radius: .375rem; }
 .pos-disclosure-meta { margin-left: auto; color: #8996a8; font-size: .6875rem; font-weight: 500; }
 
-.pos-category-filters { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: .25rem; scrollbar-width: thin; }
+.pos-category-filters { flex-wrap: wrap; overflow: visible; padding-bottom: .25rem; }
 .pos-filter-chip { min-height: 2.25rem; max-width: 100%; border: 1px solid rgb(148 163 184 / 22%); border-radius: .7rem; padding: .4rem .75rem; color: #c5cfdb; background: rgb(255 255 255 / 3%); font-size: .75rem; font-weight: 650; line-height: 1.2; transition: border-color 140ms, color 140ms, background-color 140ms; }
 .pos-filter-chip:hover { border-color: rgb(250 204 21 / 50%); color: #ffffff; background: rgb(250 204 21 / 7%); }
 .pos-filter-chip.is-active { border-color: #facc15; color: #171717; background: #facc15; box-shadow: 0 2px 8px rgb(250 204 21 / 12%); }
