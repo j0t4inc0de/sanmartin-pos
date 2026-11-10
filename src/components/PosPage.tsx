@@ -929,16 +929,6 @@ export const PosPage = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setCatalogManagerOpen(true)}
-                disabled={offlineMode}
-                title={offlineMode ? 'Conecta el POS para administrar el catálogo' : 'Administrar productos, categorías y modificadores'}
-                className="pos-catalog-open-button inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Boxes className="h-4 w-4" aria-hidden="true" />
-                Catálogo
-              </button>
-              <button
-                type="button"
                 onClick={() => void handleReconnect()}
                 disabled={isSubmitting}
                 className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/25 px-3 py-2 text-sm text-emerald-200 transition hover:bg-emerald-950/30 disabled:opacity-50"
@@ -957,8 +947,13 @@ export const PosPage = () => {
               </button>
             </div>
 
-            {catalogManagerOpen && <PosCatalogManager offlineMode={offlineMode} onClose={() => setCatalogManagerOpen(false)} />}
+            <nav className="pos-workspace-nav" aria-label="Secciones del punto de venta">
+              <button type="button" aria-current={!catalogManagerOpen ? 'page' : undefined} className={!catalogManagerOpen ? 'is-active' : ''} onClick={() => setCatalogManagerOpen(false)}><CircleDollarSign aria-hidden="true" />Caja</button>
+              <button type="button" aria-current={catalogManagerOpen ? 'page' : undefined} className={catalogManagerOpen ? 'is-active' : ''} onClick={() => setCatalogManagerOpen(true)}><Boxes aria-hidden="true" />Catálogo</button>
+              {offlineMode && catalogManagerOpen && <span>Solo lectura sin conexión</span>}
+            </nav>
 
+            {catalogManagerOpen ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setCatalogManagerOpen(false)} /> : <>
             <PosPrinterDiagnostics />
 
             {(!shift || !shift.is_open) && lastClosedShift && (
@@ -1141,6 +1136,7 @@ export const PosPage = () => {
                 </button>
               </form>
             )}
+            </>}
           </section>
         )}
       </div>

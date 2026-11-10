@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Archive, Check, CirclePlus, Package, RefreshCw, Tag, X } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Archive, ArrowLeft, Check, CirclePlus, Package, RefreshCw, Tag } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
+import { cargarCatalogoPos } from '../services/posLocalStore';
 
 type Section = 'products' | 'categories' | 'modifiers';
 interface Category { id: number; slug: string; name: string; sort_order: number; is_active: boolean; updated_at: string; }
@@ -16,7 +17,6 @@ const blankModifier = (): ModifierForm => ({ name: '', price: 0, modifier_type: 
 const money = (value: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
 
 export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boolean; onClose: () => void }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const [section, setSection] = useState<Section>('products');
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -29,14 +29,24 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    return () => { if (dialog?.open) dialog.close(); };
-  }, []);
-
   const loadData = async () => {
     setLoading(true); setError('');
+    if (offlineMode) {
+      try {
+        const stored = await cargarCatalogoPos();
+        if (!stored) throw new Error('No hay una copia local del catálogo en este equipo.');
+        setCategories(stored.catalog.categories.map(item => ({ ...item, is_active: true, updated_at: stored.catalog.generated_at })));
+        setProducts(stored.catalog.products.map(item => ({
+          ...item,
+          description: '', ingredients: [], original_price: null, badge: '',
+          is_available: true, is_active: true,
+        })));
+        setModifiers(stored.catalog.modifiers.map(item => ({ ...item, is_available: true, is_active: true })));
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'No se pudo leer la copia local del catálogo.');
+      } finally { setLoading(false); }
+      return;
+    }
     try {
       const [nextCategories, nextProducts, nextModifiers] = await Promise.all([
         solicitarApi<Category[]>('/api/pos/catalog/manage/categories/'),
@@ -49,7 +59,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { void loadData(); }, []);
+  useEffect(() => { void loadData(); }, [offlineMode]);
 
   const startNew = () => {
     setError(''); setMessage('');
@@ -95,17 +105,17 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const selectProduct = (item: Product) => setProductForm({ ...item, ingredients_text: item.ingredients.join('\n') });
   const selectCategory = (item: Category) => setCategoryForm({ id: item.id, name: item.name, sort_order: item.sort_order, is_active: item.is_active });
   const selectModifier = (item: Modifier) => setModifierForm({ id: item.id, name: item.name, price: item.price, modifier_type: item.modifier_type, is_available: item.is_available, is_active: item.is_active });
-  const close = () => dialogRef.current?.close();
+  const close = onClose;
 
   const sectionTitle = section === 'products' ? 'Productos' : section === 'categories' ? 'Categorías' : 'Modificadores';
   const sectionSingular = section === 'products' ? 'producto' : section === 'categories' ? 'categoría' : 'modificador';
   const itemsCount = section === 'products' ? products.length : section === 'categories' ? categories.length : modifiers.length;
 
-  return <dialog ref={dialogRef} className="pos-catalog-dialog" onClose={onClose} onClick={event => { if (event.target === dialogRef.current) close(); }}>
-    <section className="pos-catalog-surface" aria-labelledby="pos-catalog-title">
+  return <section className="pos-catalog-workspace" aria-labelledby="pos-catalog-title">
+    <div className="pos-catalog-surface">
       <header className="pos-catalog-header">
         <div><p className="pos-catalog-eyebrow">Administración del POS</p><h2 id="pos-catalog-title">Catálogo y menú</h2><p>Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.</p></div>
-        <button type="button" className="pos-catalog-close" aria-label="Cerrar administración del catálogo" onClick={close}><X aria-hidden="true" /></button>
+        <button type="button" className="pos-catalog-close" onClick={close}><ArrowLeft aria-hidden="true" /><span>Volver a caja</span></button>
       </header>
       {offlineMode && <div className="pos-catalog-offline" role="status">Estás sin conexión. Puedes revisar el catálogo, pero debes reconectar para modificarlo.</div>}
       <div className="pos-catalog-tabs" role="tablist" aria-label="Secciones del catálogo">
@@ -115,11 +125,11 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       </div>
       <div className="pos-catalog-content">
         <aside className="pos-catalog-list" aria-label={`Lista de ${sectionTitle.toLocaleLowerCase('es-CL')}`}>
-          <div className="pos-catalog-list-heading"><span>{itemsCount} {sectionTitle.toLocaleLowerCase('es-CL')}</span><button type="button" onClick={startNew}><CirclePlus aria-hidden="true" />Nuevo</button></div>
+          <div className="pos-catalog-list-heading"><span>{itemsCount} {sectionTitle.toLocaleLowerCase('es-CL')}</span><button type="button" onClick={startNew} disabled={offlineMode}><CirclePlus aria-hidden="true" />Nuevo</button></div>
           {loading ? <p className="pos-catalog-muted">Cargando catálogo…</p> : section === 'products' ? products.map(item => <button type="button" key={item.id} className={`pos-catalog-list-item ${productForm.id === item.id ? 'is-selected' : ''}`} onClick={() => selectProduct(item)}><span><strong>{item.name}</strong><small>{item.category_name} · {money(item.price)}</small></span><i className={item.is_active && item.is_available ? 'is-on' : ''}>{item.is_active ? item.is_available ? 'Disponible' : 'Agotado' : 'Inactivo'}</i></button>) : section === 'categories' ? categories.map(item => <button type="button" key={item.id} className={`pos-catalog-list-item ${categoryForm.id === item.id ? 'is-selected' : ''}`} onClick={() => selectCategory(item)}><span><strong>{item.name}</strong><small>Orden {item.sort_order}</small></span><i className={item.is_active ? 'is-on' : ''}>{item.is_active ? 'Activa' : 'Inactiva'}</i></button>) : modifiers.map(item => <button type="button" key={item.id} className={`pos-catalog-list-item ${modifierForm.id === item.id ? 'is-selected' : ''}`} onClick={() => selectModifier(item)}><span><strong>{item.name}</strong><small>{item.modifier_type === 'EXTRA_PAGO' ? 'Extra pagado' : 'Indicación de cocina'} · {money(item.price)}</small></span><i className={item.is_active && item.is_available ? 'is-on' : ''}>{item.is_active ? item.is_available ? 'Disponible' : 'Agotado' : 'Inactivo'}</i></button>)}
           {!loading && itemsCount === 0 && <p className="pos-catalog-muted">Todavía no hay {sectionTitle.toLocaleLowerCase('es-CL')}.</p>}
         </aside>
-        <div className="pos-catalog-editor">
+        <div className="pos-catalog-editor" inert={offlineMode}>
           <div className="pos-catalog-editor-heading"><div><p>{sectionTitle}</p><h3>{(section === 'products' ? productForm.id : section === 'categories' ? categoryForm.id : modifierForm.id) ? 'Editar registro' : `Agregar ${sectionSingular}`}</h3></div><button type="button" className="pos-catalog-refresh" onClick={() => void loadData()} disabled={loading || saving}><RefreshCw aria-hidden="true" />Actualizar lista</button></div>
           {error && <div className="pos-catalog-error" role="alert">{error}</div>}
           {message && <div className="pos-catalog-success" role="status"><Check aria-hidden="true" />{message}</div>}
@@ -147,7 +157,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
           </form></>}
         </div>
       </div>
-      <footer className="pos-catalog-footer"><span>Los registros se desactivan para conservar el historial de ventas.</span><button type="button" onClick={close}>Cerrar</button></footer>
-    </section>
-  </dialog>;
+      <footer className="pos-catalog-footer"><span>Los registros se desactivan para conservar el historial de ventas.</span><button type="button" onClick={close}>Volver a caja</button></footer>
+    </div>
+  </section>;
 }
