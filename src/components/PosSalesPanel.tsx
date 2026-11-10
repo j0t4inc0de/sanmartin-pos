@@ -11,7 +11,11 @@ import {
   eliminarCobroPendientePos,
   eliminarVentaOfflineDeColaPos,
   listarVentasOfflineEnColaPos,
+  listarAnulacionesOfflinePos,
   marcarErrorVentaOfflineEnColaPos,
+  marcarErrorAnulacionOfflinePos,
+  guardarAnulacionOfflinePos,
+  eliminarAnulacionOfflinePos,
   guardarVentaOfflineEnColaPos,
   type PosCatalog as Catalog,
   type PosPendingPaymentDraft,
@@ -33,10 +37,11 @@ interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | n
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
-export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
+export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [offlineOrders, setOfflineOrders] = useState<PosOfflineOrder[]>([]);
+  const [offlineCancellations, setOfflineCancellations] = useState<Awaited<ReturnType<typeof listarAnulacionesOfflinePos>>>([]);
   const [syncingOfflineOrders, setSyncingOfflineOrders] = useState(false);
   const syncInProgress = useRef(false);
   const [lines, setLines] = useState<CartLine[]>([]);
@@ -66,7 +71,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     onPendingPaymentChange(!draftLoaded || draftLoadError || quote !== null);
   }, [draftLoaded, draftLoadError, quote, onPendingPaymentChange]);
 
-  useEffect(() => { onQueueChange(offlineOrders.length > 0); }, [offlineOrders, onQueueChange]);
+  useEffect(() => { onQueueChange(offlineOrders.length > 0 || offlineCancellations.length > 0); }, [offlineOrders, offlineCancellations, onQueueChange]);
 
   const currentDraft = (): Omit<PosSaleDraft, 'saved_at'> => ({
     shift_uuid: shiftUuid,
@@ -266,12 +271,18 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     setOfflineOrders(queue);
     return queue;
   };
+  const loadOfflineCancellations = async () => {
+    const queue = await listarAnulacionesOfflinePos(shiftUuid);
+    setOfflineCancellations(queue);
+    return queue;
+  };
   const syncOfflineOrders = async () => {
     if (offlineMode || !navigator.onLine || syncInProgress.current) return;
     syncInProgress.current = true;
     setSyncingOfflineOrders(true);
     try {
       const queue = await loadOfflineOrders();
+      const cancellationQueue = await loadOfflineCancellations();
       let syncFailed = false;
       for (const order of queue) {
         try {
@@ -284,10 +295,23 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           break;
         }
       }
+      if (!syncFailed) {
+        for (const cancellation of cancellationQueue) {
+          try {
+            await solicitarApi(`/api/orders/${cancellation.order_uuid}/cancel/`, { method: 'POST', body: { reason: cancellation.reason } });
+            await eliminarAnulacionOfflinePos(cancellation.order_uuid);
+          } catch (error) {
+            await marcarErrorAnulacionOfflinePos(cancellation.order_uuid, error instanceof Error ? error.message : 'No se pudo sincronizar la anulación.');
+            syncFailed = true;
+            break;
+          }
+        }
+      }
       const remaining = await loadOfflineOrders();
+      const remainingCancellations = await loadOfflineCancellations();
       if (navigator.onLine && !syncFailed) {
         await loadOrders();
-        if (queue.length && remaining.length === 0) await onSale();
+        if ((queue.length > 0 || cancellationQueue.length > 0) && remaining.length === 0 && remainingCancellations.length === 0) await onSale();
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'No se pudo procesar la cola local.');
@@ -295,7 +319,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   };
   useEffect(() => {
     void loadCatalog();
-    void loadOfflineOrders().then(queue => { if (!offlineMode && navigator.onLine && queue.length) void syncOfflineOrders(); }).catch(() => setError('No se pudo consultar la cola de ventas guardadas.'));
+    void Promise.all([loadOfflineOrders(), loadOfflineCancellations()]).then(([queue, cancellations]) => { if (!offlineMode && navigator.onLine && (queue.length || cancellations.length)) void syncOfflineOrders(); }).catch(() => setError('No se pudo consultar la cola de ventas guardadas.'));
     if (!offlineMode) void loadOrders();
     const handleOnline = () => { if (!offlineMode) void syncOfflineOrders(); };
     window.addEventListener('online', handleOnline);
@@ -490,12 +514,28 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     finally { setBusy(false); }
   };
 
+  const cancelOfflineOrder = async (order: PosOfflineOrder) => {
+    const reason = window.prompt(`Motivo obligatorio para anular la venta #${order.shift_order_number}:`);
+    if (reason === null) return;
+    if (!reason.trim()) { setError('Escribe un motivo para anular la venta.'); return; }
+    if (!window.confirm(`¿Confirmas anular la venta #${order.shift_order_number}? La venta se conservará para sincronizar su registro y anulación.`)) return;
+    const total = order.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0);
+    try {
+      await guardarAnulacionOfflinePos({ order_uuid: order.uuid, shift_uuid: order.shift_uuid, shift_order_number: order.shift_order_number, reason: reason.trim(), requested_at: new Date().toISOString() });
+      setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
+      setOfflineCancellations(await listarAnulacionesOfflinePos(shiftUuid));
+      setMessage(`Anulación de la venta #${order.shift_order_number} guardada en este equipo. Se enviará después de sincronizar la venta.`);
+      if (offlineMode) await onSale(undefined, { payment_method: order.payment_method, total_amount: total });
+      if (!offlineMode && navigator.onLine) void syncOfflineOrders();
+    } catch (error) { setError(error instanceof Error ? error.message : 'No se pudo guardar la anulación offline.'); }
+  };
+
   const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => sum + (catalog?.modifiers.find(m => m.id === value.modifier_id)?.price ?? value.price_at_sale) * value.quantity_per_unit, 0);
 
   return <section className="space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Venta offline' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Catálogo guardado' : 'Actualizar menú'}</button></header>
     {offlineMode && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">Modo offline: puedes registrar la venta en este equipo. No cierres el turno hasta sincronizar todas las ventas pendientes.</div>}
-    {offlineOrders.length > 0 && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{offlineOrders.length} {offlineOrders.length === 1 ? 'venta pendiente' : 'ventas pendientes'} de sincronización</strong><span>{syncingOfflineOrders ? 'Sincronizando…' : offlineMode ? 'Se enviarán al reconectar' : 'Reintento automático al recuperar conexión'}</span>{!offlineMode && <button type="button" className="rounded-lg border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50" disabled={syncingOfflineOrders || !navigator.onLine} onClick={() => void syncOfflineOrders()}>Reintentar sincronización</button>}</div>{offlineOrders.some(order => order.sync_error) && <p className="mt-2 text-xs text-amber-200">{offlineOrders.find(order => order.sync_error)?.sync_error} · Las ventas siguientes esperan que se resuelva este folio.</p>}</div>}
+    {(offlineOrders.length > 0 || offlineCancellations.length > 0) && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{offlineOrders.length} ventas y {offlineCancellations.length} anulaciones pendientes</strong><span>{syncingOfflineOrders ? 'Sincronizando…' : offlineMode ? 'Se enviarán al reconectar' : 'Reintento automático al recuperar conexión'}</span>{!offlineMode && <button type="button" className="rounded-lg border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50" disabled={syncingOfflineOrders || !navigator.onLine} onClick={() => void syncOfflineOrders()}>Reintentar sincronización</button>}</div>{offlineOrders.map(order => <div key={order.uuid} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/10 pt-3"><span>Venta #{String(order.shift_order_number).padStart(3, '0')} {offlineCancellations.some(item => item.order_uuid === order.uuid) ? '· Anulación pendiente' : '· Pendiente de sincronización'}</span>{!offlineCancellations.some(item => item.order_uuid === order.uuid) && <button type="button" disabled={busy || syncingOfflineOrders} className="rounded-lg border border-red-200/30 px-3 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50" onClick={() => void cancelOfflineOrder(order)}>Anular</button>}</div>)}{[...offlineOrders.map(order => order.sync_error), ...offlineCancellations.map(item => item.sync_error)].filter(Boolean).length > 0 && <p className="mt-2 text-xs text-amber-200">{offlineOrders.find(order => order.sync_error)?.sync_error ?? offlineCancellations.find(item => item.sync_error)?.sync_error} · Los eventos siguientes esperan que se resuelva este folio.</p>}</div>}
     <aside aria-label="Estado de datos locales" className="space-y-3 rounded-xl border border-white/10 bg-[#101010] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">Respaldo de caja</h3><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">El catálogo, el borrador y la cotización quedan guardados en este equipo. Los cobros se registran con conexión; si el servidor no confirma una venta cobrada, podrás reintentarla. La sincronización automática offline sigue pendiente.</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">Almacenamiento local</span></div>
       <div className="grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-2">

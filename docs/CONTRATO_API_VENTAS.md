@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
 - **Versión:** 1.2
-- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS restaura la sesión automáticamente y permite abrir/cerrar turnos localmente; sincroniza apertura, ventas en orden y cierre. El usuario aceptó los flujos de venta, reconexión, apertura y cierre offline. El cierre automático offline a las 00:30 sigue pendiente.
+- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS restaura la sesión automáticamente y permite abrir/cerrar turnos localmente; sincroniza apertura, ventas en orden, anulaciones y cierre. El usuario aceptó el acceso offline, detección de caída, venta, reconexión y apertura/cierre offline. La anulación offline está implementada y pendiente de aceptación manual; el cierre automático offline a las 00:30 sigue pendiente.
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
@@ -211,4 +211,4 @@ Los errores de precio deben incluir el carrito recalculado y no registrar ni cob
 - Mantener un contador local persistente por turno para asignar el folio. El backend valida la restricción única y nunca renumera silenciosamente una comanda ya impresa.
 - Mantener en una cola duradera la apertura (si está pendiente), ventas por folio y cierre. Ante un error, pausar operaciones posteriores del mismo turno y conservar todos los registros para reintento.
 
-La API implementa catálogo POS, cotización firmada, registro online idempotente, sincronización idempotente de ventas offline y anulación auditada; `/pos` conserva el catálogo y una cola durable de ventas cobradas, e intenta sincronizar al reconectar. El usuario aceptó manualmente el flujo offline de venta al detener y reiniciar la API. Las pruebas de `apps.sales` se ejecutan en SQLite temporal y no prueban concurrencia de PostgreSQL. Siguen pendientes apertura/anulación/cierre offline, conciliación de ventas asociadas a turnos cerrados, cierre automático e impresión física.
+La API implementa catálogo POS, cotización firmada, registro online idempotente, sincronización idempotente de ventas offline y anulación auditada. `/pos` conserva ventas y anulaciones en colas locales; al reconectar, envía las ventas por folio, luego las anulaciones y permite sincronizar el cierre solo cuando ambas colas estén vacías. La anulación offline de ventas guardadas en la cola local está pendiente de aceptación manual. Las pruebas de `apps.sales` se ejecutan en SQLite temporal y no prueban concurrencia de PostgreSQL. Siguen pendientes conciliación de ventas asociadas a turnos cerrados, cierre automático e impresión física.

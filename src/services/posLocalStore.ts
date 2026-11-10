@@ -138,6 +138,16 @@ export interface PosOfflineShiftEvent {
   sync_error: string | null;
 }
 
+export interface PosOfflineCancellation {
+  order_uuid: string;
+  shift_uuid: string;
+  shift_order_number: number;
+  reason: string;
+  requested_at: string;
+  saved_at: string;
+  sync_error: string | null;
+}
+
 interface StoredCatalog {
   key: 'current';
   catalog: PosCatalog;
@@ -164,7 +174,7 @@ interface StoredOfflineOrder extends PosOfflineOrder {}
 interface StoredOfflineShiftEvent extends PosOfflineShiftEvent {}
 
 const DATABASE_NAME = 'san-martin-pos';
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 7;
 const CATALOG_STORE = 'pos_catalog';
 const DRAFT_STORE = 'pos_sale_drafts';
 const PAYMENT_DRAFT_STORE = 'pos_pending_payments';
@@ -172,6 +182,7 @@ const OFFLINE_ACCESS_STORE = 'pos_offline_access';
 const SHIFT_CACHE_STORE = 'pos_shift_cache';
 const OFFLINE_ORDER_STORE = 'pos_offline_orders';
 const OFFLINE_SHIFT_EVENT_STORE = 'pos_offline_shift_events';
+const OFFLINE_CANCELLATION_STORE = 'pos_offline_cancellations';
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -206,6 +217,9 @@ const openDatabase = (): Promise<IDBDatabase> => {
         }
         if (!database.objectStoreNames.contains(OFFLINE_SHIFT_EVENT_STORE)) {
           database.createObjectStore(OFFLINE_SHIFT_EVENT_STORE, { keyPath: 'key' });
+        }
+        if (!database.objectStoreNames.contains(OFFLINE_CANCELLATION_STORE)) {
+          database.createObjectStore(OFFLINE_CANCELLATION_STORE, { keyPath: 'order_uuid' });
         }
       };
       request.onsuccess = () => {
@@ -488,6 +502,53 @@ export const marcarErrorVentaOfflineEnColaPos = async (uuid: string, error: stri
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el error de sincronización.'));
     transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del error de sincronización.'));
+  });
+};
+
+export const guardarAnulacionOfflinePos = async (cancellation: Omit<PosOfflineCancellation, 'saved_at' | 'sync_error'>): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_CANCELLATION_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_CANCELLATION_STORE).put({ ...cancellation, saved_at: new Date().toISOString(), sync_error: null } satisfies PosOfflineCancellation);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar la anulación offline.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado de la anulación offline.'));
+  });
+};
+
+export const listarAnulacionesOfflinePos = async (shiftUuid?: string): Promise<PosOfflineCancellation[]> => {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_CANCELLATION_STORE, 'readonly');
+    const request = transaction.objectStore(OFFLINE_CANCELLATION_STORE).getAll();
+    request.onsuccess = () => resolve((request.result as PosOfflineCancellation[])
+      .filter(item => !shiftUuid || item.shift_uuid === shiftUuid)
+      .sort((left, right) => left.shift_order_number - right.shift_order_number));
+    request.onerror = () => reject(request.error ?? new Error('No se pudieron leer las anulaciones offline.'));
+  });
+};
+
+export const eliminarAnulacionOfflinePos = async (orderUuid: string): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_CANCELLATION_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_CANCELLATION_STORE).delete(orderUuid);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo retirar la anulación sincronizada.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló la limpieza de la anulación.'));
+  });
+};
+
+export const marcarErrorAnulacionOfflinePos = async (orderUuid: string, error: string): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_CANCELLATION_STORE, 'readwrite');
+    const store = transaction.objectStore(OFFLINE_CANCELLATION_STORE);
+    const request = store.get(orderUuid);
+    request.onsuccess = () => { if (request.result) store.put({ ...request.result, sync_error: error.slice(0, 255) } satisfies PosOfflineCancellation); };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el error de sincronización de la anulación.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del error de anulación.'));
   });
 };
 

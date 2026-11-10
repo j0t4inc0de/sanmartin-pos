@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
-import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -222,7 +222,7 @@ export const PosPage = () => {
     let allSynced = true;
     for (const event of events) {
       try {
-        if ((await listarVentasOfflineEnColaPos(event.shift_uuid)).length > 0) {
+        if ((await listarVentasOfflineEnColaPos(event.shift_uuid)).length > 0 || (await listarAnulacionesOfflinePos(event.shift_uuid)).length > 0) {
           allSynced = false;
           break;
         }
@@ -244,19 +244,19 @@ export const PosPage = () => {
     return allSynced;
   };
 
-  const handleSaleSaved = async (offlineNextOrderNumber?: number) => {
-    if (offlineMode && offlineNextOrderNumber) {
-      setNextOrderNumber(offlineNextOrderNumber);
+  const handleSaleSaved = async (offlineNextOrderNumber?: number, offlineCancellation?: { payment_method: string; total_amount: number }) => {
+    if (offlineMode && (offlineNextOrderNumber || offlineCancellation)) {
+      if (offlineNextOrderNumber) setNextOrderNumber(offlineNextOrderNumber);
       if (user && shift) {
         const queuedOrders = await listarVentasOfflineEnColaPos(shift.uuid);
-        const newOrder = queuedOrders.find(order => order.shift_order_number === offlineNextOrderNumber - 1);
+        const newOrder = offlineNextOrderNumber ? queuedOrders.find(order => order.shift_order_number === offlineNextOrderNumber - 1) : undefined;
         const newTotal = newOrder?.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0) ?? 0;
         const updatedShift = {
           ...shift,
           sales_summary: shift.sales_summary.map(item => ({
             ...item,
-            total_amount: item.total_amount + (newOrder?.payment_method === item.payment_method ? newTotal : 0),
-            order_count: item.order_count + (newOrder?.payment_method === item.payment_method ? 1 : 0),
+            total_amount: Math.max(0, item.total_amount + (newOrder?.payment_method === item.payment_method ? newTotal : 0) - (offlineCancellation?.payment_method === item.payment_method ? offlineCancellation.total_amount : 0)),
+            order_count: Math.max(0, item.order_count + (newOrder?.payment_method === item.payment_method ? 1 : 0) - (offlineCancellation?.payment_method === item.payment_method ? 1 : 0)),
           })),
         };
         setShift(updatedShift);
@@ -264,7 +264,7 @@ export const PosPage = () => {
         await guardarTurnoEnCachePos(user.id, {
           shift: updatedShift,
           another_shift_open: anotherShiftOpen,
-          next_order_number: offlineNextOrderNumber,
+          next_order_number: offlineNextOrderNumber ?? nextOrderNumber,
         });
       }
       return;
@@ -282,7 +282,8 @@ export const PosPage = () => {
       if (!await syncPendingOpenEvents(session.user.id)) throw new Error('La apertura del turno sigue pendiente; reintenta la sincronización.');
       const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(session.user.id);
       const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
-      if (queuedSales.length === 0) await syncPendingCloseEvents(session.user.id);
+      const queuedCancellations = cachedShift?.shift ? await listarAnulacionesOfflinePos(cachedShift.shift.uuid) : [];
+      if (queuedSales.length === 0 && queuedCancellations.length === 0) await syncPendingCloseEvents(session.user.id);
       const currentShift = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
       setUser(session.user);
       setShift(currentShift.shift);

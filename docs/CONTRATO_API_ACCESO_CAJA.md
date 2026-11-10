@@ -1,7 +1,7 @@
 # Contrato de acceso y turnos del POS
 
 - **Versión:** 1.5
-- **Estado:** acceso online con contraseña; sesión offline automática y operaciones locales de apertura, ventas y cierre implementadas. Al reconectar, la apertura se envía antes de las ventas y el cierre después de vaciar la cola. El usuario confirmó las pruebas manuales offline. Cierre automático offline a las 00:30 y conciliación de ventas tras cerrar un turno siguen pendientes.
+- **Estado:** acceso online con contraseña; sesión offline automática, detección de caída sin recargar y operaciones locales de apertura, ventas y cierre implementadas y aceptadas manualmente por el usuario. Al reconectar, la apertura se envía antes de las ventas y el cierre después de vaciar la cola. Cierre automático offline a las 00:30 y conciliación de ventas tras cerrar un turno siguen pendientes.
 - **Autenticación:** sesión Django y token CSRF
 
 ## Preparar la sesión

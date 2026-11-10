@@ -1,9 +1,9 @@
 # Plan maestro de desarrollo — San Martín POS
 
-- **Versión:** 1.3 — acceso al POS sin API disponible
+- **Versión:** 1.4 — anulaciones offline
 - **Fecha:** 10 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; autenticación online con contraseña, detección de caída de API sin recargar y restauración automática de sesión offline sin PIN (pendientes de aceptación manual), turnos online/offline, ventas online/offline, cierre manual y resumen por medio de pago disponibles localmente. El usuario confirmó la venta offline, su sincronización al reiniciar Django y las pruebas de apertura/cierre offline. Siguen pendientes anulación offline, conciliación de turnos cerrados, cierre automático e impresión.
+- **Estado:** Base técnica migrada; autenticación online con contraseña, detección de caída de API sin recargar, inicio offline desde la cuenta guardada, turnos y ventas online/offline, anulaciones locales de ventas en cola, cierre manual y resumen por medio de pago disponibles localmente. El usuario confirmó las pruebas de sesión, venta, reconexión y apertura/cierre offline. La anulación offline queda pendiente de aceptación manual; siguen pendientes conciliación de turnos cerrados, cierre automático e impresión.
 
 ---
 
@@ -20,7 +20,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 - El catálogo de caja se obtiene desde `GET /api/pos/catalog/` y se conserva localmente en IndexedDB para recuperarlo si falla la conexión.
 - El borrador, las cotizaciones, la sesión previamente autenticada, los eventos de apertura/cierre y las ventas cobradas se guardan localmente. Al recuperar conexión, la apertura se sincroniza antes que las ventas y el cierre después de vaciar la cola.
 - Los archivos `docs/init_schema.sql` y `docs/models_django_reference.py` son referencias de diseño; las migraciones Django definen el esquema ejecutable.
-- La apertura/anulación/cierre offline, conciliación de turnos cerrados, cierre automático e impresión física siguen pendientes.
+- La apertura, ventas, anulaciones de ventas en cola y cierre offline están implementados; falta aceptación manual de las anulaciones. Siguen pendientes conciliación de turnos cerrados, cierre automático e impresión física.
 
 ## 3. Objetivos del producto
 
@@ -381,7 +381,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 
 - **Confirmado:** Django REST, PostgreSQL, backend en `backend/`, un equipo inicial, sesión offline solo después de autenticación online, impresión en la primera versión, pagos manuales y combos fuera de la caja.
 - **Creado:** estructura Django; aplicaciones `users`, `catalog` y `sales`; migraciones; configuración local; Compose opcional ligado a `127.0.0.1`; proxy Vite para `/api` y `/admin`; API pública de catálogo; API de sesión y operaciones iniciales de turno. Contratos en `docs/CONTRATO_API_CATALOGO.md` y `docs/CONTRATO_API_ACCESO_CAJA.md`.
-- **Etapas 4–5 — avance:** API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` persiste catálogo, borrador, cotización, sesión local, eventos de turnos y ventas offline en IndexedDB. El usuario aceptó la venta offline, su sincronización al reiniciar Django y las pruebas de apertura/cierre offline. Falta manejar anulación offline y conciliación para ventas asociadas a turnos ya cerrados.
+- **Etapas 4–5 — avance:** API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` persiste catálogo, borrador, cotización, sesión local, eventos de turnos, ventas y anulaciones offline en IndexedDB. Las anulaciones se sincronizan después de las ventas y antes del cierre. El usuario aceptó el acceso offline, detección de caída y pruebas de venta, reconexión y apertura/cierre offline. Falta aceptación manual de anulación offline y conciliación para ventas asociadas a turnos ya cerrados.
 - **Entorno local preparado:** Python 3.14.10 instalado en el perfil de Windows; entorno virtual creado en `backend/.venv`; dependencias fijadas instaladas; servicio PostgreSQL 16 iniciado y puerto `5433` confirmado. PostgreSQL 18 sigue en `5432`.
 - **Configuración local:** `backend/.env` creado y excluido de Git; `DJANGO_SECRET_KEY` generado localmente y conexión configurada para PostgreSQL 16 en `127.0.0.1:5433`.
 - **Catálogo local:** cargadas desde la carta existente 8 categorías y 64 productos; las promociones web permanecen fuera del catálogo del POS. El cargador solo agrega faltantes y conserva los registros existentes.
