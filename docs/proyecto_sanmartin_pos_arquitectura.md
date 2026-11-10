@@ -159,6 +159,7 @@ El Food Truck opera en Puente Alto sobre conexión móvil (4G/Wi-Fi). Ante caíd
 | **`POST`** | `/api/pos/orders/{id}/cancel/` | `admin` | Anulación en 1 clic de una comanda con registro de `cancellation_reason`. |
 | **`GET`** | `/api/pos/reports/shift-summary/{id}/` | `admin` | Arqueo automático de caja agregando por método de pago. |
 | **`GET`** | `/api/pos/reports/rush-hours/` | `admin` | Agrupación por intervalos de hora para el gráfico de horas punta. |
+| **`GET`** | `/api/reports/sales/?period=day&date=YYYY-MM-DD` o `?period=month&month=YYYY-MM` | `sales.can_operate_pos` | Reporte agregado por período: pagos, anulaciones, productos vendidos, horas y turnos. Ver `docs/CONTRATO_API_REPORTES.md`. |
 
 ---
 

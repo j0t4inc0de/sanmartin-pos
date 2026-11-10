@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Boxes, CircleDollarSign, Clock3, LogOut } from 'lucide-react';
+import { BarChart3, Boxes, CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
+import { PosReports } from './PosReports';
 import { usePosDialogs } from './PosDialogs';
 import { cargarAccesoOfflinePos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
@@ -128,7 +129,7 @@ export const PosPage = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
   const [offlineMode, setOfflineMode] = useState(false);
-  const [catalogManagerOpen, setCatalogManagerOpen] = useState(false);
+  const [activeWorkspace, setActiveWorkspace] = useState<'sales' | 'catalog' | 'reports'>('sales');
   const [hasQueuedOfflineSales, setHasQueuedOfflineSales] = useState(false);
   const [autoCloseDue, setAutoCloseDue] = useState(false);
   const [autoCloseWaitingForPayment, setAutoCloseWaitingForPayment] = useState(false);
@@ -948,12 +949,13 @@ export const PosPage = () => {
             </div>
 
             <nav className="pos-workspace-nav" aria-label="Secciones del punto de venta">
-              <button type="button" aria-current={!catalogManagerOpen ? 'page' : undefined} className={!catalogManagerOpen ? 'is-active' : ''} onClick={() => setCatalogManagerOpen(false)}><CircleDollarSign aria-hidden="true" />Caja</button>
-              <button type="button" aria-current={catalogManagerOpen ? 'page' : undefined} className={catalogManagerOpen ? 'is-active' : ''} onClick={() => setCatalogManagerOpen(true)}><Boxes aria-hidden="true" />Catálogo</button>
-              {offlineMode && catalogManagerOpen && <span>Solo lectura sin conexión</span>}
+              <button type="button" aria-current={activeWorkspace === 'sales' ? 'page' : undefined} className={activeWorkspace === 'sales' ? 'is-active' : ''} onClick={() => setActiveWorkspace('sales')}><CircleDollarSign aria-hidden="true" />Caja</button>
+              <button type="button" aria-current={activeWorkspace === 'catalog' ? 'page' : undefined} className={activeWorkspace === 'catalog' ? 'is-active' : ''} onClick={() => setActiveWorkspace('catalog')}><Boxes aria-hidden="true" />Catálogo</button>
+              <button type="button" aria-current={activeWorkspace === 'reports' ? 'page' : undefined} className={activeWorkspace === 'reports' ? 'is-active' : ''} onClick={() => setActiveWorkspace('reports')}><BarChart3 aria-hidden="true" />Reportes</button>
+              {offlineMode && activeWorkspace === 'catalog' && <span>Solo lectura sin conexión</span>}
             </nav>
 
-            {catalogManagerOpen ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setCatalogManagerOpen(false)} /> : <>
+            {activeWorkspace === 'catalog' ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} /> : activeWorkspace === 'reports' ? <PosReports offlineMode={offlineMode} /> : <>
             <PosPrinterDiagnostics />
 
             {(!shift || !shift.is_open) && lastClosedShift && (

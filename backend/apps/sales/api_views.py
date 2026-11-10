@@ -1,11 +1,13 @@
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Sum
+from django.db.models import Count, Max, Sum
+from django.db.models.functions import ExtractHour
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 from apps.catalog.models import Modifier, Product
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -28,6 +30,122 @@ from .permissions import CanOperatePOS
 
 QUOTE_SIGNER = TimestampSigner(salt="sales.order.quote.v1")
 QUOTE_MAX_AGE_SECONDS = 5 * 60
+REPORT_TIMEZONE = ZoneInfo("America/Santiago")
+
+
+def _report_period(request):
+    period = request.query_params.get("period", "day")
+    if period == "day":
+        raw_day = request.query_params.get("date", "")
+        selected_day = parse_date(raw_day) if raw_day else timezone.now().astimezone(REPORT_TIMEZONE).date()
+        if selected_day is None:
+            return None
+        start = datetime.combine(selected_day, time.min, tzinfo=REPORT_TIMEZONE)
+        return period, start, start + timedelta(days=1), selected_day.isoformat()
+    if period == "month":
+        raw_month = request.query_params.get("month", "")
+        try:
+            year_text, month_text = raw_month.split("-", maxsplit=1)
+            year, month = int(year_text), int(month_text)
+            selected_month = date(year, month, 1)
+            next_month = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+        except (ValueError, TypeError):
+            return None
+        start = datetime.combine(selected_month, time.min, tzinfo=REPORT_TIMEZONE)
+        end = datetime.combine(next_month, time.min, tzinfo=REPORT_TIMEZONE)
+        return period, start, end, selected_month.strftime("%Y-%m")
+    return None
+
+
+class SalesReportView(APIView):
+    permission_classes = [IsAuthenticated, CanOperatePOS]
+
+    def get(self, request):
+        period_data = _report_period(request)
+        if period_data is None:
+            return Response(
+                {"detail": "Indica un período válido: day con date YYYY-MM-DD o month con month YYYY-MM."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        period, start, end, selected = period_data
+        orders = Order.objects.filter(
+            cash_shift__user=request.user,
+            created_at__gte=start,
+            created_at__lt=end,
+        )
+        completed = orders.filter(status=Order.Status.COMPLETADA)
+        completed_totals = completed.aggregate(total=Sum("total_amount"), count=Count("id"))
+        total = completed_totals["total"] or 0
+        count = completed_totals["count"] or 0
+        payment_labels = dict(Order.PaymentMethod.choices)
+        payments = [
+            {
+                "payment_method": item["payment_method"],
+                "label": payment_labels.get(item["payment_method"], item["payment_method"]),
+                "total_amount": item["total"] or 0,
+                "order_count": item["count"],
+            }
+            for item in completed.values("payment_method").annotate(
+                total=Sum("total_amount"), count=Count("id")
+            ).order_by("payment_method")
+        ]
+        cancelled = orders.filter(status=Order.Status.ANULADA).aggregate(
+            total=Sum("total_amount"), count=Count("id")
+        )
+        top_products = list(
+            OrderItem.objects.filter(
+                order__cash_shift__user=request.user,
+                order__created_at__gte=start,
+                order__created_at__lt=end,
+                order__status=Order.Status.COMPLETADA,
+            ).values("product_name").annotate(quantity=Sum("quantity"))
+            .order_by("-quantity", "product_name")[:8]
+        )
+        rush_hours = list(
+            completed.annotate(hour=ExtractHour("created_at", tzinfo=REPORT_TIMEZONE))
+            .values("hour").annotate(
+                order_count=Count("id"), total_amount=Sum("total_amount")
+            ).order_by("hour")
+        )
+        shifts = [
+            {
+                "uuid": str(shift.uuid),
+                "opened_at": shift.opened_at,
+                "closed_at": shift.closed_at,
+                "initial_cash": shift.initial_cash,
+                "final_cash": shift.final_cash,
+                "counted_cash": shift.counted_cash,
+                "cash_difference": (
+                    shift.counted_cash - shift.final_cash
+                    if shift.counted_cash is not None and shift.final_cash is not None
+                    else None
+                ),
+                "closed_automatically": shift.closed_automatically,
+            }
+            for shift in CashShift.objects.filter(
+                user=request.user, opened_at__gte=start, opened_at__lt=end
+            ).order_by("opened_at")
+        ]
+        return Response({
+            "period": period,
+            "selected": selected,
+            "start": start,
+            "end_exclusive": end,
+            "timezone": "America/Santiago",
+            "sales": {
+                "total_amount": total,
+                "order_count": count,
+                "average_ticket": (total + count // 2) // count if count else 0,
+            },
+            "payments": payments,
+            "cancellations": {
+                "order_count": cancelled["count"] or 0,
+                "total_amount": cancelled["total"] or 0,
+            },
+            "top_products": top_products,
+            "rush_hours": rush_hours,
+            "shifts": shifts,
+        })
 
 
 def _turno_abierto_del_usuario(user):

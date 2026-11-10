@@ -50,7 +50,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** crear y actualizar producto, categoría y modificador; retirar y restaurar cada tipo; encontrar productos por nombre o categoría (sin distinguir tildes), limpiar la búsqueda y ver el estado sin resultados; comprobar confirmación, conservación del historial, reflejo en catálogo del POS y carta pública, sincronización automática y protección de usuarios sin permiso. Confirmar ambos temas y que offline se informa que se requiere reconexión y no se presenta como guardado.
 
-**Estado:** implementada localmente el 10 de noviembre de 2026; 9 pruebas de `apps.catalog` y `npm run build` pasaron para la versión inicial. Se agregó búsqueda en el listado de productos y acción visible para retirar/restaurar; falta aceptación manual de la interfaz en ambos temas.
+**Estado:** aceptada manualmente por el usuario el 10 de noviembre de 2026 en tema claro y oscuro; confirmó que el producto se restauró correctamente. La función incluye búsqueda por nombre/categoría y acción reversible para retirar/restaurar. La versión inicial pasó 9 pruebas de `apps.catalog`; la interfaz pasó la compilación.
 
 ### 2.2 Promociones programadas para la carta QR
 
@@ -88,13 +88,13 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Fundamento del proyecto:** `proyecto_sanmartin_pos_arquitectura.md` pide un dashboard de cierre de caja y horas punta; `PLAN_MAESTRO_POS.md` incluye reportes básicos de turno y propone horas punta tras validar las fechas; el diccionario MER exige preservar la hora real de la venta para estos análisis. El resumen de caja por turno ya está implementado y aceptado; no equivale a un dashboard histórico.
 
-**Propuesta de alcance inicial:** una pantalla de reportes con selector **Día / Mes**, fecha o mes seleccionable y valores por defecto del día actual. Mostrar monto total de ventas completadas, cantidad de ventas, venta promedio, totales y cantidades por medio de pago, anulaciones separadas y productos más vendidos. El gráfico de horas punta queda como parte del dashboard, calculado con la hora del cobro guardada por el POS en `America/Santiago`, no por la hora de sincronización. Los turnos deben poder consultarse por día y abrir el detalle del cierre, incluido el efectivo esperado, contado y la diferencia.
+**Alcance de esta entrega:** pantalla de reportes con selector **Día / Mes**, fecha o mes seleccionable y valor por defecto del día actual. Muestra monto total de ventas completadas, cantidad de ventas, ticket promedio, montos y cantidades por medio de pago, anulaciones separadas, productos más vendidos por unidades, actividad por hora local y turnos con detalle de cierre (efectivo esperado/contado/diferencia). Las agregaciones se calculan en Django; no se descarga el historial completo al navegador. Las ventas offline se agrupan por el `created_at` original y aparecen al sincronizar.
 
-**Secuencia técnica:** primero fijar contrato, filtros de fecha, zona horaria y reglas para anulaciones; después implementar consultas agregadas seguras en backend; luego construir la vista responsive y sus estados de carga/sin datos/error; finalmente reconciliar totales con ventas y cierres de turnos conocidos. No calcular reportes descargando todas las ventas al navegador.
+**Secuencia técnica:** contrato, filtros y agregados protegidos implementados; la siguiente verificación es reconciliar los datos con ventas y cierres conocidos en la aceptación manual y en PostgreSQL de pruebas.
 
 **Aceptación:** comparar el día y el mes contra un conjunto de ventas conocido; confirmar ventas offline según su hora original; anulación excluida de ventas completadas y mostrada aparte; rangos y límites de día/mes correctos en `America/Santiago`; totales por medio de pago conciliados con los turnos; permisos de acceso correctos.
 
-**Estado:** el resumen de turno está aceptado; la consulta histórica/dashboard y horas punta están pendientes. Las métricas propuestas se deben confirmar con el cliente antes de cerrar el diseño.
+**Estado:** el resumen de turno está aceptado. Se implementó el dashboard día/mes en `GET /api/reports/sales/` y la pestaña **Reportes** dentro de `/pos`; faltan pruebas manuales del usuario en claro/oscuro, comparación con ventas conocidas y validación PostgreSQL. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
 
 ### 7. Aceptación integral del POS
 
@@ -116,7 +116,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-Completar la aceptación manual de la búsqueda rápida implementada en `/pos`. La prueba DINON se puede ejecutar cuando esté disponible la máquina sin frenar este trabajo. Después iniciar la etapa 2, sincronización incremental del catálogo; seguir con la integración de impresión según el resultado físico, luego PostgreSQL, dashboard, aceptación integral y guía.
+Probar manualmente **Reportes** en `/pos` con los escenarios de aceptación y en ambos temas. La prueba física de la DINON queda pendiente de acceso a la máquina. La verificación contra PostgreSQL de pruebas queda pendiente hasta que el servicio de pruebas local esté disponible; nunca conectar la suite a producción. Tras estas verificaciones, completar aceptación integral y guía operativa.
 
 ## Registro de avance
 
@@ -125,10 +125,10 @@ Completar la aceptación manual de la búsqueda rápida implementada en `/pos`. 
 | Tema y escala | Aceptado | Probado y confirmado por el usuario el 10 nov 2026. |
 | Búsqueda rápida | Aceptada | El usuario confirmó que se ve bien en ambos temas. |
 | Catálogo incremental | Implementada; falta aceptación manual | Endpoint delta, bajas explícitas, reconexión automática y consulta cada 60 s; 31 pruebas backend y build aprobados. |
-| Gestión del catálogo desde `/pos` | Implementada; falta aceptación manual | CRUD controlado sin borrado físico para productos, categorías y modificadores; gestión online con permiso POS. |
+| Gestión del catálogo desde `/pos` | Aceptada | El usuario aprobó los temas claro/oscuro y confirmó que el producto retirado se restauró. Búsqueda y retiro/restauración reversible; historial preservado. |
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
 | PostgreSQL concurrencia | Pendiente | Base de pruebas separada. |
-| Dashboard día/mes | Pendiente | Métricas iniciales propuestas arriba; validar con cliente. |
+| Dashboard día/mes | Implementado; falta aceptación manual | Agregados protegidos en backend; filtros día/mes por `America/Santiago`; pago, anulaciones, productos, horas y turnos; 3 pruebas nuevas dentro de las 29 pruebas de `apps.sales`, compilación frontend aprobada. |
 | Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
 | Guía operativa | Pendiente | Último entregable local. |
