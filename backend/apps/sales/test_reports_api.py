@@ -58,6 +58,7 @@ class SalesReportApiTests(APITestCase):
         self.assertEqual(response.data["cancellations"], {"order_count": 1, "total_amount": 3000})
         self.assertEqual(response.data["top_products"], [{"product_name": "Italiano", "quantity": 3}])
         self.assertEqual([item["hour"] for item in response.data["rush_hours"]], [10, 17])
+        self.assertEqual([item["key"] for item in response.data["time_series"]], ["10", "17"])
         self.assertEqual(len(response.data["payments"]), 2)
         self.assertEqual(len(response.data["shifts"]), 1)
 
@@ -70,6 +71,7 @@ class SalesReportApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["sales"]["total_amount"], 4000)
         self.assertEqual(response.data["selected"], "2026-01")
+        self.assertEqual([item["key"] for item in response.data["time_series"]], ["31"])
 
     def test_rechaza_periodo_o_fecha_invalidos_y_exige_permiso(self):
         self.assertEqual(self.client.get("/api/reports/sales/?period=year").status_code, 400)

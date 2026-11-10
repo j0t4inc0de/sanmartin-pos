@@ -24,11 +24,12 @@ Los intervalos se consultan como `[inicio, fin)`, con inicio local inclusivo y f
 - **Medios de pago:** total y cantidad de ventas completadas por medio.
 - **Anulaciones:** cantidad y monto de ventas con estado `ANULADA`, presentados aparte y excluidos del total de ventas completadas.
 - **Productos más vendidos:** suma unidades por `product_name` histórico guardado en el detalle de la venta; no consulta el nombre vigente del catálogo. Ordena por cantidad y muestra los ocho primeros.
-- **Horas de venta:** agrupa ventas completadas por hora local, según `Order.created_at` (hora original de la venta, incluso si llegó offline después). Devuelve solo horas con ventas.
+- **Gráfico del período:** agrupa ventas completadas por hora en el reporte diario y por día en el mensual, según `Order.created_at` (hora original de la venta, incluso si llegó offline después). Devuelve solo intervalos con ventas; la interfaz completa visualmente los intervalos sin ventas.
+- **Horas punta:** distribuye ventas completadas por hora local de Chile. Se muestra en el reporte mensual para identificar los horarios con mayor recaudación.
 - **Turnos:** incluye turnos del usuario abiertos dentro del período seleccionado. Devuelve apertura/cierre, fondo inicial, efectivo esperado, efectivo contado, diferencia y si el cierre fue automático. La diferencia es contado menos esperado; puede ser nula si el cierre no tuvo conteo físico.
 
 La consulta se agrega en el servidor. Las ventas offline aparecen en el dashboard después de sincronizarse, clasificadas según su `created_at` original, no según la hora de recepción en el servidor.
 
 ## Respuesta
 
-La respuesta contiene `period`, `selected`, `start`, `end_exclusive`, `timezone`, y las secciones `sales`, `payments`, `cancellations`, `top_products`, `rush_hours` y `shifts`. Los montos son enteros CLP. No se devuelven notas, identificadores personales ni motivos de anulación.
+La respuesta contiene `period`, `selected`, `start`, `end_exclusive`, `timezone`, y las secciones `sales`, `payments`, `cancellations`, `top_products`, `rush_hours`, `time_series` y `shifts`. Cada elemento de `time_series` entrega `key`, `total_amount` y `order_count`. Los montos son enteros CLP. No se devuelven notas, identificadores personales ni motivos de anulación.

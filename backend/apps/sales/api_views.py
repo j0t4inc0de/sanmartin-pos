@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Sum
-from django.db.models.functions import ExtractHour
+from django.db.models.functions import ExtractHour, TruncDay, TruncHour
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -107,6 +107,34 @@ class SalesReportView(APIView):
                 order_count=Count("id"), total_amount=Sum("total_amount")
             ).order_by("hour")
         )
+        if period == "day":
+            timeline_rows = completed.annotate(
+                bucket=TruncHour("created_at", tzinfo=REPORT_TIMEZONE)
+            ).values("bucket").annotate(
+                total_amount=Sum("total_amount"), order_count=Count("id")
+            ).order_by("bucket")
+            time_series = [
+                {
+                    "key": row["bucket"].strftime("%H"),
+                    "total_amount": row["total_amount"],
+                    "order_count": row["order_count"],
+                }
+                for row in timeline_rows
+            ]
+        else:
+            timeline_rows = completed.annotate(
+                bucket=TruncDay("created_at", tzinfo=REPORT_TIMEZONE)
+            ).values("bucket").annotate(
+                total_amount=Sum("total_amount"), order_count=Count("id")
+            ).order_by("bucket")
+            time_series = [
+                {
+                    "key": row["bucket"].strftime("%d"),
+                    "total_amount": row["total_amount"],
+                    "order_count": row["order_count"],
+                }
+                for row in timeline_rows
+            ]
         shifts = [
             {
                 "uuid": str(shift.uuid),
@@ -144,6 +172,7 @@ class SalesReportView(APIView):
             },
             "top_products": top_products,
             "rush_hours": rush_hours,
+            "time_series": time_series,
             "shifts": shifts,
         })
 
