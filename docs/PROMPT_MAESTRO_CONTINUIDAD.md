@@ -92,7 +92,7 @@ El propietario del proyecto implementa POS, frontend, backend y base de datos. H
 - En la primera versión se imprime con la **DINON 9390**.
 - Cada venta produce dos documentos normales: comprobante para el cliente, que le permite retirar el pedido, y comanda para cocina, con los detalles de preparación.
 - La venta se persiste localmente antes de imprimir. Un fallo de impresora no debe perder ni duplicar la venta. La reimpresión no crea otra venta.
-- El usuario confirmó que la DINON 9390 está conectada por USB, que el POS actual produce un comprobante para el cliente y una comanda para cocina, y que la gaveta se abre cuando se usa efectivo. El video recibido muestra el cobro en efectivo y un comprobante de retiro impreso; no muestra claramente la segunda comanda ni permite identificar el método USB. Falta confirmar el ancho exacto del rollo, cómo aparece el equipo en Windows, el puerto de la gaveta y el protocolo/método que usa el POS actual. Revisar `docs/PROPUESTA_IMPRESION_POS.md`.
+- La arquitectura especifica la DINON 9390 con rollo de 80 mm, USB directo, ESC/POS y gaveta RJ11 (24 V, 1 A). El usuario confirmó que la unidad está conectada por USB, que el POS actual genera dos impresos y que la gaveta se abre al usar efectivo. El video recibido muestra el cobro y un comprobante de retiro; no deja ver la segunda comanda ni confirmar el método de conexión. Falta probar la interfaz y los comandos en el equipo físico. Revisar `docs/PROPUESTA_IMPRESION_POS.md`.
 
 ### Funcionamiento sin conexión
 
@@ -131,7 +131,7 @@ El propietario del proyecto implementa POS, frontend, backend y base de datos. H
 - La apertura/cierre de turno y los casos de permisos/CSRF de la etapa 3 fueron aceptados manualmente; ver `docs/PRUEBAS_ACEPTACION_ETAPA_3.md`.
 - Cierre manual: fondo `$10.000`, venta completada en efectivo `$2.000`, venta no efectiva `$3.000`, venta en efectivo `$1.000` anulada, conteo `$11.500`; esperado `$12.000`, diferencia faltante `$500`. Aprobada.
 - Resumen de medios: fondo `$10.000`, venta efectivo `$2.000`, Transbank `$3.000`, transferencia `$4.000`, efectivo `$1.000` anulado; se aceptaron los totales, cantidades y exclusión de la anulada. El esperado de efectivo es `$12.000`.
-- No están aceptados el cierre automático, el modo offline, la sincronización ni la impresión en hardware.
+- El usuario aceptó manualmente el modo offline, la sincronización y el cierre automático a las 00:30. La impresión física y la apertura de gaveta con la DINON siguen pendientes de prueba.
 
 ## Primera tarea del nuevo chat
 

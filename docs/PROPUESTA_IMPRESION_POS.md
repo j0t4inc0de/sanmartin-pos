@@ -6,10 +6,11 @@
 ## Hechos confirmados
 
 - La impresora reportada es una DINON 9390 conectada por USB. El usuario indica que no instalaron un controlador manualmente y que el POS actual imprime.
+- La arquitectura del proyecto especifica conexión USB directa, papel de 80 mm, protocolo ESC/POS, velocidad de 160 mm/s y gaveta por RJ11 (24 V, 1 A). Estos son requisitos de diseño documentados; la compatibilidad de la unidad física todavía no está probada.
 - El flujo actual debe producir dos papeles: uno para que el cliente retire su pedido y otro para cocina.
 - La gaveta se abre cuando se usa efectivo.
 - El video muestra una pantalla de cobro en efectivo, el monto recibido y el vuelto, y un comprobante de retiro impreso. No se alcanza a ver la comanda de cocina ni confirmar cómo se envía la orden a la impresora.
-- El ancho del rollo no está confirmado. Algunas fichas comerciales describen la 9390 con papel de 80 mm; debe verificarse en el equipo o midiendo el rollo antes de fijar el formato.
+- Para diseñar la primera versión se usará el ancho de 80 mm definido para la DINON 9390 en `docs/proyecto_sanmartin_pos_arquitectura.md`. La prueba física confirmará el ajuste de papel y área imprimible.
 
 ## Borrador de documentos
 
@@ -65,17 +66,15 @@ La comanda prioriza el folio, la cantidad y la preparación. No muestra precios 
 4. En pagos en efectivo, solicitar la apertura de gaveta por el canal que admita la impresora. No abrirla para Transbank o transferencia. Una devolución en efectivo al anular también requiere abrirla, según el contrato del proyecto.
 5. Mantener el diseño configurable para el ancho real del papel y validarlo con el dispositivo antes de declarar compatibilidad.
 
-## Datos aún por confirmar con la persona que tiene la impresora
+## Datos pendientes para validar la conexión física
 
-- Ancho del rollo: medirlo o fotografiar la etiqueta/rollo.
-- Qué nombre aparece para la impresora en **Configuración de Windows → Impresoras y escáneres**; aclarar si "sin controlador" significa que Windows la instaló automáticamente o que el POS se comunica directamente por USB.
-- Si la gaveta está conectada al puerto de la impresora y si se abre automáticamente durante la venta en efectivo, el reembolso en efectivo o ambos.
-- Si el POS antiguo imprime la boleta y la comanda sin pasos adicionales y cómo se distinguen los dos papeles.
-- Una foto legible de ambos impresos para reproducir el contenido y la jerarquía visual actuales.
+- Confirmar cómo aparece la DINON en Windows y si el POS anterior envía ESC/POS directamente por USB o usa una impresora/controlador instalado automáticamente. La arquitectura define USB directo, pero el video no muestra el canal de conexión.
+- Confirmar el puerto RJ11 de la impresora y validar la apertura de gaveta en una venta y una devolución en efectivo. El diseño requiere abrirla solo para operaciones con efectivo.
+- Comparar una foto legible de ambos impresos cuando esté disponible; el proyecto define su propósito, pero el video solo deja ver el comprobante de retiro.
 
 ## Validación antes de la prueba física
 
 - Revisar una vista previa de ambos documentos en pantalla y exportarlos a PDF para comparar contenido.
 - Verificar ventas en efectivo, Transbank y transferencia; solo efectivo debe abrir la gaveta.
 - Simular modo offline: venta persistida localmente, impresión independiente de sincronización y reimpresión sin crear otra venta.
-- Con la DINON disponible, verificar ancho, caracteres, corte, los dos papeles y la gaveta. Hasta completar esta prueba, la impresión física permanece pendiente.
+- Con la DINON disponible, verificar el papel y área imprimible de 80 mm, caracteres, corte, los dos papeles y la gaveta. Hasta completar esta prueba, la impresión física permanece pendiente.
