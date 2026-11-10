@@ -1,7 +1,7 @@
 # Contrato de ventas del POS
 
-- **Versión:** 1.0
-- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS permite abrir/cerrar turnos localmente y sincroniza apertura, ventas en orden y cierre. El usuario aceptó en navegador la venta offline y su sincronización; apertura/cierre offline aún requieren aceptación manual. El cierre automático offline a las 00:30 sigue pendiente.
+- **Versión:** 1.1
+- **Estado:** reglas acordadas; API online y endpoint idempotente de sincronización offline implementados; el endpoint conserva snapshots cobrados y marca cambios del catálogo para revisión. El POS restaura la sesión automáticamente y permite abrir/cerrar turnos localmente; sincroniza apertura, ventas en orden y cierre. El usuario aceptó los flujos de venta, reconexión, apertura y cierre offline. El cierre automático offline a las 00:30 sigue pendiente.
 - **Alcance:** ventas presenciales en el mesón con Django REST y PostgreSQL.
 - **Moneda:** pesos chilenos enteros (CLP).
 
@@ -22,7 +22,7 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 - Las ventas offline conservan el precio efectivamente cobrado. Si al sincronizar difiere del catálogo vigente, se incluye en la caja y se marca para revisión; no se cambia el precio histórico.
 - Si el catálogo local lleva tiempo sin sincronizar, se permite seguir vendiendo con un aviso visible de antigüedad. Al reconectar, las diferencias de precio se conservan y se marcan para revisión.
 - La venta lleva UUID idempotente y folio correlativo por turno. En V1, el POS asigna y conserva el siguiente folio en almacenamiento local persistente para que el impreso y la sincronización usen el mismo número; el servidor aplica la unicidad por turno.
-- El POS usa una cuenta general compartida con contraseña para iniciar sesión online. Después de autenticarla en el equipo, el acceso offline solicita un PIN compartido de cuatro cifras y vence 24 horas después de la última autenticación online. Tras cinco intentos incorrectos, se bloquea el acceso durante 15 minutos; una sesión POS ya abierta permanece activa. El PIN no se guarda en texto legible. Como solo tiene 10.000 combinaciones, el verificador local y el bloqueo deben mitigar la fuerza bruta, sin presentarse como protección contra alguien que manipule el perfil del navegador. La auditoría registra la cuenta compartida y el equipo, no la identidad de la persona física.
+- El POS usa una cuenta general compartida con contraseña para iniciar sesión online. Tras autenticarse en el equipo, la sesión offline se restaura automáticamente desde el almacenamiento local mientras no se cierre sesión. El acceso offline está pensado para el perfil del navegador del equipo dedicado al POS; la auditoría registra la cuenta compartida y el equipo, no la identidad de la persona física.
 - Una venta completada no se borra. La cuenta compartida puede anularla solo mientras su turno esté abierto; el motivo es obligatorio y se guardan fecha y hora.
 - Una venta confirmada imprime un comprobante para el cliente, que permite retirar el pedido, y una comanda para cocina. Son documentos de venta; no se consideran tickets de anulación. La falla de impresión no revierte ni duplica una venta ya guardada.
 - El cierre automático ocurre a las 00:30 en `America/Santiago`. Si el equipo está offline, cierra localmente el turno, impide nuevas ventas en ese turno y conserva el evento de cierre para sincronizarlo después de la apertura, ventas y anulaciones pendientes.

@@ -90,11 +90,6 @@ export interface PosOfflineUser {
 
 export interface PosOfflineAccessRecord {
   user: PosOfflineUser;
-  salt: string;
-  verifier: string;
-  last_online_auth_at: string;
-  failed_attempts: number;
-  blocked_until: string | null;
   saved_at: string;
 }
 
@@ -360,7 +355,7 @@ export const eliminarCobroPendientePos = async (shiftUuid: string): Promise<void
 };
 
 export const guardarAccesoOfflinePos = async (
-  record: Omit<PosOfflineAccessRecord, 'saved_at'>,
+  record: Pick<PosOfflineAccessRecord, 'user'>,
 ): Promise<void> => {
   const database = await openDatabase();
 
@@ -381,18 +376,36 @@ export const cargarAccesoOfflinePos = async (): Promise<PosOfflineAccessRecord |
   const database = await openDatabase();
 
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction(OFFLINE_ACCESS_STORE, 'readonly');
-    const request = transaction.objectStore(OFFLINE_ACCESS_STORE).get('current');
+    const transaction = database.transaction(OFFLINE_ACCESS_STORE, 'readwrite');
+    const store = transaction.objectStore(OFFLINE_ACCESS_STORE);
+    const request = store.get('current');
+    let record: PosOfflineAccessRecord | null = null;
     request.onsuccess = () => {
       const stored = request.result as StoredOfflineAccessRecord | undefined;
-      if (!stored) {
-        resolve(null);
-        return;
+      if (stored) {
+        record = {
+          user: stored.user,
+          saved_at: stored.saved_at ?? new Date().toISOString(),
+        };
+        // Remove legacy offline credential fields from previously saved records.
+        store.put({ ...record, key: 'current' } satisfies StoredOfflineAccessRecord);
       }
-      const { key: _key, ...record } = stored;
-      resolve(record);
     };
     request.onerror = () => reject(request.error ?? new Error('No se pudo leer el acceso offline.'));
+    transaction.oncomplete = () => resolve(record);
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo actualizar el acceso offline local.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló la actualización del acceso offline local.'));
+  });
+};
+
+export const eliminarAccesoOfflinePos = async (): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_ACCESS_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_ACCESS_STORE).delete('current');
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo quitar la sesión local.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el cierre de la sesión local.'));
   });
 };
 

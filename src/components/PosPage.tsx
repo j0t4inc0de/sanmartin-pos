@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
-import { accesoOfflineVigente, crearVerificadorPinOffline, registrarFalloPinOffline, revisarBloqueoPinOffline, verificarPinOffline } from '../services/posOfflineAccess';
-import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineAccessRecord, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarAccesoOfflinePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -100,12 +99,8 @@ export const PosPage = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
   const [offlineMode, setOfflineMode] = useState(false);
-  const [offlineRecord, setOfflineRecord] = useState<PosOfflineAccessRecord | null>(null);
   const [hasQueuedOfflineSales, setHasQueuedOfflineSales] = useState(false);
   const [pendingShiftEvents, setPendingShiftEvents] = useState<PosOfflineShiftEvent[]>([]);
-  const [pin, setPin] = useState('');
-  const [pinConfirmation, setPinConfirmation] = useState('');
-  const [pinSetupRequired, setPinSetupRequired] = useState(false);
 
   useEffect(() => {
     const updateClock = () => setChileClock(formatChileClock(new Date()));
@@ -225,12 +220,15 @@ export const PosPage = () => {
 
     const loadSession = async () => {
       try {
+        // Also migrates older local records by removing credential verifier data.
+        await cargarAccesoOfflinePos().catch(() => null);
         await cargarTokenCsrf();
         const response = await solicitarApi<{ user: PosUser }>(
           '/api/auth/session/',
         );
         if (cancelled) return;
         setUser(response.user);
+        await guardarAccesoOfflinePos({ user: response.user }).catch(() => undefined);
         await syncPendingOpenEvents(response.user.id);
         const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
         const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
@@ -250,15 +248,30 @@ export const PosPage = () => {
           setUser(null);
           setShift(null);
         } else {
-          void cargarAccesoOfflinePos().then(async (record) => {
+          try {
+            const record = await cargarAccesoOfflinePos();
             if (cancelled) return;
-            if (!record || !accesoOfflineVigente(record.last_online_auth_at)) {
-              setOfflineRecord(record);
-              setErrorMessage(record ? 'El acceso offline venció. Conéctate e inicia sesión con tu contraseña para renovarlo.' : 'No hay acceso offline configurado. Conéctate e inicia sesión con tu contraseña.');
+            if (!record) {
+              setErrorMessage('Conéctate e inicia sesión una vez para habilitar el trabajo offline en este equipo.');
               return;
             }
-            setOfflineRecord(record);
-          }).catch(() => setErrorMessage('No se pudo leer el acceso offline guardado en este equipo.'));
+            const cached = await cargarTurnoDesdeCachePos<CashShift>(record.user.id);
+            if (cancelled) return;
+            if (!cached) {
+              setErrorMessage('No hay un turno guardado en este equipo. Conéctate e inicia sesión para cargar el estado del POS.');
+              return;
+            }
+            setUser(record.user);
+            setShift(cached.shift);
+            setAnotherShiftOpen(cached.another_shift_open);
+            setNextOrderNumber(cached.next_order_number);
+            setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(cached.shift?.uuid)).length > 0);
+            setPendingShiftEvents(await listarEventosTurnoOfflinePos(record.user.id));
+            setOfflineMode(true);
+            setErrorMessage('');
+          } catch {
+            setErrorMessage('No se pudo leer la sesión y los datos offline guardados en este equipo.');
+          }
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -287,15 +300,7 @@ export const PosPage = () => {
       setUser(response.user);
       setPassword('');
       setOfflineMode(false);
-      const stored = await cargarAccesoOfflinePos();
-      if (stored?.user.id === response.user.id) {
-        const updated = { ...stored, user: response.user, last_online_auth_at: new Date().toISOString(), failed_attempts: 0, blocked_until: null };
-        await guardarAccesoOfflinePos(updated);
-        setOfflineRecord({ ...updated, saved_at: new Date().toISOString() });
-      } else {
-        setOfflineRecord(null);
-        setPinSetupRequired(true);
-      }
+      await guardarAccesoOfflinePos({ user: response.user });
       await syncPendingOpenEvents(response.user.id);
       const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
       const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
@@ -314,59 +319,12 @@ export const PosPage = () => {
     }
   };
 
-  const handleOfflineUnlock = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!offlineRecord) return;
-    const lock = revisarBloqueoPinOffline(offlineRecord);
-    if (lock.locked) { setErrorMessage(`Acceso bloqueado. Intenta nuevamente en ${Math.ceil(lock.lockout_remaining_ms / 60000)} min.`); return; }
-    setIsSubmitting(true); setErrorMessage('');
-    try {
-      if (await verificarPinOffline(pin, offlineRecord)) {
-        const cached = await cargarTurnoDesdeCachePos<CashShift>(offlineRecord.user.id);
-        if (!cached) throw new Error('No hay un estado de turno guardado para este usuario. Conéctate e inicia sesión online.');
-        const clearedFailures = { ...offlineRecord, failed_attempts: 0, blocked_until: null };
-        await guardarAccesoOfflinePos(clearedFailures);
-        setOfflineRecord({ ...clearedFailures, saved_at: new Date().toISOString() });
-        setUser(offlineRecord.user);
-        setShift(cached.shift);
-        setAnotherShiftOpen(cached.another_shift_open);
-        setNextOrderNumber(cached.next_order_number);
-        setOfflineMode(true);
-        setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(cached.shift?.uuid)).length > 0);
-        setPendingShiftEvents(await listarEventosTurnoOfflinePos(offlineRecord.user.id));
-        setErrorMessage('');
-      } else {
-        const next = registrarFalloPinOffline(offlineRecord);
-        const updated = { ...offlineRecord, ...next };
-        await guardarAccesoOfflinePos(updated);
-        setOfflineRecord({ ...updated, saved_at: new Date().toISOString() });
-        setErrorMessage(next.locked ? 'PIN incorrecto. Acceso bloqueado por 15 minutos.' : `PIN incorrecto. Quedan ${next.attempts_remaining} intentos.`);
-      }
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'No se pudo validar el PIN offline.'); }
-    finally { setPin(''); setIsSubmitting(false); }
-  };
-
-  const handlePinSetup = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!user) return;
-    if (!/^\d{4}$/.test(pin)) { setErrorMessage('El PIN debe tener exactamente 4 números.'); return; }
-    if (pin !== pinConfirmation) { setErrorMessage('Los PIN no coinciden.'); return; }
-    setIsSubmitting(true); setErrorMessage('');
-    try {
-      const verifier = await crearVerificadorPinOffline(pin);
-      const record = { user, ...verifier, last_online_auth_at: new Date().toISOString(), failed_attempts: 0, blocked_until: null };
-      await guardarAccesoOfflinePos(record);
-      setOfflineRecord({ ...record, saved_at: new Date().toISOString() });
-      setPinSetupRequired(false); setPin(''); setPinConfirmation('');
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'No se pudo configurar el acceso offline.'); }
-    finally { setIsSubmitting(false); }
-  };
-
   const handleLogout = async () => {
     setIsSubmitting(true);
     setErrorMessage('');
     try {
       if (!offlineMode) await solicitarApi<void>('/api/auth/logout/', { method: 'POST' });
+      await eliminarAccesoOfflinePos();
       setUser(null);
       setOfflineMode(false);
       setShift(null);
@@ -574,13 +532,6 @@ export const PosPage = () => {
           <div role="status" className="rounded-2xl border border-white/10 bg-[#171717] p-6 text-gray-300">
             Cargando sesión…
           </div>
-        ) : !user && offlineRecord && accesoOfflineVigente(offlineRecord.last_online_auth_at) ? (
-          <form onSubmit={handleOfflineUnlock} className="mx-auto w-full max-w-xl space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-6 shadow-xl sm:p-8">
-            <div><h2 className="font-heading text-xl font-bold uppercase text-white">Acceso offline</h2><p className="mt-1 text-sm text-gray-400">{offlineRecord.user.username} · vence 24 horas después del último inicio online.</p></div>
-            <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-offline-pin">PIN de 4 números<input id="pos-offline-pin" type="password" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{4}" maxLength={4} required value={pin} onChange={event => setPin(event.target.value.replace(/\D/g, '').slice(0, 4))} className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none focus:border-[#FACC15]" /></label>
-            <button type="submit" disabled={isSubmitting || revisarBloqueoPinOffline(offlineRecord).locked} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{isSubmitting ? 'Validando…' : 'Entrar sin conexión'}</button>
-            <p className="text-xs text-gray-500">Las ventas se guardan en este equipo y se sincronizan al reconectar. La apertura y el cierre offline también quedan en cola.</p>
-          </form>
         ) : !user ? (
           <form
             onSubmit={handleLogin}
@@ -628,8 +579,6 @@ export const PosPage = () => {
               {isSubmitting ? 'Validando…' : 'Entrar al POS'}
             </button>
           </form>
-        ) : pinSetupRequired ? (
-          <form onSubmit={handlePinSetup} className="mx-auto w-full max-w-xl space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-6 shadow-xl sm:p-8"><div><h2 className="font-heading text-xl font-bold uppercase text-white">Configura tu PIN offline</h2><p className="mt-1 text-sm text-gray-400">Solo se usará si el POS pierde conexión. Tu contraseña online no cambia.</p></div>{['PIN de 4 números','Confirma el PIN'].map((label, index) => <label key={label} className="block space-y-2 text-sm text-gray-300">{label}<input type="password" inputMode="numeric" pattern="[0-9]{4}" maxLength={4} required value={index === 0 ? pin : pinConfirmation} onChange={event => (index === 0 ? setPin : setPinConfirmation)(event.target.value.replace(/\D/g, '').slice(0,4))} className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none focus:border-[#FACC15]" /></label>)}<button type="submit" disabled={isSubmitting} className="w-full rounded-xl bg-[#FACC15] px-4 py-3 font-bold text-black disabled:opacity-50">{isSubmitting ? 'Guardando…' : 'Guardar PIN offline'}</button></form>
         ) : (
           <section className="space-y-5">
             <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#171717] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">

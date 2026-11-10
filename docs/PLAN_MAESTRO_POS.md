@@ -1,9 +1,9 @@
 # Plan maestro de desarrollo — San Martín POS
 
-- **Versión:** 1.1 — venta offline y reconexión aceptadas
+- **Versión:** 1.2 — sesión offline automática y turnos offline aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo POS, autenticación online/offline con PIN, turnos online, ventas online y offline, cierre manual y resumen por medio de pago disponibles localmente. El usuario confirmó la venta offline y sincronización al reiniciar Django. Siguen pendientes apertura/anulación/cierre offline, conciliación de turnos cerrados, cierre automático e impresión.
+- **Estado:** Base técnica migrada; autenticación online con contraseña, restauración automática de sesión offline sin PIN (pendiente de aceptación manual), turnos online/offline, ventas online/offline, cierre manual y resumen por medio de pago disponibles localmente. El usuario confirmó la venta offline, su sincronización al reiniciar Django y las pruebas de apertura/cierre offline. Siguen pendientes anulación offline, conciliación de turnos cerrados, cierre automático e impresión.
 
 ---
 
@@ -18,7 +18,7 @@ Este documento organiza el trabajo. Las especificaciones de arquitectura y datos
 - El repositorio contiene un frontend React, TypeScript y Vite para la landing, la carta QR y el POS en `/pos`.
 - `backend/` contiene una API Django REST Framework y el proyecto usa PostgreSQL para el desarrollo local.
 - El catálogo de caja se obtiene desde `GET /api/pos/catalog/` y se conserva localmente en IndexedDB para recuperarlo si falla la conexión.
-- El borrador, las cotizaciones, el acceso offline con PIN y las ventas cobradas se guardan localmente. Las ventas offline se sincronizan al recuperar conexión para un turno que ya existe y sigue abierto en el servidor.
+- El borrador, las cotizaciones, la sesión previamente autenticada, los eventos de apertura/cierre y las ventas cobradas se guardan localmente. Al recuperar conexión, la apertura se sincroniza antes que las ventas y el cierre después de vaciar la cola.
 - Los archivos `docs/init_schema.sql` y `docs/models_django_reference.py` son referencias de diseño; las migraciones Django definen el esquema ejecutable.
 - La apertura/anulación/cierre offline, conciliación de turnos cerrados, cierre automático e impresión física siguen pendientes.
 
@@ -318,7 +318,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - Los cambios administrativos de catálogo se originan en el servidor. El POS debe descargar la versión vigente; una copia offline antigua no puede reemplazar cambios más nuevos.
 - Los demás clientes reciben cambios desde la API por el mecanismo de actualización acordado; no se asume sincronización instantánea hasta definir e implementar ese mecanismo.
 - El estado de una venta, de su sincronización y de su impresión se muestra por separado.
-- El POS usa una cuenta general compartida con contraseña para iniciar sesión online. Tras esa autenticación, el acceso offline se desbloquea con un PIN compartido de cuatro cifras y vence 24 horas después de la última autenticación online. Cinco intentos fallidos bloquean nuevos intentos durante 15 minutos, sin interrumpir una sesión activa. El PIN no se guarda en texto legible. Como cuatro cifras solo ofrecen 10.000 combinaciones, el verificador local y el bloqueo deben mitigar la fuerza bruta; este mecanismo no equivale a una autenticación fuerte contra alguien con acceso al perfil del equipo. La auditoría identifica la cuenta compartida y el equipo, no a la persona física.
+- El POS usa una cuenta general compartida con contraseña para iniciar sesión online. Tras autenticarla en el equipo, la sesión offline se restaura automáticamente desde el perfil local del navegador hasta que se cierre sesión. No hay PIN ni contraseña adicional offline. La auditoría identifica la cuenta compartida y el equipo, no a la persona física.
 - El cierre automático ocurre a las 00:30 en la zona `America/Santiago`. El POS lo registra localmente aunque no haya internet, bloquea nuevas ventas en ese turno y encola el cierre después de la apertura, las ventas y sus anulaciones.
 - La primera versión opera con un equipo POS y no incluye combos en la caja. Los combos de la web no se interpretan como artículos de venta del POS.
 
@@ -333,10 +333,10 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Registro manual del medio de pago | Confirmado | No se integra una pasarela de pago en la primera versión. |
 | Un equipo POS en la primera versión | Confirmado | El diseño debe permitir evaluar varios equipos en una etapa posterior. |
 | Cuenta general compartida para operar el POS | Confirmado | No habrá cuentas individuales para los cajeros ni varios niveles de permisos. El registro identifica la cuenta compartida, la hora y el equipo, no a la persona física. |
-| Acceso offline con PIN compartido de cuatro cifras tras autenticación online, válido 24 horas | Confirmado | La contraseña online se mantiene; el PIN no se guarda en texto legible. Cinco fallos bloquean nuevos intentos por 15 minutos, sin interrumpir una sesión activa. El límite de 10.000 combinaciones requiere mitigación local y se acepta por facilidad de uso. |
+| Sesión offline restaurada automáticamente tras autenticación online previa | Política confirmada (9 nov 2026); aceptación pendiente | Se elimina el PIN y se restaura el usuario y el turno guardados en el equipo hasta que se cierre sesión. |
 | Combos fuera de la caja en la primera versión | Confirmado | Los combos web son contenido promocional y quedan fuera del catálogo operativo del POS inicial. |
 | ¿Cuál es la ruta oficial de sincronización delta del catálogo? | Pendiente de confirmar | Evita contratos distintos entre frontend y backend. |
-| Verificación local del PIN y controles técnicos de acceso offline | Parcial | PBKDF2-HMAC-SHA-256, sal aleatoria, vigencia y bloqueo están implementados; el usuario confirmó la prueba del acceso. El bloqueo local no protege contra manipulación del perfil del navegador. |
+| Restauración automática de sesión local y limpieza al cerrar sesión | Implementado | La sesión local se guarda en IndexedDB; al cerrar sesión se elimina la identidad local y se conservan las colas de datos pendientes. |
 | ¿Qué sucede si una caída supera la vigencia del catálogo local o se agota el almacenamiento? | Pendiente de definir | Establece límites y alertas para proteger ventas y datos. |
 | Usuario propio basado en `AbstractUser`, administrado por Django | Confirmado | Resuelve el choque entre el SQL de referencia y el sistema de autenticación, y deja espacio para permisos futuros. |
 | Folio correlativo por turno (`shift_order_number`) | Confirmado | Coincide con la unicidad por turno ya descrita y simplifica la operación con un POS. |
@@ -381,7 +381,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 
 - **Confirmado:** Django REST, PostgreSQL, backend en `backend/`, un equipo inicial, sesión offline solo después de autenticación online, impresión en la primera versión, pagos manuales y combos fuera de la caja.
 - **Creado:** estructura Django; aplicaciones `users`, `catalog` y `sales`; migraciones; configuración local; Compose opcional ligado a `127.0.0.1`; proxy Vite para `/api` y `/admin`; API pública de catálogo; API de sesión y operaciones iniciales de turno. Contratos en `docs/CONTRATO_API_CATALOGO.md` y `docs/CONTRATO_API_ACCESO_CAJA.md`.
-- **Etapas 4–5 — avance:** API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` persiste catálogo, borrador, cotización, acceso PIN y ventas offline en IndexedDB. El usuario aceptó en navegador una venta con Django detenido y su sincronización después de reiniciar la API. Falta manejar apertura/anulación/cierre offline y conciliación para ventas asociadas a turnos ya cerrados.
+- **Etapas 4–5 — avance:** API online de catálogo POS, cotización, registro idempotente, anulación, cierre y resumen implementados. `/pos` persiste catálogo, borrador, cotización, sesión local, eventos de turnos y ventas offline en IndexedDB. El usuario aceptó la venta offline, su sincronización al reiniciar Django y las pruebas de apertura/cierre offline. Falta manejar anulación offline y conciliación para ventas asociadas a turnos ya cerrados.
 - **Entorno local preparado:** Python 3.14.10 instalado en el perfil de Windows; entorno virtual creado en `backend/.venv`; dependencias fijadas instaladas; servicio PostgreSQL 16 iniciado y puerto `5433` confirmado. PostgreSQL 18 sigue en `5432`.
 - **Configuración local:** `backend/.env` creado y excluido de Git; `DJANGO_SECRET_KEY` generado localmente y conexión configurada para PostgreSQL 16 en `127.0.0.1:5433`.
 - **Catálogo local:** cargadas desde la carta existente 8 categorías y 64 productos; las promociones web permanecen fuera del catálogo del POS. El cargador solo agrega faltantes y conserva los registros existentes.
@@ -393,7 +393,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - **Seguridad:** la contraseña actual del rol `sanmartin_dev` es solo para desarrollo local; reemplazarla por una clave robusta antes de cualquier despliegue. No usarla en producción.
 - **Verificación del entorno:** se usa Python 3.14.10 en `backend/.venv`; el acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Las pruebas automatizadas del backend se ejecutan en SQLite temporal y no sustituyen la validación de concurrencia en PostgreSQL. Docker no es requisito para el flujo local.
 
-La pantalla `/pos` permite operar ventas online y, tras el PIN, deja guardar ventas cobradas en una cola local con catálogo cacheado; la reconexión intenta sincronizarlas y muestra los pendientes. El usuario confirmó que el recorrido funciona al detener y reiniciar Django. La API de sincronización tiene 20 pruebas en SQLite temporal y el build de frontend pasó. El siguiente bloque es diseñar la cola ordenada para apertura y cierre offline, además de cubrir anulaciones y conciliación de turnos cerrados.
+La pantalla `/pos` permite operar ventas online y restaura automáticamente la sesión local cuando la API no responde. Guarda ventas cobradas en una cola local con catálogo cacheado; al reconectar sincroniza apertura, ventas y cierre en orden. El usuario confirmó la venta offline y las pruebas de apertura/cierre manual offline. El siguiente bloque es cubrir anulaciones y conciliación de turnos cerrados; el cierre automático a las 00:30 queda pendiente.
 
 ### Seguimiento de la orden de trabajo
 
@@ -424,7 +424,7 @@ La pantalla `/pos` permite operar ventas online y, tras el PIN, deja guardar ven
 - [x] Implementar autenticación online de sesión, CSRF, límite de intentos y permiso `sales.can_operate_pos` en la API.
 - [x] Crear la pantalla de inicio de sesión online del POS con sesión Django y token CSRF en memoria.
 - [ ] Configurar y validar una cuenta general compartida con el permiso `sales.can_operate_pos`; no se crean cuentas individuales para los cajeros.
-- [x] Definir la política de acceso: contraseña para inicio online y PIN compartido de cuatro cifras para acceso offline tras autenticación online; vigencia de 24 horas y bloqueo de 15 minutos tras cinco fallos.
+- [x] Definir la política de acceso: contraseña para inicio online y restauración automática offline en el equipo previamente autenticado, hasta cerrar sesión; sin PIN.
 - [x] Implementar en backend consulta, apertura y cierre de turnos con restricción de un turno abierto e idempotencia por UUID.
 - [x] Crear la interfaz de apertura/cierre y consulta del turno activo.
 - [x] Validar acceso, apertura/cierre de turno y permisos con los casos POS-01 a POS-12.
@@ -549,7 +549,7 @@ ETAPA 3 — ACCESO Y TURNO
 [x] API de sesión, CSRF y permisos
 [x] Pantalla de acceso online y control de turnos en /pos
 [ ] Crear grupo Operadores POS y asignar cuentas de cajero
-[x] Acceso offline con PIN compartido de cuatro cifras; persiste el verificador local y el usuario probó el acceso
+[x] Restauración automática de sesión offline tras autenticación online previa; elimina el PIN y su verificador local
 [x] API e interfaz de apertura/cierre; falta arqueo
 [x] Impedir más de un turno abierto según la regla aprobada
 
