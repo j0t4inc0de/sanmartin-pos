@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
@@ -82,6 +82,7 @@ const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
 
 export const PosPage = () => {
   const pendingOpeningUuid = useRef<string | null>(null);
+  const offlineTransitionInProgress = useRef(false);
   const [user, setUser] = useState<PosUser | null>(null);
   const [shift, setShift] = useState<CashShift | null>(null);
   const [lastClosedShift, setLastClosedShift] = useState<CashShift | null>(null);
@@ -117,6 +118,76 @@ export const PosPage = () => {
     setNextOrderNumber(response.next_order_number);
     if (user) void guardarTurnoEnCachePos(user.id, response).catch(() => undefined);
   };
+
+  const activateOfflineMode = useCallback(async () => {
+    if (!user || offlineMode || offlineTransitionInProgress.current) return;
+    offlineTransitionInProgress.current = true;
+    try {
+      await guardarAccesoOfflinePos({ user }).catch(() => undefined);
+      const cached = await cargarTurnoDesdeCachePos<CashShift>(user.id);
+      const localState = cached ?? {
+        shift,
+        another_shift_open: anotherShiftOpen,
+        next_order_number: nextOrderNumber,
+      };
+      await guardarTurnoEnCachePos(user.id, localState);
+      setShift(localState.shift);
+      setAnotherShiftOpen(localState.another_shift_open);
+      setNextOrderNumber(localState.next_order_number);
+      setHasQueuedOfflineSales((await listarVentasOfflineEnColaPos(localState.shift?.uuid)).length > 0);
+      setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
+      setOfflineMode(true);
+      setErrorMessage('');
+    } catch {
+      setErrorMessage('Se perdió la conexión con la caja y no se pudieron cargar los datos guardados en este equipo.');
+    } finally {
+      offlineTransitionInProgress.current = false;
+    }
+  }, [user, offlineMode, shift, anotherShiftOpen, nextOrderNumber]);
+
+  useEffect(() => {
+    if (!user || offlineMode) return;
+    let cancelled = false;
+    let checking = false;
+    let timeoutId = 0;
+
+    const checkApiAvailability = async () => {
+      if (cancelled || checking) return;
+      checking = true;
+      const controller = new AbortController();
+      timeoutId = window.setTimeout(() => controller.abort(), 3000);
+      try {
+        const response = await fetch('/api/auth/csrf/', {
+          method: 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        if (!response.ok) await activateOfflineMode();
+      } catch {
+        await activateOfflineMode();
+      } finally {
+        window.clearTimeout(timeoutId);
+        checking = false;
+      }
+    };
+
+    const handleBrowserOffline = () => void checkApiAvailability();
+    const handleApiUnavailable = () => void activateOfflineMode();
+    window.addEventListener('offline', handleBrowserOffline);
+    window.addEventListener('pos:api-unavailable', handleApiUnavailable);
+    const intervalId = window.setInterval(() => void checkApiAvailability(), 5000);
+    void checkApiAvailability();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('offline', handleBrowserOffline);
+      window.removeEventListener('pos:api-unavailable', handleApiUnavailable);
+    };
+  }, [user, offlineMode, activateOfflineMode]);
 
   const syncPendingOpenEvents = async (userId: number) => {
     const events = await listarEventosTurnoOfflinePos(userId, 'OPEN');

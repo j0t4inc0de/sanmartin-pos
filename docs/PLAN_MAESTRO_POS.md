@@ -3,7 +3,7 @@
 - **Versión:** 1.2 — sesión offline automática y turnos offline aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; autenticación online con contraseña, restauración automática de sesión offline sin PIN (pendiente de aceptación manual), turnos online/offline, ventas online/offline, cierre manual y resumen por medio de pago disponibles localmente. El usuario confirmó la venta offline, su sincronización al reiniciar Django y las pruebas de apertura/cierre offline. Siguen pendientes anulación offline, conciliación de turnos cerrados, cierre automático e impresión.
+- **Estado:** Base técnica migrada; autenticación online con contraseña, detección de caída de API sin recargar y restauración automática de sesión offline sin PIN (pendientes de aceptación manual), turnos online/offline, ventas online/offline, cierre manual y resumen por medio de pago disponibles localmente. El usuario confirmó la venta offline, su sincronización al reiniciar Django y las pruebas de apertura/cierre offline. Siguen pendientes anulación offline, conciliación de turnos cerrados, cierre automático e impresión.
 
 ---
 
@@ -393,7 +393,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - **Seguridad:** la contraseña actual del rol `sanmartin_dev` es solo para desarrollo local; reemplazarla por una clave robusta antes de cualquier despliegue. No usarla en producción.
 - **Verificación del entorno:** se usa Python 3.14.10 en `backend/.venv`; el acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Las pruebas automatizadas del backend se ejecutan en SQLite temporal y no sustituyen la validación de concurrencia en PostgreSQL. Docker no es requisito para el flujo local.
 
-La pantalla `/pos` permite operar ventas online y restaura automáticamente la sesión local cuando la API no responde. Guarda ventas cobradas en una cola local con catálogo cacheado; al reconectar sincroniza apertura, ventas y cierre en orden. El usuario confirmó la venta offline y las pruebas de apertura/cierre manual offline. El siguiente bloque es cubrir anulaciones y conciliación de turnos cerrados; el cierre automático a las 00:30 queda pendiente.
+La pantalla `/pos` permite operar ventas online, detecta periódicamente cuando la API deja de responder y cambia a offline sin recargar. Restaura la sesión local, guarda ventas cobradas en una cola con catálogo cacheado y al reconectar sincroniza apertura, ventas y cierre en orden. El usuario confirmó la venta offline y las pruebas de apertura/cierre manual offline. La detección automática de caída requiere aceptación manual. El siguiente bloque es cubrir anulaciones y conciliación de turnos cerrados; el cierre automático a las 00:30 queda pendiente.
 
 ### Seguimiento de la orden de trabajo
 

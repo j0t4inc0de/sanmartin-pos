@@ -57,3 +57,10 @@ El PIN se eliminó después de la aceptación anterior. Falta confirmar en el na
 2. Detén Django con `Ctrl+C` y recarga `/pos`.
 3. Confirma que restaura el usuario y el turno directamente, sin pedir contraseña ni PIN, y que puedes seguir operando.
 4. Cierra sesión y comprueba que la identidad local se borra.
+
+## Validación pendiente — detectar caída de API sin recargar
+
+1. Inicia sesión y deja el POS abierto con un turno activo.
+2. Detén Django con `Ctrl+C`, sin recargar ni cambiar de pantalla.
+3. Espera hasta cinco segundos. El POS debe mostrar el modo offline por sí solo y permitir continuar la operación con los datos guardados.
+4. Reinicia Django y pulsa **Reconectar y sincronizar**. Confirma que las ventas pendientes se procesen.

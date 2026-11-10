@@ -10,17 +10,30 @@ export class ApiError extends Error {
 
 let csrfToken: string | null = null;
 
+const notificarApiNoDisponible = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('pos:api-unavailable'));
+  }
+};
+
 export const cargarTokenCsrf = async (actualizar = false): Promise<string> => {
   if (csrfToken && !actualizar) return csrfToken;
 
-  const response = await fetch('/api/auth/csrf/', {
-    method: 'GET',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/auth/csrf/', {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+  } catch (error) {
+    notificarApiNoDisponible();
+    throw error;
+  }
 
   if (!response.ok) {
+    if (response.status >= 500) notificarApiNoDisponible();
     throw new ApiError('No se pudo preparar la sesión segura.', response.status);
   }
 
@@ -58,13 +71,21 @@ export const solicitarApi = async <T>(
     headers.set('X-CSRFToken', await cargarTokenCsrf(true));
   }
 
-  const response = await fetch(path, {
-    method,
-    body,
-    headers,
-    credentials: 'same-origin',
-    cache: 'no-store',
-  });
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method,
+      body,
+      headers,
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+  } catch (error) {
+    notificarApiNoDisponible();
+    throw error;
+  }
+
+  if (response.status >= 500) notificarApiNoDisponible();
 
   if (response.status === 204) return undefined as T;
 
