@@ -1,6 +1,6 @@
 # Propuesta de impresión del POS
 
-- **Estado:** borrador para revisión; diseño de formato previo a la integración con la DINON 9390.
+- **Estado:** panel de diagnóstico USB implementado; impresión de ventas reales aún pendiente de validar físicamente.
 - **Base:** requisitos del proyecto, respuestas del usuario y video del POS antiguo recibido el 10 de noviembre de 2026.
 
 ## Hechos confirmados
@@ -74,7 +74,9 @@ La comanda prioriza el folio, la cantidad y la preparación. No muestra precios 
 
 ## Validación antes de la prueba física
 
-- Revisar una vista previa de ambos documentos en pantalla y exportarlos a PDF para comparar contenido.
-- Verificar ventas en efectivo, Transbank y transferencia; solo efectivo debe abrir la gaveta.
-- Simular modo offline: venta persistida localmente, impresión independiente de sincronización y reimpresión sin crear otra venta.
-- Con la DINON disponible, verificar el papel y área imprimible de 80 mm, caracteres, corte, los dos papeles y la gaveta. Hasta completar esta prueba, la impresión física permanece pendiente.
+- Panel implementado en `/pos`, visible tras iniciar sesión aunque no haya turno abierto: vincula mediante WebUSB, imprime dos muestras ESC/POS (cliente y cocina) y ofrece un botón separado para pulsar la gaveta.
+- Las muestras son ficticias, identificadas como prueba y no registran ventas. La prueba de papeles no abre la gaveta. La prueba de gaveta requiere confirmación explícita.
+- Para validar: abrir `/pos` en Chrome o Edge desde el equipo conectado a la DINON; iniciar sesión; pulsar **Vincular impresora USB** y seleccionar solo la DINON; pulsar **Imprimir dos pruebas**; confirmar que salieron dos papeles legibles, completos, con acentos, buen ancho, corte adecuado y folio igual; comprobar que la cocina no muestra precios ni pagos. Revisar que la gaveta no se abrió por imprimir.
+- Luego, con gaveta compatible conectada al RJ11 y despejada, pulsar **Probar gaveta**, confirmar el diálogo y anotar si abrió. No se debe usar sobre una caja ocupada durante esta prueba.
+- Si WebUSB no aparece, no lista la DINON o falla al reclamar la interfaz, registrar navegador/versión y el texto de error; revisar en Windows el nombre/modelo de impresora y cómo aparece en Administrador de dispositivos. La impresión vía USB directo puede estar bloqueada si Windows tiene la interfaz ocupada por un controlador.
+- La compatibilidad física sigue pendiente hasta comprobar ancho útil, caracteres, corte, dos papeles y gaveta con la unidad real. Esta pantalla no integra todavía la impresión con ventas, reimpresiones ni la cola offline.
