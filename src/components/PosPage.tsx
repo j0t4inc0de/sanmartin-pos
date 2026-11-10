@@ -720,6 +720,67 @@ export const PosPage = () => {
     }
   };
 
+  const cerrarTurnoAutomaticamente = useCallback(async (): Promise<boolean> => {
+    if (!shift?.is_open || !user || autoCloseInProgress.current) return false;
+    autoCloseInProgress.current = true;
+    let startedSubmission = false;
+    try {
+      setAutoCloseDue(true);
+      const savedPayment = await cargarCobroPendientePos(shift.uuid).catch(() => null);
+      const paymentNeedsResolution = hasPendingPayment || savedPayment?.status === 'PAGO_RECIBIDO';
+      setAutoCloseWaitingForPayment(paymentNeedsResolution);
+      if (paymentNeedsResolution || (!offlineMode && hasQueuedOfflineSales) || isSubmittingRef.current) return false;
+      startedSubmission = true;
+      setIsSubmitting(true);
+      setErrorMessage('');
+      const closedAt = new Date().toISOString();
+      const expectedCash = shift.initial_cash + (shift.sales_summary.find(item => item.payment_method === 'EFECTIVO')?.total_amount ?? 0);
+      const closedShift: CashShift = {
+        ...shift,
+        closed_at: closedAt,
+        final_cash: expectedCash,
+        counted_cash: null,
+        cash_difference: null,
+        closed_automatically: true,
+        is_open: false,
+        updated_at: closedAt,
+      };
+      await guardarEventoYTurnoEnCacheOfflinePos(user.id, {
+        shift: closedShift,
+        another_shift_open: false,
+        next_order_number: nextOrderNumber,
+      }, {
+        user_id: user.id,
+        shift_uuid: shift.uuid,
+        event_type: 'CLOSE',
+        payload: { closed_at: closedAt, counted_cash: null, closed_automatically: true, notes: shift.notes },
+      });
+      setShift(closedShift);
+      setLastClosedShift(closedShift);
+      setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
+      setAutoCloseDue(false);
+      setAutoCloseWaitingForPayment(false);
+      if (!offlineMode && navigator.onLine && await syncPendingOpenEvents(user.id)) {
+        await syncPendingCloseEvents(user.id);
+      }
+      return true;
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el cierre automático en este equipo.');
+      return false;
+    } finally {
+      autoCloseInProgress.current = false;
+      if (startedSubmission) setIsSubmitting(false);
+    }
+  }, [shift, user, nextOrderNumber, hasPendingPayment, hasQueuedOfflineSales, offlineMode]);
+
+  const comprobarTurnoAntesDeVenta = useCallback(async (): Promise<boolean> => {
+    if (!shift?.is_open) return false;
+    if (!debeCerrarAutomaticamente(shift.opened_at, new Date())) return true;
+    setAutoCloseDue(true);
+    await cerrarTurnoAutomaticamente();
+    return false;
+  }, [shift, cerrarTurnoAutomaticamente]);
+
   const handleRetryPendingShiftClose = async () => {
     if (!user || offlineMode || isSubmitting || hasQueuedOfflineSales) return;
     setIsSubmitting(true);
@@ -741,63 +802,23 @@ export const PosPage = () => {
       return;
     }
     let cancelled = false;
-    const closeIfDue = async () => {
-      if (cancelled || autoCloseInProgress.current || !shift.is_open || !debeCerrarAutomaticamente(shift.opened_at, new Date())) return;
-      autoCloseInProgress.current = true;
-      let startedSubmission = false;
-      try {
-        setAutoCloseDue(true);
-        const savedPayment = await cargarCobroPendientePos(shift.uuid).catch(() => null);
-        const paymentNeedsResolution = hasPendingPayment || savedPayment?.status === 'PAGO_RECIBIDO';
-        setAutoCloseWaitingForPayment(paymentNeedsResolution);
-        if (paymentNeedsResolution || (!offlineMode && hasQueuedOfflineSales) || isSubmittingRef.current) return;
-        startedSubmission = true;
-        setIsSubmitting(true);
-        setErrorMessage('');
-        const closedAt = new Date().toISOString();
-        const expectedCash = shift.initial_cash + (shift.sales_summary.find(item => item.payment_method === 'EFECTIVO')?.total_amount ?? 0);
-        const closedShift: CashShift = {
-          ...shift,
-          closed_at: closedAt,
-          final_cash: expectedCash,
-          counted_cash: null,
-          cash_difference: null,
-          closed_automatically: true,
-          is_open: false,
-          updated_at: closedAt,
-        };
-        await guardarEventoYTurnoEnCacheOfflinePos(user.id, {
-          shift: closedShift,
-          another_shift_open: false,
-          next_order_number: nextOrderNumber,
-        }, {
-          user_id: user.id,
-          shift_uuid: shift.uuid,
-          event_type: 'CLOSE',
-          payload: { closed_at: closedAt, counted_cash: null, closed_automatically: true, notes: shift.notes },
-        });
-        setShift(closedShift);
-        setLastClosedShift(closedShift);
-        setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
-        setAutoCloseDue(false);
-        setAutoCloseWaitingForPayment(false);
-        if (!offlineMode && navigator.onLine && await syncPendingOpenEvents(user.id)) {
-          await syncPendingCloseEvents(user.id);
-        }
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el cierre automático en este equipo.');
-      } finally {
-        autoCloseInProgress.current = false;
-        if (startedSubmission) setIsSubmitting(false);
+    const checkAutomaticClose = () => {
+      if (!cancelled && debeCerrarAutomaticamente(shift.opened_at, new Date())) {
+        void cerrarTurnoAutomaticamente();
       }
     };
-    void closeIfDue();
-    const intervalId = window.setInterval(() => void closeIfDue(), 15000);
+    const handleVisibilityChange = () => { if (document.visibilityState === 'visible') checkAutomaticClose(); };
+    void checkAutomaticClose();
+    const intervalId = window.setInterval(checkAutomaticClose, 15000);
+    window.addEventListener('focus', checkAutomaticClose);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
+      window.removeEventListener('focus', checkAutomaticClose);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [shift, user, nextOrderNumber, offlineMode, hasPendingPayment, hasQueuedOfflineSales]);
+  }, [shift, user, cerrarTurnoAutomaticamente]);
 
   return (
     <main className="min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">
@@ -951,7 +972,7 @@ export const PosPage = () => {
             {shift?.is_open ? (
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
                 <div className="min-w-0">
-                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} />
+                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} onBeforeCreateSale={comprobarTurnoAntesDeVenta} />
                 </div>
                 <aside className="min-w-0 space-y-5 2xl:sticky 2xl:top-5">
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6">

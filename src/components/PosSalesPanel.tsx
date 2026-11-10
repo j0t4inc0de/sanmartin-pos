@@ -37,7 +37,7 @@ interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | n
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
-export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
+export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, onBeforeCreateSale, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; onBeforeCreateSale: () => Promise<boolean>; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [offlineOrders, setOfflineOrders] = useState<PosOfflineOrder[]>([]);
@@ -334,12 +334,16 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     setPendingPaymentStatus('idle');
     void eliminarCobroPendientePos(shiftUuid).catch(() => setPendingPaymentStatus('error'));
   };
-  const addProduct = (product: Product) => { setLines(prev => [...prev, { key: crypto.randomUUID(), product_id: product.id, product_name: product.name, unit_price: product.price, quantity: 1, notes: '', modifiers: [] }]); invalidateQuote(); setMessage(''); };
+  const addProduct = async (product: Product) => {
+    if (!await onBeforeCreateSale()) return;
+    setLines(prev => [...prev, { key: crypto.randomUUID(), product_id: product.id, product_name: product.name, unit_price: product.price, quantity: 1, notes: '', modifiers: [] }]); invalidateQuote(); setMessage('');
+  };
   const updateLine = (key: string, update: (line: CartLine) => CartLine) => { setLines(prev => prev.map(line => line.key === key ? update(line) : line)); invalidateQuote(); };
   const removeLine = (key: string) => { setLines(prev => prev.filter(line => line.key !== key)); invalidateQuote(); };
 
   const requestQuote = async () => {
     if (!lines.length || quote || paymentReceivedPending) return;
+    if (!await onBeforeCreateSale()) return;
     if (!catalog || lines.some(line => !catalog.products.some(product => product.id === line.product_id) || line.modifiers.some(entry => !catalog.modifiers.some(modifier => modifier.id === entry.modifier_id)))) {
       setError('El catálogo ya no contiene un producto o modificador del borrador. Revisa y quita las opciones marcadas antes de cotizar.');
       return;
@@ -554,7 +558,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     {pendingPaymentStatus === 'error' && quote && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-200">No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.</p>}
     <fieldset disabled={busy || syncingOfflineOrders || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed || shiftSyncBlocked || (!offlineMode && offlineOrders.length > 0)} className="grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="space-y-3"><div className="flex gap-2 overflow-x-auto pb-1"><button className={button} type="button" onClick={() => setCategory('all')}>Todos</button>{catalog?.categories.map(c => <button className={button} type="button" key={c.id} onClick={() => setCategory(c.id)}>{c.name}</button>)}</div>
-        {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : <div className="grid grid-cols-2 gap-2">{products.map(p => <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => addProduct(p)} className="min-h-20 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-left hover:border-[#FACC15]/50 disabled:opacity-50"><span className="block text-sm font-semibold text-white">{p.name}</span><span className="mt-1 block text-sm text-[#FACC15]">{formatPrice(p.price)}</span></button>)}</div>}
+        {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : <div className="grid grid-cols-2 gap-2">{products.map(p => <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => void addProduct(p)} className="min-h-20 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-left hover:border-[#FACC15]/50 disabled:opacity-50"><span className="block text-sm font-semibold text-white">{p.name}</span><span className="mt-1 block text-sm text-[#FACC15]">{formatPrice(p.price)}</span></button>)}</div>}
       </div>
       <div className="space-y-4"><div className="flex gap-2"><button type="button" className={`${button} flex-1 ${consumptionType === 'PARA_SERVIR' ? 'border-[#FACC15] text-white' : ''}`} onClick={() => {setConsumptionType('PARA_SERVIR'); invalidateQuote();}}>Para servir</button><button type="button" className={`${button} flex-1 ${consumptionType === 'PARA_LLEVAR' ? 'border-[#FACC15] text-white' : ''}`} onClick={() => {setConsumptionType('PARA_LLEVAR'); invalidateQuote();}}>Para llevar</button></div>
         {!lines.length ? <div className="rounded-xl border border-dashed border-white/15 p-6 text-center text-sm text-gray-500"><ShoppingCart className="mx-auto mb-2 h-6 w-6"/>Agrega productos a la venta.</div> : <div className="space-y-3">{lines.map(line => {const currentProduct = catalog?.products.find(p => p.id === line.product_id); const product = currentProduct ?? {name: line.product_name, price: line.unit_price}; return <article key={line.key} className="rounded-xl border border-white/10 bg-[#0D0D0D] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-semibold text-white">{product.name}</p><p className="text-xs text-gray-400">{formatPrice(product.price + modifiersFor(line))} c/u</p>{catalog && !currentProduct && <p className="mt-1 text-xs text-amber-300">Ya no está en el catálogo. Quita esta línea para continuar.</p>}</div><button className="text-gray-500 hover:text-red-300" aria-label="Quitar producto" type="button" onClick={() => removeLine(line.key)}><Trash2 className="h-4 w-4"/></button></div>
