@@ -71,10 +71,14 @@ WHERE uuid = '<UUID de la venta>';
 
 La API devuelve también `cancellation_reason` en el historial del POS. El flujo offline cubre ventas creadas en la cola local; el historial de ventas creadas online no se guarda localmente para anularlas por primera vez después de recargar sin conexión.
 
-## Prueba pendiente — reconexión automática
+## Aceptación manual — reconexión automática
 
-1. Inicia sesión online y deja el POS abierto con un turno activo. Desconecta Django sin cerrar ni recargar la página; confirma que se activa el modo offline.
-2. Registra una venta (y, si corresponde, anúlala) offline.
-3. Reinicia Django. Sin tocar **Reconectar y sincronizar** ni **Reintentar sincronización**, espera hasta diez segundos.
-4. Confirma que desaparezca el modo offline, la sesión vuelva a online y las ventas/anulaciones/cierre pendientes se reflejen en la API en orden.
-5. Repite alternando caída de red completa y caída solo de Django; el POS debe seguir permitiendo trabajar offline durante cada caída.
+El usuario confirmó el 10 de noviembre de 2026 que, al recuperar la API, el POS vuelve a conectarse automáticamente sin pulsar los botones de reconexión o sincronización.
+
+## Prueba pendiente — cierre automático a las 00:30
+
+1. Con la API activa, abre un turno antes de las 00:30 de `America/Santiago` y registra al menos una venta en efectivo.
+2. Deja el POS abierto hasta las 00:30; no pulses **Cerrar turno**.
+3. Comprueba que el turno quede cerrado, las nuevas ventas no estén disponibles, `closed_automatically` sea verdadero, `counted_cash` y `cash_difference` queden vacíos y `final_cash` sea el fondo inicial más las ventas en efectivo no anuladas.
+4. Repite con Django detenido durante el cierre. El turno debe cerrarse en el equipo y sincronizar apertura, ventas, anulaciones y cierre, en ese orden, al recuperar el servidor.
+5. Con un pago recibido localmente pero aún no registrado al momento del cierre automático, confirma que el turno espera. Al reintentar y registrar la venta, confirma que el turno se cierre y que la venta quede incluida.

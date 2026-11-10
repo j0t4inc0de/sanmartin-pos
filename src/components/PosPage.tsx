@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { CircleDollarSign, Clock3, LogOut } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
-import { cargarAccesoOfflinePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarEventoTurnoOfflinePos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorEventoTurnoOfflinePos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -67,6 +67,29 @@ const formatChileClock = (value: Date) => ({
   }).format(value).replace(/\ba\.\s*m\./i, 'AM').replace(/\bp\.\s*m\./i, 'PM'),
 });
 
+const chileDateAndMinute = (value: Date) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Santiago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(value);
+  const part = (type: string) => Number(parts.find(entry => entry.type === type)?.value ?? 0);
+  return { year: part('year'), month: part('month'), day: part('day'), date: part('year') * 10000 + part('month') * 100 + part('day'), minute: part('hour') * 60 + part('minute') };
+};
+
+const debeCerrarAutomaticamente = (openedAt: string, now: Date) => {
+  const opened = chileDateAndMinute(new Date(openedAt));
+  const current = chileDateAndMinute(now);
+  const cutoff = 30;
+  const cutoffDay = opened.minute < cutoff
+    ? opened.date
+    : (() => {
+      const nextDay = new Date(Date.UTC(opened.year, opened.month - 1, opened.day + 1));
+      return nextDay.getUTCFullYear() * 10000 + (nextDay.getUTCMonth() + 1) * 100 + nextDay.getUTCDate();
+    })();
+  return current.date > cutoffDay || (current.date === cutoffDay && current.minute >= cutoff);
+};
+
 const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
   <ul className="mt-2 space-y-2">
     {items.map((item) => (
@@ -96,12 +119,18 @@ export const PosPage = () => {
   const [closingCashCount, setClosingCashCount] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [hasPendingPayment, setHasPendingPayment] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
   const [offlineMode, setOfflineMode] = useState(false);
   const [hasQueuedOfflineSales, setHasQueuedOfflineSales] = useState(false);
+  const [autoCloseDue, setAutoCloseDue] = useState(false);
+  const [autoCloseWaitingForPayment, setAutoCloseWaitingForPayment] = useState(false);
   const [pendingShiftEvents, setPendingShiftEvents] = useState<PosOfflineShiftEvent[]>([]);
+  const autoCloseInProgress = useRef(false);
+
+  useEffect(() => { isSubmittingRef.current = isSubmitting; }, [isSubmitting]);
 
   useEffect(() => {
     const updateClock = () => setChileClock(formatChileClock(new Date()));
@@ -626,6 +655,71 @@ export const PosPage = () => {
     }
   };
 
+  useEffect(() => {
+    if (!shift?.is_open || !user) {
+      setAutoCloseDue(false);
+      setAutoCloseWaitingForPayment(false);
+      return;
+    }
+    let cancelled = false;
+    const closeIfDue = async () => {
+      if (cancelled || autoCloseInProgress.current || !shift.is_open || !debeCerrarAutomaticamente(shift.opened_at, new Date())) return;
+      autoCloseInProgress.current = true;
+      let startedSubmission = false;
+      try {
+        setAutoCloseDue(true);
+        const savedPayment = await cargarCobroPendientePos(shift.uuid).catch(() => null);
+        const paymentNeedsResolution = hasPendingPayment || savedPayment?.status === 'PAGO_RECIBIDO';
+        setAutoCloseWaitingForPayment(paymentNeedsResolution);
+        if (paymentNeedsResolution || (!offlineMode && hasQueuedOfflineSales) || isSubmittingRef.current) return;
+        startedSubmission = true;
+        setIsSubmitting(true);
+        setErrorMessage('');
+        const closedAt = new Date().toISOString();
+        const expectedCash = shift.initial_cash + (shift.sales_summary.find(item => item.payment_method === 'EFECTIVO')?.total_amount ?? 0);
+        const closedShift: CashShift = {
+          ...shift,
+          closed_at: closedAt,
+          final_cash: expectedCash,
+          counted_cash: null,
+          cash_difference: null,
+          closed_automatically: true,
+          is_open: false,
+          updated_at: closedAt,
+        };
+        await guardarEventoYTurnoEnCacheOfflinePos(user.id, {
+          shift: closedShift,
+          another_shift_open: false,
+          next_order_number: nextOrderNumber,
+        }, {
+          user_id: user.id,
+          shift_uuid: shift.uuid,
+          event_type: 'CLOSE',
+          payload: { closed_at: closedAt, counted_cash: null, closed_automatically: true, notes: shift.notes },
+        });
+        setShift(closedShift);
+        setLastClosedShift(closedShift);
+        setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
+        setAutoCloseDue(false);
+        setAutoCloseWaitingForPayment(false);
+        if (!offlineMode && navigator.onLine && await syncPendingOpenEvents(user.id)) {
+          await syncPendingCloseEvents(user.id);
+        }
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el cierre automático en este equipo.');
+      } finally {
+        autoCloseInProgress.current = false;
+        if (startedSubmission) setIsSubmitting(false);
+      }
+    };
+    void closeIfDue();
+    const intervalId = window.setInterval(() => void closeIfDue(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [shift, user, nextOrderNumber, offlineMode, hasPendingPayment, hasQueuedOfflineSales]);
+
   return (
     <main className="min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">
       <div className="mx-auto w-full max-w-[1600px]">
@@ -853,11 +947,9 @@ export const PosPage = () => {
                 >
                   Cerrar turno
                 </button>
-                {offlineMode && <p className="mt-3 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400">El cierre quedará pendiente y se enviará después de sincronizar las ventas de este turno.</p>}
+                {offlineMode && <p className="mt-3 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400">El cierre quedará pendiente y se enviará después de sincronizar las ventas y anulaciones de este turno.</p>}
                 {hasPendingPayment && <p role="alert" className="mt-3 text-xs text-amber-200">Hay una cotización o pago pendiente; resuélvelo antes de cerrar.</p>}
-                <p className="mt-3 text-xs text-gray-500">
-                  El cierre automático a las 00:30 se habilitará al completar el almacenamiento y la sincronización offline.
-                </p>
+                {autoCloseDue ? <p role="status" className="mt-3 rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-xs text-amber-100">Llegó la hora del cierre automático. {autoCloseWaitingForPayment ? 'Termina de resolver el pago pendiente para cerrar sin perder la venta.' : !offlineMode && hasQueuedOfflineSales ? 'Se cerrará al terminar de sincronizar las ventas pendientes.' : 'El turno se está cerrando y se sincronizará al recuperar la conexión.'}</p> : <p className="mt-3 text-xs text-gray-500">El turno se cierra automáticamente a las 00:30, hora de Chile. El arqueo físico queda vacío.</p>}
               </div>
                 </aside>
               </div>
