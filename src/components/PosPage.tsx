@@ -222,7 +222,6 @@ export const PosPage = () => {
       try {
         // Also migrates older local records by removing credential verifier data.
         await cargarAccesoOfflinePos().catch(() => null);
-        await cargarTokenCsrf();
         const response = await solicitarApi<{ user: PosUser }>(
           '/api/auth/session/',
         );
