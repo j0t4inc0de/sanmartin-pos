@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Archive, ArrowLeft, Check, CirclePlus, Package, RefreshCw, Tag } from 'lucide-react';
+import { Archive, ArrowLeft, Check, CirclePlus, Package, RefreshCw, RotateCcw, Tag, Trash2 } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { cargarCatalogoPos } from '../services/posLocalStore';
+import { usePosDialogs } from './PosDialogs';
 
 type Section = 'products' | 'categories' | 'modifiers';
 interface Category { id: number; slug: string; name: string; sort_order: number; is_active: boolean; updated_at: string; }
@@ -17,6 +18,7 @@ const blankModifier = (): ModifierForm => ({ name: '', price: 0, modifier_type: 
 const money = (value: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
 
 export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boolean; onClose: () => void }) {
+  const { confirm } = usePosDialogs();
   const [section, setSection] = useState<Section>('products');
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -89,7 +91,9 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       await solicitarApi(`${path}${id ? `${id}/` : ''}`, { method: id ? 'PATCH' : 'POST', body });
       await loadData();
       setMessage('Cambios guardados. El POS actualizará la carta y el menú automáticamente.');
-      startNew();
+      if (section === 'products') setProductForm(blankProduct(categories.find(item => item.is_active)?.id ?? categories[0]?.id ?? 0));
+      if (section === 'categories') setCategoryForm(blankCategory());
+      if (section === 'modifiers') setModifierForm(blankModifier());
       window.dispatchEvent(new Event('pos:catalog-updated'));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo guardar el cambio. Revisa los datos e inténtalo nuevamente.');
@@ -106,6 +110,36 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const selectCategory = (item: Category) => setCategoryForm({ id: item.id, name: item.name, sort_order: item.sort_order, is_active: item.is_active });
   const selectModifier = (item: Modifier) => setModifierForm({ id: item.id, name: item.name, price: item.price, modifier_type: item.modifier_type, is_available: item.is_available, is_active: item.is_active });
   const close = onClose;
+
+  const toggleActive = async (item: Product | Category | Modifier) => {
+    if (offlineMode || saving) return;
+    const isActive = item.is_active;
+    const label = section === 'products' ? 'producto' : section === 'categories' ? 'categoría' : 'modificador';
+    const confirmed = await confirm({
+      title: isActive ? `Retirar ${label} de la carta` : `Restaurar ${label}`,
+      message: isActive
+        ? section === 'categories'
+          ? `“${item.name}” y sus productos dejarán de aparecer en la carta QR y en nuevas ventas. Se conservará el historial y podrás restaurar la categoría después.`
+          : `“${item.name}” dejará de aparecer en la carta QR y en nuevas ventas. Se conservará el historial y podrás restaurarlo después.`
+        : `“${item.name}” volverá a estar activo. Revisa su disponibilidad y los datos antes de ofrecerlo a los clientes.`,
+      confirmLabel: isActive ? 'Retirar de la carta' : 'Restaurar',
+      tone: isActive ? 'danger' : 'primary',
+    });
+    if (!confirmed) return;
+    setSaving(true); setError(''); setMessage('');
+    try {
+      const endpoint = section === 'products' ? 'products' : section === 'categories' ? 'categories' : 'modifiers';
+      await solicitarApi(`/api/pos/catalog/manage/${endpoint}/${item.id}/`, { method: 'PATCH', body: { is_active: !isActive } });
+      await loadData();
+      setMessage(isActive ? `${label[0].toLocaleUpperCase('es-CL') + label.slice(1)} retirado de la carta. El historial se conserva.` : `${label[0].toLocaleUpperCase('es-CL') + label.slice(1)} restaurado.`);
+      window.dispatchEvent(new Event('pos:catalog-updated'));
+      if (section === 'products') setProductForm(blankProduct(categories.find(category => category.is_active)?.id ?? categories[0]?.id ?? 0));
+      if (section === 'categories') setCategoryForm(blankCategory());
+      if (section === 'modifiers') setModifierForm(blankModifier());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo actualizar el estado. Inténtalo nuevamente.');
+    } finally { setSaving(false); }
+  };
 
   const sectionTitle = section === 'products' ? 'Productos' : section === 'categories' ? 'Categorías' : 'Modificadores';
   const sectionSingular = section === 'products' ? 'producto' : section === 'categories' ? 'categoría' : 'modificador';
@@ -130,7 +164,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
           {!loading && itemsCount === 0 && <p className="pos-catalog-muted">Todavía no hay {sectionTitle.toLocaleLowerCase('es-CL')}.</p>}
         </aside>
         <div className="pos-catalog-editor" inert={offlineMode}>
-          <div className="pos-catalog-editor-heading"><div><p>{sectionTitle}</p><h3>{(section === 'products' ? productForm.id : section === 'categories' ? categoryForm.id : modifierForm.id) ? 'Editar registro' : `Agregar ${sectionSingular}`}</h3></div><button type="button" className="pos-catalog-refresh" onClick={() => void loadData()} disabled={loading || saving}><RefreshCw aria-hidden="true" />Actualizar lista</button></div>
+          <div className="pos-catalog-editor-heading"><div><p>{sectionTitle}</p><h3>{(section === 'products' ? productForm.id : section === 'categories' ? categoryForm.id : modifierForm.id) ? 'Editar registro' : `Agregar ${sectionSingular}`}</h3></div><div className="pos-catalog-editor-actions">{!offlineMode && (section === 'products' ? productForm.id : section === 'categories' ? categoryForm.id : modifierForm.id) && <button type="button" className={`pos-catalog-archive ${((section === 'products' ? productForm.is_active : section === 'categories' ? categoryForm.is_active : modifierForm.is_active)) ? '' : 'is-restore'}`} onClick={() => void toggleActive(section === 'products' ? products.find(item => item.id === productForm.id)! : section === 'categories' ? categories.find(item => item.id === categoryForm.id)! : modifiers.find(item => item.id === modifierForm.id)!)} disabled={saving || loading}>{((section === 'products' ? productForm.is_active : section === 'categories' ? categoryForm.is_active : modifierForm.is_active)) ? <><Trash2 aria-hidden="true" />Retirar de la carta</> : <><RotateCcw aria-hidden="true" />Restaurar</>}</button>}<button type="button" className="pos-catalog-refresh" onClick={() => void loadData()} disabled={loading || saving}><RefreshCw aria-hidden="true" />Actualizar lista</button></div></div>
           {error && <div className="pos-catalog-error" role="alert">{error}</div>}
           {message && <div className="pos-catalog-success" role="status"><Check aria-hidden="true" />{message}</div>}
           {section === 'products' && <form className="pos-catalog-form" onSubmit={save}>

@@ -46,11 +46,21 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ### 2.1 Gestión del catálogo desde el POS
 
-**Trabajo:** ofrecer desde el botón **Catálogo** dentro de `/pos` la creación y edición de productos, categorías y modificadores. Los formularios cubren campos operativos existentes en el modelo Django. La escritura requiere conexión, usa el permiso `sales.can_operate_pos` y se actualiza en el backend; no existe una cola offline para cambios de catálogo. Todo operador POS comparte ese permiso según la decisión documentada, por lo que no hay un rol separado de administrador. Los registros se desactivan en vez de borrarse. Los cambios en productos se reflejan también en la carta pública. Las imágenes se gestionan mediante la ruta/URL existente; no se suben archivos. Los modificadores siguen siendo globales porque el esquema no los vincula a productos.
+**Trabajo:** ofrecer desde el apartado **Catálogo** dentro de `/pos` la creación, edición, retiro y restauración de productos, categorías y modificadores. La acción visible **Retirar de la carta** pide confirmación y oculta el registro de la carta QR y las ventas nuevas; **Restaurar** lo vuelve a activar. No se borra de la base de datos, para preservar referencias y ventas históricas. En una categoría, retirar oculta sus productos y restaurar recupera los que continúan activos y disponibles. La escritura requiere conexión, usa `sales.can_operate_pos` y se actualiza en Django/PostgreSQL; no existe una cola offline para cambios de catálogo. Todo operador POS comparte el permiso. Los cambios en productos se reflejan también en la carta pública. Las imágenes se gestionan mediante una ruta/URL; no se suben archivos. Los modificadores siguen siendo globales porque el esquema no los vincula a productos.
 
-**Aceptación:** crear y actualizar producto, categoría y modificador; comprobar validaciones, estados activos/no disponibles, reflejo en catálogo del POS y carta pública, sincronización automática y protección de usuarios sin permiso. Confirmar que offline se informa que se requiere reconexión y no se presenta como guardado.
+**Aceptación:** crear y actualizar producto, categoría y modificador; retirar y restaurar cada tipo; comprobar confirmación, conservación del historial, reflejo en catálogo del POS y carta pública, sincronización automática y protección de usuarios sin permiso. Confirmar ambos temas y que offline se informa que se requiere reconexión y no se presenta como guardado.
 
 **Estado:** implementada el 10 de noviembre de 2026; 9 pruebas de `apps.catalog` y `npm run build` pasaron. Falta aceptación manual de la interfaz en ambos temas.
+
+### 2.2 Promociones programadas para la carta QR
+
+**Hallazgo documental:** el contrato actual deja los combos promocionales fuera del POS; cuatro combos siguen como contenido fijo en el frontend. El MER contempla `original_price` como precio tachado para promociones web futuras, pero no agrega fechas ni reglas de precio. El campo `badge` también es solo presentación. El contrato de ventas prohíbe descuentos en esta versión y el backend cotiza al precio regular. Por lo tanto, hoy el POS no permite programar promociones por día y editar solo el precio tachado produciría una carta que puede cobrar otro importe.
+
+**Flujo recomendado para aprobación:** crear promociones desde Catálogo con nombre, productos asociados, precio promocional y un día de vigencia en `America/Santiago`; publicarlas automáticamente en QR, aplicar el mismo valor en cotización y caja, y guardar el precio/promoción como snapshot de la venta. Los cobros offline se juzgan por la fecha original de venta al sincronizar. La pantalla permite dejar en borrador, programar, pausar, editar, duplicar y revisar vencidas; impide solapamientos del mismo producto y valores promocionales mayores o iguales al precio regular. No se modifican ventas ya cobradas. Los combos con varios productos y variantes requieren un modelo/flujo aparte que considere composición, elecciones y comanda de cocina.
+
+**Dependencia:** requiere cambiar la decisión vigente de no permitir descuentos y confirmar si el usuario autoriza que una promoción de precio se aplique tanto a la carta QR como a la cotización/venta del POS. No implementar descuentos solo visuales en QR porque desalinearían el precio cobrado.
+
+**Estado:** diseño recomendado, pendiente de confirmar alcance y regla comercial antes de cambios de base de datos/API.
 
 ### 3. Prueba física de la DINON 9390
 

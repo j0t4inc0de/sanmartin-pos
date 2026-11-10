@@ -46,7 +46,7 @@ Las rutas de gestión requieren sesión autenticada y `sales.can_operate_pos`, i
 | `GET/POST /api/pos/catalog/manage/modifiers/` | Listar todos los modificadores y crear uno. |
 | `GET/PATCH /api/pos/catalog/manage/modifiers/{id}/` | Consultar o actualizar nombre, precio, tipo, disponibilidad y actividad. |
 
-Las listas de gestión muestran registros activos e inactivos. No se exponen operaciones `DELETE`: se desactivan los registros para preservar referencias y snapshots históricos. Una edición de producto/precio o disponibilidad también cambia la carta pública porque el POS y la web usan el mismo catálogo. La edición de imágenes acepta una ruta o URL existente (`image_url`); no carga archivos al servidor. Los modificadores son globales: el esquema actual no los asocia individualmente a productos.
+Las listas de gestión muestran registros activos e inactivos. La interfaz ofrece **Retirar de la carta** y **Restaurar** como acciones explícitas y confirmadas; ambas cambian `is_active`. No se expone borrado físico (`DELETE`) porque las referencias de ventas y snapshots históricos deben conservarse. Retirar una categoría también oculta sus productos; al restaurarla, reaparecen los productos que sigan activos y disponibles. Una edición de producto/precio o disponibilidad también cambia la carta pública porque el POS y la web usan el mismo catálogo. La edición de imágenes acepta una ruta o URL existente (`image_url`); no carga archivos al servidor. Los modificadores son globales: el esquema actual no los asocia individualmente a productos.
 
 ## Respuesta
 
@@ -84,7 +84,13 @@ Las listas de gestión muestran registros activos e inactivos. No se exponen ope
 .\.venv\Scripts\python.exe manage.py cargar_catalogo_inicial
 ```
 
-El comando agrega categorías y productos faltantes mediante sus slugs y no sobrescribe ni elimina registros existentes. Las promociones web permanecen fuera de la API del POS y del catálogo de productos inicial.
+El comando agrega categorías y productos faltantes mediante sus slugs y no sobrescribe ni elimina registros existentes. Las promociones actuales siguen fuera de la API de gestión: los combos promocionales de la carta QR son contenido fijo del frontend; `original_price` y `badge` solo son campos de presentación y no programan una promoción ni alteran el precio que cobra el POS.
+
+## Promociones programadas — propuesta para siguiente etapa
+
+El contrato actual no incluye promociones por fecha, combos editables ni descuentos en cotizaciones/ventas. Para que la carta QR y la caja no publiquen ni cobren importes distintos, la propuesta es administrar promociones desde **Catálogo** y guardarlas en Django: seleccionar producto(s), nombre visible, precio promocional y una fecha de vigencia local en `America/Santiago`; la oferta comienza y termina automáticamente ese día. El QR muestra el precio vigente y el precio regular, y el POS cotiza/cobra ese mismo precio. El registro de venta conserva el precio efectivamente cobrado y una referencia/snapshot de la promoción; los pagos offline usan el horario local original de la venta para decidir vigencia al sincronizar. Una promoción pausada, vencida o archivada no se ofrece a ventas nuevas; nunca modifica ventas ya cobradas.
+
+La primera entrega debe prevenir dos promociones simultáneas para el mismo producto, validar precio promocional menor al regular, mostrar estados borrador/programada/activa/vencida, y permitir editar, pausar y duplicar una promoción. Los combos de varios productos requieren una definición aparte de composición, selección de variantes y despacho a cocina; no se deben simular con el campo `badge` ni con productos normales hasta definir ese modelo. Esta propuesta cambia la regla actual de “sin descuentos” del contrato de ventas y debe confirmarse antes de implementarse.
 
 ## Evolución del contrato
 
