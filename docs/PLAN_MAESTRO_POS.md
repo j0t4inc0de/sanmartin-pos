@@ -336,7 +336,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Acceso offline con PIN compartido de cuatro cifras tras autenticación online, válido 24 horas | Confirmado | La contraseña online se mantiene; el PIN no se guarda en texto legible. Cinco fallos bloquean nuevos intentos por 15 minutos, sin interrumpir una sesión activa. El límite de 10.000 combinaciones requiere mitigación local y se acepta por facilidad de uso. |
 | Combos fuera de la caja en la primera versión | Confirmado | Los combos web son contenido promocional y quedan fuera del catálogo operativo del POS inicial. |
 | ¿Cuál es la ruta oficial de sincronización delta del catálogo? | Pendiente de confirmar | Evita contratos distintos entre frontend y backend. |
-| Verificación local del PIN y controles técnicos de acceso offline | Pendiente de implementación | Mantener vigencia, proteger el verificador local y bloquear intentos; el bloqueo local no debe presentarse como protección contra manipulación del perfil del navegador. |
+| Verificación local del PIN y controles técnicos de acceso offline | Parcial | PBKDF2-HMAC-SHA-256, sal aleatoria, vigencia y reglas de bloqueo están implementados y probados como primitivas. Faltan IndexedDB, la interfaz y el flujo de acceso; el bloqueo local no protege contra manipulación del perfil del navegador. |
 | ¿Qué sucede si una caída supera la vigencia del catálogo local o se agota el almacenamiento? | Pendiente de definir | Establece límites y alertas para proteger ventas y datos. |
 | Usuario propio basado en `AbstractUser`, administrado por Django | Confirmado | Resuelve el choque entre el SQL de referencia y el sistema de autenticación, y deja espacio para permisos futuros. |
 | Folio correlativo por turno (`shift_order_number`) | Confirmado | Coincide con la unicidad por turno ya descrita y simplifica la operación con un POS. |
@@ -548,7 +548,7 @@ ETAPA 3 — ACCESO Y TURNO
 [x] API de sesión, CSRF y permisos
 [x] Pantalla de acceso online y control de turnos en /pos
 [ ] Crear grupo Operadores POS y asignar cuentas de cajero
-[~] Definir y construir acceso offline con PIN compartido de cuatro cifras para el equipo previamente autenticado; falta implementar el verificador local y los bloqueos
+[~] Construir acceso offline con PIN compartido de cuatro cifras; las primitivas criptográficas y reglas temporales están probadas, falta persistencia e interfaz
 [x] API e interfaz de apertura/cierre; falta arqueo
 [x] Impedir más de un turno abierto según la regla aprobada
 
