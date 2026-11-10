@@ -1,5 +1,7 @@
 # Prompt maestro para continuar el proyecto en otro chat
 
+> **Estado:** documento histórico de contexto. Para el inventario actual de pendientes y el orden para continuar, seguir [PLAN_CIERRE_POS.md](PLAN_CIERRE_POS.md). No ejecutar las listas de trabajo antiguas de este prompt sin contrastarlas con ese plan y el repositorio actual.
+
 Copia el texto entre **INICIO DEL PROMPT** y **FIN DEL PROMPT** y pégalo en un chat nuevo.
 
 ---
