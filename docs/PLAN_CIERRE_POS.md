@@ -82,7 +82,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** no hay folios duplicados ni ventas duplicadas; el total y el efectivo esperado se mantienen correctos; los conflictos quedan rechazados o marcados para revisión de forma explícita. Registrar comandos, versión PostgreSQL y resultados en una prueba de aceptación.
 
-**Estado:** pendiente. Las pruebas automatizadas existentes en SQLite no sustituyen este paso.
+**Estado:** pendiente. Las pruebas automatizadas existentes en SQLite no sustituyen este paso. El `.env` local apunta a `127.0.0.1:5433`, pero ese puerto no responde; `pg_ctl` indica que PostgreSQL 16 no tiene un servidor iniciado. El entorno de ejecución no pudo abrir el servicio de Windows para iniciarlo. No se ejecutaron pruebas contra otra base ni contra producción.
 
 ### 6. Dashboard y reportes de ventas
 
@@ -94,7 +94,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** comparar el día y el mes contra un conjunto de ventas conocido; comprobar que el gráfico diario se agrupa por hora y el mensual por día, y alterna monto/cantidad; revisar el ranking de horas punta; confirmar ventas offline según su hora original; anulación excluida de ventas completadas y mostrada aparte; rangos y límites de día/mes correctos en `America/Santiago`; totales por medio de pago conciliados con los turnos; temas claro/oscuro, pantalla angosta y permisos de acceso correctos.
 
-**Estado:** el resumen de turno está aceptado. Se implementó el dashboard día/mes en `GET /api/reports/sales/` y la pestaña **Reportes** dentro de `/pos`; falta aceptación visual/manual del usuario, conciliación con ventas conocidas y validación PostgreSQL. La revisión visual asistida no pudo abrir el navegador local porque la herramienta no identificó la URL activa. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
+**Estado:** el usuario confirmó que el dashboard está adaptado correctamente. Se implementó `GET /api/reports/sales/` y la pestaña **Reportes** dentro de `/pos`. Falta conciliar los totales contra ventas conocidas y completar la validación PostgreSQL. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
 
 ### 7. Aceptación integral del POS
 
@@ -129,6 +129,6 @@ Probar manualmente **Reportes** en `/pos` con los escenarios de aceptación y en
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
 | PostgreSQL concurrencia | Pendiente | Base de pruebas separada. |
-| Dashboard día/mes | Implementado; falta aceptación manual | Agregados protegidos en backend; filtros día/mes por `America/Santiago`; pago, anulaciones, productos, horas y turnos; 3 pruebas nuevas dentro de las 29 pruebas de `apps.sales`, compilación frontend aprobada. |
+| Dashboard día/mes | Interfaz aceptada; falta conciliación de datos | El usuario confirmó el ajuste visual; agregados protegidos en backend; filtros día/mes por `America/Santiago`; pagos, anulaciones, productos, horas y turnos; pruebas automatizadas y compilación aprobadas. |
 | Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
 | Guía operativa | Pendiente | Último entregable local. |

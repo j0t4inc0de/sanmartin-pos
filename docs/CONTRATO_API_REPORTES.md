@@ -2,7 +2,7 @@
 
 - **Versión:** 1.0
 - **Ruta:** `GET /api/reports/sales/`
-- **Estado:** implementado localmente; falta aceptación manual de interfaz
+- **Estado:** implementado localmente; interfaz aceptada; pendiente conciliación de datos
 - **Zona horaria:** `America/Santiago`
 
 ## Acceso
