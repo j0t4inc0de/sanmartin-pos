@@ -141,7 +141,7 @@ El Food Truck opera en Puente Alto sobre conexión móvil (4G/Wi-Fi). Ante caíd
 3. **Preservación de Hora Real (`created_at` del POS):**
    * El timestamp de venta se guarda tal como se cobró localmente, protegiendo la exactitud del **Gráfico de Horas Punta** aun si la sincronización ocurre 2 horas más tarde.
 4. **Sincronización Delta de Catálogo (`updated_at`):**
-   * Al reconectar, el POS consulta `GET /api/pos/catalog/?updated_after=<timestamp>`, descargando únicamente los productos modificados.
+   * Al reconectar y durante la operación online, el POS consulta `GET /api/pos/catalog/?updated_after=<timestamp>`, recibiendo categorías, productos y modificadores modificados, además de identificadores explícitos para retirar los elementos desactivados/no disponibles.
 
 ---
 
@@ -149,9 +149,9 @@ El Food Truck opera en Puente Alto sobre conexión móvil (4G/Wi-Fi). Ante caíd
 
 | Método | Endpoint | Acceso | Descripción |
 | :---: | :--- | :---: | :--- |
-| **`GET`** | `/api/menu/` | Público | Categorías, productos activos (`is_active = true`) y modificadores para la Carta QR y Landing. |
+| **`GET`** | `/api/menu/` | Público | Categorías y productos activos/disponibles para la Carta QR y Landing. |
 | **`POST`** | `/api/auth/token/` | Público | Autenticación del usuario único del mesón (`admin`) vía JWT / Session. |
-| **`GET`** | `/api/pos/catalog/` | `admin` | Catálogo maestro completo con soporte de filtro delta `?updated_after=...`. |
+| **`GET`** | `/api/pos/catalog/` | `sales.can_operate_pos` | Catálogo completo o cambios incrementales con bajas explícitas mediante `?updated_after=...`. |
 | **`PATCH`** | `/api/pos/products/{id}/availability/` | `admin` | Switch rápido de disponibilidad diaria (`is_available: true/false`). |
 | **`POST`** | `/api/pos/shifts/` | `admin` | Apertura o cierre de turno de caja (gestiona `uuid`, `initial_cash`, `notes`). |
 | **`POST`** | `/api/pos/orders/sync/` | `admin` | Sincronización en lote de órdenes offline o creación en tiempo real con `uuid`. |

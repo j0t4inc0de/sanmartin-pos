@@ -1,7 +1,7 @@
 # Contrato de la API del catálogo
 
 - **Versión:** 1.0
-- **Estado:** primera versión local
+- **Estado:** carta pública completa y catálogo incremental autenticado del POS implementados localmente
 - **Ruta:** `GET /api/menu/`
 
 ## Propósito
@@ -18,7 +18,20 @@ Entregar una fotografía completa de la carta vigente desde Django para la landi
 - Los precios CLP son enteros, nunca números decimales.
 - Si el catálogo está vacío, responde `200` con listas vacías.
 - No expone rutas para crear o editar catálogo; esos cambios se hacen desde Django Admin hasta definir permisos administrativos de API.
-- Esta primera versión entrega un catálogo completo. La sincronización delta para el POS offline se diseñará por separado cuando se defina su cursor y política de cambios.
+- Esta ruta entrega una fotografía completa para la landing y la carta QR. No es la ruta de sincronización del POS.
+
+## Catálogo autenticado del POS
+
+`GET /api/pos/catalog/` requiere una sesión autenticada con el permiso `sales.can_operate_pos`.
+
+- Sin `updated_after`, devuelve la fotografía completa de categorías con productos visibles, productos activos y disponibles, y modificadores activos y disponibles.
+- Con `?updated_after=<fecha ISO-8601 con zona horaria>`, devuelve solo categorías/productos/modificadores cambiados desde el cursor, más `removed: { categories, products, modifiers }` con los identificadores que el equipo debe eliminar de su catálogo local.
+- El cursor se compara inclusivamente (`updated_at >= updated_after`) para no perder cambios con la misma precisión temporal. El consumidor debe aplicar el delta como upsert idempotente y eliminar las entradas listadas en `removed`.
+- `generated_at` es el cursor que el cliente guarda después de aplicar correctamente la respuesta. Se envía `Cache-Control: no-store`.
+- `updated_after` inválido o sin zona horaria responde `400`. Un cursor futuro válido produce un delta vacío y un nuevo `generated_at`.
+- Desactivar una categoría retira también sus productos del catálogo local. Si un cambio deja una categoría sin productos disponibles, se indica como categoría retirada.
+
+La interfaz `/pos` conserva la última copia del catálogo en IndexedDB, solicita deltas al cargar y reconectar, y vuelve a consultar cada 60 segundos mientras está online. Si no hay conexión, mantiene la copia guardada para la operación offline.
 
 ## Respuesta
 
@@ -60,4 +73,4 @@ El comando agrega categorías y productos faltantes mediante sus slugs y no sobr
 
 ## Evolución del contrato
 
-Las modificaciones incompatibles requieren una versión nueva del contrato. La respuesta actual no define autenticación de caja, ventas, turnos, sincronización delta ni permisos de edición.
+Las modificaciones incompatibles requieren una versión nueva del contrato. La ruta pública no define autenticación de caja, ventas, turnos ni permisos de edición; esos controles pertenecen a los contratos del POS.

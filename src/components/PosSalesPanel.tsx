@@ -34,6 +34,26 @@ type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confi
 interface Sale { uuid: string; shift_order_number: number; total_amount: number; payment_method: PaymentMethod; amount_paid: number | null; change_given: number | null; }
 interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; payment_method: PaymentMethod; total_amount: number; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; }
 interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | null; }
+interface CatalogDelta extends Catalog {
+  removed?: { categories: number[]; products: number[]; modifiers: number[] };
+}
+
+const applyCatalogDelta = (current: Catalog, delta: CatalogDelta): Catalog => {
+  const mergeById = <T extends { id: number }>(existing: T[], changed: T[], removed: number[]) => {
+    const entries = new Map(existing.filter(item => !removed.includes(item.id)).map(item => [item.id, item]));
+    changed.forEach(item => entries.set(item.id, item));
+    return [...entries.values()];
+  };
+  const categories = mergeById(current.categories, delta.categories, delta.removed?.categories ?? [])
+    .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  const categoryOrder = new Map(categories.map((category, index) => [category.id, index]));
+  const products = mergeById(current.products, delta.products, delta.removed?.products ?? [])
+    .sort((a, b) => (categoryOrder.get(a.category_id) ?? Number.MAX_SAFE_INTEGER) - (categoryOrder.get(b.category_id) ?? Number.MAX_SAFE_INTEGER)
+      || a.name.localeCompare(b.name, 'es-CL') || a.id - b.id);
+  const modifiers = mergeById(current.modifiers, delta.modifiers, delta.removed?.modifiers ?? [])
+    .sort((a, b) => a.modifier_type.localeCompare(b.modifier_type) || a.name.localeCompare(b.name, 'es-CL') || a.id - b.id);
+  return { generated_at: delta.generated_at, categories, products, modifiers };
+};
 
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
@@ -65,6 +85,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [draftLoadAttempt, setDraftLoadAttempt] = useState(0);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
   const [catalogNotice, setCatalogNotice] = useState('');
+  const catalogSyncInProgress = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -229,8 +250,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
   };
 
-  const loadCatalog = async () => {
-    setLoadingCatalog(true); setError(''); setCatalogNotice('');
+  const loadCatalog = async (background = false) => {
+    if (catalogSyncInProgress.current) return;
+    catalogSyncInProgress.current = true;
+    if (!background) { setLoadingCatalog(true); setError(''); setCatalogNotice(''); }
     let savedCatalog: Awaited<ReturnType<typeof cargarCatalogoPos>> = null;
     try {
       savedCatalog = await cargarCatalogoPos();
@@ -239,32 +262,49 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setCatalogNotice('No se pudo acceder al almacenamiento local. El catálogo no quedará disponible sin conexión.');
     }
 
-    if (offlineMode) {
-      if (savedCatalog) {
-        const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
-        setCatalogNotice(`Sin conexión. Usando catálogo guardado el ${savedDate}; revisa los precios en la próxima sincronización.`);
-      } else setError('No hay un catálogo guardado disponible sin conexión.');
-      setLoadingCatalog(false);
-      return;
-    }
-
     try {
-      const freshCatalog = await solicitarApi<Catalog>('/api/pos/catalog/');
-      setCatalog(freshCatalog);
+      if (offlineMode) {
+        if (savedCatalog) {
+          const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
+          setCatalogNotice(`Sin conexión. Usando catálogo guardado el ${savedDate}; revisa los precios en la próxima sincronización.`);
+        } else setError('No hay un catálogo guardado disponible sin conexión.');
+        return;
+      }
+
       try {
-        await guardarCatalogoPos(freshCatalog);
-        setCatalogNotice('Catálogo actualizado y guardado en este equipo.');
-      } catch {
-        setCatalogNotice('Catálogo cargado desde el servidor, pero no se pudo guardar en este equipo. No estará disponible sin conexión.');
+        const cursor = savedCatalog?.catalog.generated_at;
+        const canRequestDelta = !!cursor && !Number.isNaN(Date.parse(cursor));
+        const endpoint = canRequestDelta
+          ? `/api/pos/catalog/?updated_after=${encodeURIComponent(cursor!)}`
+          : '/api/pos/catalog/';
+        const response = await solicitarApi<CatalogDelta>(endpoint);
+        const freshCatalog = canRequestDelta && savedCatalog
+          ? applyCatalogDelta(savedCatalog.catalog, response)
+          : response;
+        setCatalog(freshCatalog);
+        try {
+          await guardarCatalogoPos(freshCatalog);
+          const syncedAt = new Intl.DateTimeFormat('es-CL', { timeStyle: 'short' }).format(new Date(freshCatalog.generated_at));
+          const changeCount = response.categories.length + response.products.length + response.modifiers.length
+            + (response.removed?.categories.length ?? 0) + (response.removed?.products.length ?? 0) + (response.removed?.modifiers.length ?? 0);
+          setCatalogNotice(changeCount
+            ? `Catálogo actualizado (${changeCount} cambios) a las ${syncedAt}.`
+            : `Catálogo sincronizado a las ${syncedAt}.`);
+        } catch {
+          setCatalogNotice('Catálogo cargado desde el servidor, pero no se pudo guardar en este equipo. No estará disponible sin conexión.');
+        }
+      } catch (e) {
+        if (savedCatalog) {
+          const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
+          setCatalogNotice(`No se pudo actualizar el catálogo. Usando la copia guardada el ${savedDate}.`);
+        } else {
+          setError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo y no hay una copia local disponible.');
+        }
       }
-    } catch (e) {
-      if (savedCatalog) {
-        const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
-        setCatalogNotice(`Sin conexión al servidor. Usando el catálogo guardado el ${savedDate}; sus precios pueden estar desactualizados.`);
-      } else {
-        setError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo y no hay una copia local disponible.');
-      }
-    } finally { setLoadingCatalog(false); }
+    } finally {
+      catalogSyncInProgress.current = false;
+      if (!background) setLoadingCatalog(false);
+    }
   };
   const loadOrders = async () => {
     try { const result = await solicitarApi<OrderHistory>('/api/orders/'); setOrders(result.orders); }
@@ -325,9 +365,15 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     void loadCatalog();
     void Promise.all([loadOfflineOrders(), loadOfflineCancellations()]).then(([queue, cancellations]) => { if (!offlineMode && navigator.onLine && (queue.length || cancellations.length)) void syncOfflineOrders(); }).catch(() => setError('No se pudo consultar la cola de ventas guardadas.'));
     if (!offlineMode) void loadOrders();
-    const handleOnline = () => { if (!offlineMode) void syncOfflineOrders(); };
+    const handleOnline = () => { if (!offlineMode) { void loadCatalog(true); void syncOfflineOrders(); } };
+    const catalogRefreshTimer = window.setInterval(() => {
+      if (!offlineMode && navigator.onLine) void loadCatalog(true);
+    }, 60_000);
     window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
+    return () => {
+      window.clearInterval(catalogRefreshTimer);
+      window.removeEventListener('online', handleOnline);
+    };
   }, [shiftUuid, offlineMode]);
 
   const products = useMemo(() => {

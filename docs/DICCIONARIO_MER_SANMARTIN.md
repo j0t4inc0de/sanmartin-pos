@@ -18,7 +18,7 @@
    * *Solución:* El campo `created_at` conserva el timestamp exacto del momento del cobro emitido por el POS (zona horaria `America/Santiago`).
 3. **Sincronización Delta de Catálogo (`updated_at`):**
    * *Problema evitado:* Al reconectar, el POS no necesita descargar toda la base de datos para saber si hubo cambios.
-   * *Solución:* `categories`, `products` y `modifiers` cuentan con `updated_at`. El POS solo solicita `GET /api/products/?updated_after=<last_sync>`.
+   * *Solución:* `categories`, `products` y `modifiers` cuentan con `updated_at`. El POS consulta `GET /api/pos/catalog/?updated_after=<ISO-8601 con zona horaria>` y aplica los registros cambiados más los identificadores explícitos de `removed`.
 4. **Inmutabilidad de Ventas Históricas (`product_name` y `modifier_name` congelados):**
    * *Problema evitado:* Si en 6 meses Diego cambia el nombre de "Churrasco Italiano Gigante" a "Churrasco Italiano XL" o modifica la carta, los reportes contables pasados y la reimpresión de tickets jamás mutan retroactivamente.
    * *Solución:* `order_items` almacena `product_name` y `unit_price` congelados al momento del cobro. `order_item_modifiers` almacena `modifier_name` y `price_at_sale`.

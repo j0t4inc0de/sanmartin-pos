@@ -32,15 +32,17 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** se encuentra un producto por nombre completo y parcial, con o sin acentos; búsqueda y categoría se combinan; Escape y el botón de limpiar restauran resultados; Enter agrega el primer resultado y Tab/mouse permiten navegar y seleccionar productos; añadir productos no pierde cantidades, notas ni modificadores ya ingresados; funciona offline, en modo claro y oscuro y a las escalas aprobadas.
 
-**Estado:** implementada el 10 de noviembre de 2026; `npm run build` pasó. Falta aceptación manual en `/pos` para confirmar búsqueda, combinación con filtros, teclado, mouse, limpieza, carrito, modo offline y escalas. No depende de la DINON.
+**Estado:** implementada y aceptada por el usuario el 10 de noviembre de 2026 en modo oscuro y claro; `npm run build` pasó. No depende de la DINON.
 
 ### 2. Sincronización y vigencia del catálogo
 
-**Trabajo:** definir una ruta canónica para consultar cambios del catálogo, porque los documentos mencionan rutas distintas. Implementar actualización incremental de categorías, productos, disponibilidad y modificadores; conservar una copia local usable offline y mostrar cuándo se actualizó correctamente. Definir cómo se reflejan desactivaciones y productos que dejan de estar disponibles.
+**Trabajo:** usar la ruta canónica `GET /api/pos/catalog/?updated_after=<ISO-8601 con zona horaria>`. Implementar actualización incremental de categorías, productos, disponibilidad y modificadores; conservar una copia local usable offline y mostrar cuándo se actualizó correctamente. Las categorías, productos y modificadores desactivados/no disponibles se eliminan de la copia local mediante listas `removed` explícitas. El POS actualiza al reconectar y consulta cambios cada 60 segundos mientras permanece online.
 
-**Aceptación:** una modificación en servidor llega al POS online sin borrar borradores ni ventas; al perder conexión se conserva el último catálogo local; el estado de última actualización y cualquier error son comprensibles; al recuperar señal la actualización ocurre automáticamente. Confirmar pruebas con producto nuevo, cambio de precio/nombre, cambio de disponibilidad y desactivación.
+**Aceptación:** una modificación en servidor llega al POS online sin borrar borradores ni ventas; al perder conexión se conserva el último catálogo local; el estado de última actualización y cualquier error son comprensibles; al recuperar señal la actualización ocurre automáticamente. Probar producto nuevo, cambio de precio/nombre, cambio de disponibilidad, desactivación de producto/categoría/modificador y categoría sin productos disponibles.
 
-**Estado:** pendiente de desarrollo y de resolver la diferencia documental de rutas.
+**Estado:** implementada el 10 de noviembre de 2026. Pasaron 31 pruebas de `apps.sales` y `apps.catalog` en SQLite temporal, y `npm run build`. Falta aceptación manual en el POS, incluyendo reconexión automática, para cerrar esta etapa.
+
+**Prueba manual pendiente:** cambiar el nombre/precio de un producto y verificar la actualización; marcarlo no disponible y confirmar que desaparece junto con su categoría si era el último disponible; desactivar un modificador y confirmar que deja de ofrecerse en una venta nueva; desconectar y reconectar la API y comprobar que el catálogo guardado sigue disponible y se actualiza automáticamente; recargar `/pos` y verificar que borrador, líneas y cola de ventas no se pierden.
 
 ### 3. Prueba física de la DINON 9390
 
@@ -105,8 +107,8 @@ Completar la aceptación manual de la búsqueda rápida implementada en `/pos`. 
 | Etapa | Estado | Evidencia / notas |
 |---|---|---|
 | Tema y escala | Aceptado | Probado y confirmado por el usuario el 10 nov 2026. |
-| Búsqueda rápida | Implementada; falta aceptación manual | `npm run build` pasó; verificar los casos de la etapa 1 en `/pos`. |
-| Catálogo incremental | Pendiente | Resolver ruta canónica y propagación. |
+| Búsqueda rápida | Aceptada | El usuario confirmó que se ve bien en ambos temas. |
+| Catálogo incremental | Implementada; falta aceptación manual | Endpoint delta, bajas explícitas, reconexión automática y consulta cada 60 s; 31 pruebas backend y build aprobados. |
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
 | PostgreSQL concurrencia | Pendiente | Base de pruebas separada. |

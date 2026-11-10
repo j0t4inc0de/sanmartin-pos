@@ -245,7 +245,7 @@ Los siguientes endpoints aparecen en la arquitectura como propuesta. Antes de im
 - `GET /api/pos/reports/shift-summary/{id}/`
 - `GET /api/pos/reports/rush-hours/`
 
-Hay una diferencia documental que debe resolverse: la sincronización incremental se describe como `/api/pos/catalog/?updated_after=...` en un archivo y como `/api/products/?updated_after=...` en otro. Se debe elegir una ruta canónica y actualizar todas las referencias.
+La ruta canónica quedó definida como `GET /api/pos/catalog/?updated_after=<ISO-8601 con zona horaria>`; devuelve los cambios de categorías, productos y modificadores junto con bajas explícitas. El detalle vigente está en `docs/CONTRATO_API_CATALOGO.md` y `docs/PLAN_CIERRE_POS.md`.
 
 ## 7. Hallazgos previos a crear las migraciones
 
@@ -258,7 +258,7 @@ La primera migración no debe generarse copiando directamente `docs/init_schema.
 5. **Identificadores offline — definido:** turno y venta usan UUID; las ventas sincronizadas se reconocen de forma idempotente.
 6. **Precios con catálogo desactualizado — política confirmada:** se conserva el cobro offline y se incluye en caja; si difiere del catálogo vigente, se marca para revisión.
 7. **Cálculo del total — definido en borrador:** el servidor calcula ventas online desde el catálogo; sincronización offline valida aritmética y conserva los snapshots efectivamente cobrados.
-8. **Sincronización incremental:** unificar la ruta delta del catálogo y decidir si productos, categorías y modificadores comparten cursor o mantienen marcas de actualización separadas.
+8. **Sincronización incremental — implementada localmente:** categorías, productos y modificadores comparten el cursor `updated_after`; la API envía bajas explícitas para retirar los registros que dejan de estar disponibles.
 
 **Criterio para avanzar:** los puntos de negocio están resueltos o reflejados en el borrador de contrato. Falta revisar detalles de sincronización incremental del catálogo y el flujo técnico offline antes de completar la implementación.
 
@@ -335,7 +335,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Cuenta general compartida para operar el POS | Confirmado | No habrá cuentas individuales para los cajeros ni varios niveles de permisos. El registro identifica la cuenta compartida, la hora y el equipo, no a la persona física. |
 | Inicio offline con perfil local tras autenticación online previa | Aceptado manualmente (10 nov 2026) | Se elimina el PIN; el perfil local persiste tras cerrar la sesión de Django para iniciar el siguiente turno sin servidor. |
 | Combos fuera de la caja en la primera versión | Confirmado | Los combos web son contenido promocional y quedan fuera del catálogo operativo del POS inicial. |
-| ¿Cuál es la ruta oficial de sincronización delta del catálogo? | Pendiente de confirmar | Evita contratos distintos entre frontend y backend. |
+| ¿Cuál es la ruta oficial de sincronización delta del catálogo? | Resuelto | `GET /api/pos/catalog/?updated_after=<ISO-8601 con zona horaria>`; contrato en `docs/CONTRATO_API_CATALOGO.md`. |
 | Restauración automática de sesión local y fallback desde el formulario | Implementado | La cuenta se guarda en IndexedDB y se conserva tras cerrar sesión Django; un login offline usa el nombre de la cuenta guardada. |
 | ¿Qué sucede si una caída supera la vigencia del catálogo local o se agota el almacenamiento? | Pendiente de definir | Establece límites y alertas para proteger ventas y datos. |
 | Usuario propio basado en `AbstractUser`, administrado por Django | Confirmado | Resuelve el choque entre el SQL de referencia y el sistema de autenticación, y deja espacio para permisos futuros. |
@@ -392,9 +392,9 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - **Verificación local:** `manage.py check` no reporta problemas; `npm run build` terminó correctamente; las migraciones están aplicadas y el permiso `sales.can_operate_pos` existe. `/pos`, CSRF y catálogo responden con HTTP 200. La API devuelve 8 categorías y 64 productos. Sin sesión, las rutas protegidas responden HTTP 403.
 - **Etapa 3 — aceptación:** el usuario confirmó la aprobación de POS-01 a POS-11 y POS-12 se verificó localmente con rechazo HTTP 403 para token CSRF inválido. Registro en `docs/PRUEBAS_ACEPTACION_ETAPA_3.md`.
 - **Impresión — preparación:** el usuario confirmó DINON 9390 por USB, comprobante para cliente, comanda para cocina y apertura de gaveta con efectivo. La arquitectura documenta papel de 80 mm, USB directo, ESC/POS y RJ11 (24 V, 1 A); estos datos orientan el diseño, pero aún no se han probado en la unidad física. El video del POS anterior muestra el pago en efectivo y un comprobante de retiro. La propuesta y las validaciones de conexión están en `docs/PROPUESTA_IMPRESION_POS.md`.
-- **Preferencias de visualización:** el sitio, la carta QR y el POS tienen selector de tema claro/oscuro y escala de 90% a 120%, guardados en el navegador. Oscuro es el valor inicial. El selector se refinó como panel de preferencias con superficies de alto contraste y jerarquía visual. El POS adapta sus columnas y catálogo al ancho disponible cuando aumenta la escala; los tamaños deben revisarse visualmente en las pantallas de uso antes del despliegue. El aviso de pago pendiente se presenta como tarjeta completa y discreta.
+- **Preferencias de visualización:** el usuario probó y aceptó tema claro/oscuro y escala de 90% a 120%, guardados en el navegador. El POS adapta sus columnas y catálogo cuando aumenta la escala; el aviso de pago pendiente se presenta como tarjeta completa y discreta.
 - **Usabilidad del POS:** la pantalla conserva el desplazamiento normal de la página y vuelve a mostrar el panel de impresora, respaldo y cierre de turno en el orden de trabajo. Solo los registros de ventas recientes se pueden plegar. Las categorías aparecen completas en varias filas sin desplazamiento horizontal; el tipo de pedido aparece tras la lista de productos agregados y antes de cotizar. Cerrar sesión pide confirmación y avisa si hay operaciones pendientes.
-- **Pendiente de desarrollo:** catálogo delta, búsqueda rápida para teclado y mouse, integración de impresión térmica y validación integral. La prueba física de la DINON 9390 depende de disponer del equipo.
+- **Pendiente de desarrollo:** aceptación manual del catálogo delta, impresión térmica integrada con ventas, prueba física de la DINON 9390, verificación de concurrencia en PostgreSQL, dashboards históricos día/mes y aceptación integral. La búsqueda rápida fue implementada y aceptada en ambos temas. El orden vigente está en `docs/PLAN_CIERRE_POS.md`.
 - **Seguridad:** no se aplicó `docs/init_schema.sql`, no se creó la cuenta de ejemplo y no se conectó el backend a producción.
 - **Seguridad:** la contraseña actual del rol `sanmartin_dev` es solo para desarrollo local; reemplazarla por una clave robusta antes de cualquier despliegue. No usarla en producción.
 - **Verificación del entorno:** se usa Python 3.14.10 en `backend/.venv`; el acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Las pruebas automatizadas del backend se ejecutan en SQLite temporal y no sustituyen la validación de concurrencia en PostgreSQL. Docker no es requisito para el flujo local.

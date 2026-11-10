@@ -33,7 +33,7 @@ class PublicProductSerializer(serializers.ModelSerializer):
 class PosCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ("id", "slug", "name", "sort_order")
+        fields = ("id", "slug", "name", "sort_order", "updated_at")
 
 
 class PosProductSerializer(serializers.ModelSerializer):
