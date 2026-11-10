@@ -22,6 +22,7 @@ function loadPreferences(): Preferences {
 function applyPreferences(preferences: Preferences) {
   const root = document.documentElement;
   root.dataset.theme = preferences.theme;
+  root.dataset.uiScale = String(Math.round(preferences.scale * 100));
   root.style.setProperty('--ui-scale', String(preferences.scale));
 }
 

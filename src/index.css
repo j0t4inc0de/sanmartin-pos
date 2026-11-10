@@ -329,9 +329,37 @@ html[data-theme="light"] .appearance-trigger:hover {
 
 .pos-shell [role="alert"] {
   border-radius: .875rem;
-  border-left: 3px solid currentColor;
   padding: .75rem 1rem;
   line-height: 1.55;
+}
+
+.pos-sales-container {
+  container-name: pos-sales;
+  container-type: inline-size;
+}
+
+@container pos-sales (max-width: 64rem) {
+  .pos-sales-fields { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+@container pos-sales (max-width: 42rem) {
+  .pos-product-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+@media (max-width: 1343px) {
+  html[data-ui-scale="105"] .pos-shift-layout { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+@media (max-width: 1407px) {
+  html[data-ui-scale="110"] .pos-shift-layout { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+@media (max-width: 1471px) {
+  html[data-ui-scale="115"] .pos-shift-layout { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+@media (max-width: 1535px) {
+  html[data-ui-scale="120"] .pos-shift-layout { grid-template-columns: minmax(0, 1fr) !important; }
 }
 
 @keyframes pos-dialog-fade-in { from { opacity: 0; } to { opacity: 1; } }
