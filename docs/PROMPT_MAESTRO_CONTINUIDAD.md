@@ -65,7 +65,7 @@ El propietario del proyecto implementa POS, frontend, backend y base de datos. H
 ### Cuenta y acceso
 
 - Se utilizará una **cuenta general compartida** por el personal de confianza. No se requieren usuarios individuales ni múltiples niveles de permisos.
-- El acceso offline usa un **PIN compartido**, habilitado después de autenticación online en ese equipo, con vigencia de 24 horas. Tras cinco intentos fallidos, se bloquea durante 15 minutos; una sesión ya abierta permanece activa.
+- El inicio online usa la contraseña de la cuenta compartida. Después de autenticarla en el equipo, el acceso offline usa un **PIN compartido de cuatro cifras** durante 24 horas. El PIN no se guarda en texto legible; tras cinco intentos fallidos, se bloquea durante 15 minutos, y una sesión ya abierta permanece activa. Mitigar la fuerza bruta dentro de las limitaciones de un PIN de 10.000 combinaciones.
 - Consecuencia aceptada: la auditoría registra la cuenta compartida, la hora y el equipo, pero no puede identificar qué persona física ejecutó una anulación.
 - Mantén autenticación y protección CSRF; “sin niveles de permisos” no significa permitir acceso anónimo a las operaciones de caja.
 
@@ -117,7 +117,7 @@ El propietario del proyecto implementa POS, frontend, backend y base de datos. H
 
 ## Trabajo que falta, en orden recomendado
 
-1. **Persistencia local y acceso offline:** revisar la arquitectura actual del frontend; diseñar el esquema IndexedDB para catálogo y eventos de caja; implementar PIN compartido sin guardar secretos legibles; establecer vigencia y bloqueo; guardar el borrador antes del cobro.
+1. **Persistencia local y acceso offline:** revisar la arquitectura actual del frontend; diseñar el esquema IndexedDB para catálogo y eventos de caja; habilitar el PIN compartido offline sin guardarlo en texto legible; establecer vigencia y bloqueo; guardar el borrador antes del cobro.
 2. **Sincronización offline:** completar endpoint de ventas offline; UUID/idempotencia; sincronización de apertura, ventas, anulaciones y cierre en orden; resolución de errores y revisión de diferencias de precios.
 3. **Cierre automático:** después de la cola local, cerrar a las 00:30 localmente, impedir nuevas ventas del turno y sincronizar después de los eventos previos.
 4. **Impresión física:** probar DINON 9390 temprano; diseñar comprobante de retiro y comanda de cocina; probar gaveta en devolución en efectivo; estados de impresión, reimpresión sin duplicados y uso offline.

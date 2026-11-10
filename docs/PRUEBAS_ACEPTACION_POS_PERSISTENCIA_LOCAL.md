@@ -20,7 +20,7 @@
 ## Límites de esta aceptación
 
 - La caída simulada fue de la API después de cargar la página; no equivale a operación offline completa.
-- Al recargar con la API caída, la sesión online no pudo prepararse. El acceso offline con PIN todavía no está implementado.
+- Al recargar con la API caída, la sesión online no pudo prepararse. El acceso offline con PIN compartido todavía no está implementado.
 - No se probó la cola de sincronización, conciliación de cotización vencida, cierre automático ni impresora DINON 9390.
 - La aceptación usó SQLite temporal; no valida bloqueos ni concurrencia de PostgreSQL.
 - El navegador dejó de responder después del diálogo de confirmación del cierre. El cierre se verificó sin repetir la acción mediante el log HTTP `200` y la lectura de la base temporal.

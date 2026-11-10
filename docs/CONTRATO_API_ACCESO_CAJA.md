@@ -1,7 +1,7 @@
 # Contrato de acceso y turnos del POS
 
-- **Versión:** 1.2
-- **Estado:** apertura, cierre manual con arqueo de efectivo y resumen por medio de pago implementados en local; cierre automático y operación offline pendientes
+- **Versión:** 1.3
+- **Estado:** acceso online con contraseña, apertura, cierre manual con arqueo y resumen por medio de pago implementados en local; acceso offline con PIN y cierre automático pendientes
 - **Autenticación:** sesión Django y token CSRF
 
 ## Preparar la sesión
@@ -64,4 +64,4 @@ Los montos se expresan en pesos chilenos enteros y no pueden ser negativos. El s
 
 ## Límite de esta versión
 
-Estas rutas implementan el acceso online y las operaciones básicas del turno. El arqueo, el cierre automático a las 00:30 hora de Santiago y el acceso offline con PIN compartido aún requieren implementación. El POS debe persistir localmente el cierre sin conexión y sincronizarlo después de la apertura, las ventas y las anulaciones del turno.
+Estas rutas implementan el acceso online con contraseña y las operaciones básicas del turno. Después de iniciar sesión online, el acceso offline solicitará un PIN compartido de cuatro cifras, válido durante 24 horas desde la última autenticación online y bloqueado durante 15 minutos tras cinco intentos fallidos. Una sesión que ya esté abierta permanece activa. El PIN no se guardará en texto legible; como tiene 10.000 combinaciones, el verificador local y el bloqueo deben mitigar intentos casuales y documentar que el perfil del navegador puede ser manipulado. El cierre automático a las 00:30 hora de Santiago y la persistencia/sincronización local del cierre también siguen pendientes.

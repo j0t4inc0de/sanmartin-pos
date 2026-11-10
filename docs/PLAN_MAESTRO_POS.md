@@ -3,7 +3,7 @@
 - **Versión:** 1.0 — cierre manual y resumen por medio de pago aceptados
 - **Fecha:** 9 de noviembre de 2026
 - **Responsable del POS, backend y base de datos:** Propietario del proyecto
-- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. Catálogo, borrador y cotización con UUID/folio se conservan en IndexedDB; la recepción del pago también queda marcada antes del registro online. Una prueba de aceptación aislada confirmó restauración, bloqueo del cierre, reintento tras caída de API y cierre manual. El PIN offline, la cola de sincronización, el cierre automático y la impresión siguen pendientes.
+- **Estado:** Base técnica migrada; catálogo POS, autenticación online, turnos, captura online, cierre manual, arqueo y resumen por medio de pago disponibles localmente. Catálogo, borrador y cotización con UUID/folio se conservan en IndexedDB; la recepción del pago también queda marcada antes del registro online. Una prueba de aceptación aislada confirmó restauración, bloqueo del cierre, reintento tras caída de API y cierre manual. El acceso offline con PIN compartido de cuatro cifras, la cola de sincronización, el cierre automático y la impresión siguen pendientes.
 
 ---
 
@@ -318,7 +318,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - Los cambios administrativos de catálogo se originan en el servidor. El POS debe descargar la versión vigente; una copia offline antigua no puede reemplazar cambios más nuevos.
 - Los demás clientes reciben cambios desde la API por el mecanismo de actualización acordado; no se asume sincronización instantánea hasta definir e implementar ese mecanismo.
 - El estado de una venta, de su sincronización y de su impresión se muestra por separado.
-- El POS usa una cuenta general compartida. Tras autenticarse online en el equipo, el acceso offline usa un PIN compartido válido por 24 horas, con bloqueo de 15 minutos tras cinco intentos fallidos. La auditoría identifica la cuenta compartida y el equipo, no a la persona física.
+- El POS usa una cuenta general compartida con contraseña para iniciar sesión online. Tras esa autenticación, el acceso offline se desbloquea con un PIN compartido de cuatro cifras y vence 24 horas después de la última autenticación online. Cinco intentos fallidos bloquean nuevos intentos durante 15 minutos, sin interrumpir una sesión activa. El PIN no se guarda en texto legible. Como cuatro cifras solo ofrecen 10.000 combinaciones, el verificador local y el bloqueo deben mitigar la fuerza bruta; este mecanismo no equivale a una autenticación fuerte contra alguien con acceso al perfil del equipo. La auditoría identifica la cuenta compartida y el equipo, no a la persona física.
 - El cierre automático ocurre a las 00:30 en la zona `America/Santiago`. El POS lo registra localmente aunque no haya internet, bloquea nuevas ventas en ese turno y encola el cierre después de la apertura, las ventas y sus anulaciones.
 - La primera versión opera con un equipo POS y no incluye combos en la caja. Los combos de la web no se interpretan como artículos de venta del POS.
 
@@ -333,10 +333,10 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 | Registro manual del medio de pago | Confirmado | No se integra una pasarela de pago en la primera versión. |
 | Un equipo POS en la primera versión | Confirmado | El diseño debe permitir evaluar varios equipos en una etapa posterior. |
 | Cuenta general compartida para operar el POS | Confirmado | No habrá cuentas individuales para los cajeros ni varios niveles de permisos. El registro identifica la cuenta compartida, la hora y el equipo, no a la persona física. |
-| Acceso offline con PIN compartido tras autenticación online, válido 24 horas | Confirmado | PIN no legible en almacenamiento; cinco fallos bloquean nuevos intentos por 15 minutos, sin interrumpir una sesión activa. |
+| Acceso offline con PIN compartido de cuatro cifras tras autenticación online, válido 24 horas | Confirmado | La contraseña online se mantiene; el PIN no se guarda en texto legible. Cinco fallos bloquean nuevos intentos por 15 minutos, sin interrumpir una sesión activa. El límite de 10.000 combinaciones requiere mitigación local y se acepta por facilidad de uso. |
 | Combos fuera de la caja en la primera versión | Confirmado | Los combos web son contenido promocional y quedan fuera del catálogo operativo del POS inicial. |
 | ¿Cuál es la ruta oficial de sincronización delta del catálogo? | Pendiente de confirmar | Evita contratos distintos entre frontend y backend. |
-| PIN compartido y controles técnicos de acceso offline | Pendiente de implementación | Mantener vigencia, almacenamiento protegido y bloqueo de intentos aunque el acceso corresponda a una cuenta compartida. |
+| Verificación local del PIN y controles técnicos de acceso offline | Pendiente de implementación | Mantener vigencia, proteger el verificador local y bloquear intentos; el bloqueo local no debe presentarse como protección contra manipulación del perfil del navegador. |
 | ¿Qué sucede si una caída supera la vigencia del catálogo local o se agota el almacenamiento? | Pendiente de definir | Establece límites y alertas para proteger ventas y datos. |
 | Usuario propio basado en `AbstractUser`, administrado por Django | Confirmado | Resuelve el choque entre el SQL de referencia y el sistema de autenticación, y deja espacio para permisos futuros. |
 | Folio correlativo por turno (`shift_order_number`) | Confirmado | Coincide con la unicidad por turno ya descrita y simplifica la operación con un POS. |
@@ -388,7 +388,7 @@ La primera versión se construirá con estrategia **local primero**: el POS cons
 - **Carta web:** landing y `/menu` consultan el catálogo Django mediante el proxy local y muestran estados de carga, error y reintento; categorías y productos ya no se duplican en `src/data/menuData.ts`.
 - **Verificación local:** `manage.py check` no reporta problemas; `npm run build` terminó correctamente; las migraciones están aplicadas y el permiso `sales.can_operate_pos` existe. `/pos`, CSRF y catálogo responden con HTTP 200. La API devuelve 8 categorías y 64 productos. Sin sesión, las rutas protegidas responden HTTP 403.
 - **Etapa 3 — aceptación:** el usuario confirmó la aprobación de POS-01 a POS-11 y POS-12 se verificó localmente con rechazo HTTP 403 para token CSRF inválido. Registro en `docs/PRUEBAS_ACEPTACION_ETAPA_3.md`.
-- **Pendiente de desarrollo:** implementar PIN offline seguro, catálogo delta, captura y cola local de ventas, sincronización e impresión.
+- **Pendiente de desarrollo:** implementar acceso offline con PIN compartido de cuatro cifras, catálogo delta, captura y cola local de ventas, sincronización e impresión.
 - **Seguridad:** no se aplicó `docs/init_schema.sql`, no se creó la cuenta de ejemplo y no se conectó el backend a producción.
 - **Seguridad:** la contraseña actual del rol `sanmartin_dev` es solo para desarrollo local; reemplazarla por una clave robusta antes de cualquier despliegue. No usarla en producción.
 - **Verificación del entorno:** se usa Python 3.14.10 en `backend/.venv`; el acceso autenticado y las migraciones se comprobaron en PostgreSQL local. Las pruebas automatizadas del backend se ejecutan en SQLite temporal y no sustituyen la validación de concurrencia en PostgreSQL. Docker no es requisito para el flujo local.
@@ -424,7 +424,7 @@ La pantalla `/pos` permite operar ventas online y conserva localmente el borrado
 - [x] Implementar autenticación online de sesión, CSRF, límite de intentos y permiso `sales.can_operate_pos` en la API.
 - [x] Crear la pantalla de inicio de sesión online del POS con sesión Django y token CSRF en memoria.
 - [ ] Configurar y validar una cuenta general compartida con el permiso `sales.can_operate_pos`; no se crean cuentas individuales para los cajeros.
-- [x] Definir la política de acceso offline: PIN compartido habilitado tras acceso online, vigencia de 24 horas y bloqueo de 15 minutos tras cinco fallos.
+- [x] Definir la política de acceso: contraseña para inicio online y PIN compartido de cuatro cifras para acceso offline tras autenticación online; vigencia de 24 horas y bloqueo de 15 minutos tras cinco fallos.
 - [x] Implementar en backend consulta, apertura y cierre de turnos con restricción de un turno abierto e idempotencia por UUID.
 - [x] Crear la interfaz de apertura/cierre y consulta del turno activo.
 - [x] Validar acceso, apertura/cierre de turno y permisos con los casos POS-01 a POS-12.
@@ -548,7 +548,7 @@ ETAPA 3 — ACCESO Y TURNO
 [x] API de sesión, CSRF y permisos
 [x] Pantalla de acceso online y control de turnos en /pos
 [ ] Crear grupo Operadores POS y asignar cuentas de cajero
-[~] Definir y construir acceso offline seguro con PIN para el equipo previamente autenticado; las reglas de vigencia y bloqueo están acordadas, falta implementar
+[~] Definir y construir acceso offline con PIN compartido de cuatro cifras para el equipo previamente autenticado; falta implementar el verificador local y los bloqueos
 [x] API e interfaz de apertura/cierre; falta arqueo
 [x] Impedir más de un turno abierto según la regla aprobada
 
