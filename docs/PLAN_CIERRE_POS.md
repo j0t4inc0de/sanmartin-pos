@@ -3,7 +3,7 @@
 - **Estado:** plan activo desde el 10 de noviembre de 2026.
 - **Objetivo:** cerrar el POS por etapas pequeñas, con criterios verificables, sin repetir trabajo aceptado.
 - **Alcance:** desarrollo local y aceptación funcional. Despliegue, cuentas reales del servidor, respaldos de producción y publicación corresponden al colega que administra el servidor y quedan fuera de este plan.
-- **Regla de trabajo:** cerrar cada etapa con revisión y pruebas pertinentes; hacer un commit cuando se complete un cambio grande o una etapa. No avanzar dejando fallos conocidos sin registrar.
+- **Regla de trabajo:** cada cambio visual debe contemplar y revisarse en los dos temas (claro y oscuro) y en las escalas aprobadas; cerrar cada etapa con revisión y pruebas pertinentes; hacer un commit cuando se complete un cambio grande o una etapa. No avanzar dejando fallos conocidos sin registrar.
 - **Fuente de verdad:** este documento reemplaza el orden de trabajo de las listas históricas de `PLAN_MAESTRO_POS.md` y `PROMPT_MAESTRO_CONTINUIDAD.md`. Esos documentos conservan decisiones y contexto; sus listas antiguas pueden estar desactualizadas.
 
 ## Estado confirmado
@@ -30,7 +30,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Trabajo:** agregar una búsqueda visible por nombre de producto, compatible con teclado y mouse, que funcione junto a los filtros de categoría y respete el tema y la escala actuales. Incluir una acción clara para limpiar la búsqueda y un estado vacío útil. La búsqueda debe trabajar sobre el catálogo local para seguir disponible offline.
 
-**Aceptación:** se encuentra un producto por nombre completo y parcial, con o sin acentos; búsqueda y categoría se combinan; Escape y el botón de limpiar restauran resultados; Enter agrega el primer resultado y Tab/mouse permiten navegar y seleccionar productos; añadir productos no pierde cantidades, notas ni modificadores ya ingresados; funciona offline y a las escalas aprobadas.
+**Aceptación:** se encuentra un producto por nombre completo y parcial, con o sin acentos; búsqueda y categoría se combinan; Escape y el botón de limpiar restauran resultados; Enter agrega el primer resultado y Tab/mouse permiten navegar y seleccionar productos; añadir productos no pierde cantidades, notas ni modificadores ya ingresados; funciona offline, en modo claro y oscuro y a las escalas aprobadas.
 
 **Estado:** implementada el 10 de noviembre de 2026; `npm run build` pasó. Falta aceptación manual en `/pos` para confirmar búsqueda, combinación con filtros, teclado, mouse, limpieza, carrito, modo offline y escalas. No depende de la DINON.
 
