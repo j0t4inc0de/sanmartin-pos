@@ -377,10 +377,6 @@ html[data-theme="light"] .appearance-trigger:hover {
 .pos-type-choice.is-selected strong { color: #fff2b1; }
 .pos-type-choice:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
 
-.pos-product-list { max-height: min(38dvh, 26rem); overflow: auto; overscroll-behavior: contain; padding: 1px .2rem 1px 1px; scrollbar-width: thin; }
-.pos-product-list::-webkit-scrollbar { width: 6px; }
-.pos-product-list::-webkit-scrollbar-thumb { border-radius: 999px; background: #475569; }
-
 html[data-theme="light"] .pos-info-disclosure > summary { color: #334155; }
 html[data-theme="light"] .pos-info-disclosure > summary:hover { color: #172334; }
 html[data-theme="light"] .pos-info-disclosure > summary::after { border-color: #d6dee8; color: #9a6700; }
@@ -416,46 +412,6 @@ html[data-theme="light"] .pos-type-choice.is-selected strong { color: #684800; }
 
 @media (max-width: 1535px) {
   html[data-ui-scale="120"] .pos-shift-layout { grid-template-columns: minmax(0, 1fr) !important; }
-}
-
-@media (min-width: 1280px) and (min-height: 720px) {
-  .pos-shell { height: 100dvh; min-height: 0; overflow: hidden; padding-top: 1rem; padding-bottom: 1rem; }
-  .pos-shell > div { display: flex; height: 100%; flex-direction: column; }
-  .pos-shell > div > header { flex: none; margin-bottom: .75rem; }
-  .pos-authenticated { min-height: 0; flex: 1; gap: .75rem; overflow: hidden; }
-  .pos-authenticated > .pos-session-card,
-  .pos-authenticated > .pos-printer-disclosure { flex: none; }
-  .pos-authenticated > .pos-shift-layout { min-height: 0; flex: 1; overflow: hidden; }
-  .pos-shift-layout > div,
-  .pos-shift-layout > aside { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-  .pos-shift-layout > aside { position: static; }
-  .pos-sales-container { gap: .75rem; padding: 1rem; }
-  .pos-product-list { max-height: min(34dvh, 23rem); }
-}
-
-@media (max-width: 1535px) and (min-width: 1280px) and (min-height: 720px) {
-  html[data-ui-scale="120"] .pos-shell { height: auto; min-height: 100dvh; overflow: visible; }
-  html[data-ui-scale="120"] .pos-shell > div,
-  html[data-ui-scale="120"] .pos-authenticated,
-  html[data-ui-scale="120"] .pos-authenticated > .pos-shift-layout { height: auto; overflow: visible; }
-}
-
-@media (max-width: 1343px) and (min-width: 1280px) and (min-height: 720px) {
-  html[data-ui-scale="105"] .pos-shell { height: auto; min-height: 100dvh; overflow: visible; }
-  html[data-ui-scale="105"] .pos-authenticated,
-  html[data-ui-scale="105"] .pos-authenticated > .pos-shift-layout { height: auto; overflow: visible; }
-}
-
-@media (max-width: 1407px) and (min-width: 1280px) and (min-height: 720px) {
-  html[data-ui-scale="110"] .pos-shell { height: auto; min-height: 100dvh; overflow: visible; }
-  html[data-ui-scale="110"] .pos-authenticated,
-  html[data-ui-scale="110"] .pos-authenticated > .pos-shift-layout { height: auto; overflow: visible; }
-}
-
-@media (max-width: 1471px) and (min-width: 1280px) and (min-height: 720px) {
-  html[data-ui-scale="115"] .pos-shell { height: auto; min-height: 100dvh; overflow: visible; }
-  html[data-ui-scale="115"] .pos-authenticated,
-  html[data-ui-scale="115"] .pos-authenticated > .pos-shift-layout { height: auto; overflow: visible; }
 }
 
 @keyframes pos-dialog-fade-in { from { opacity: 0; } to { opacity: 1; } }

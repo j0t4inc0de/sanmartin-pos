@@ -908,7 +908,7 @@ export const PosPage = () => {
             </button>
           </form>
         ) : (
-          <section className="pos-authenticated flex min-w-0 flex-col gap-3">
+          <section className="pos-authenticated space-y-5">
             <div className="pos-session-card flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#171717] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3">
                 <div>
@@ -945,10 +945,7 @@ export const PosPage = () => {
               </button>
             </div>
 
-            <details className="pos-info-disclosure pos-printer-disclosure">
-              <summary>Configuración y prueba de impresora</summary>
-              <div className="pt-3"><PosPrinterDiagnostics /></div>
-            </details>
+            <PosPrinterDiagnostics />
 
             {(!shift || !shift.is_open) && lastClosedShift && (
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5">
@@ -993,8 +990,8 @@ export const PosPage = () => {
                 <div className="min-w-0">
                   <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} onBeforeCreateSale={comprobarTurnoAntesDeVenta} />
                 </div>
-                <aside className="pos-shift-summary min-w-0 space-y-3 2xl:sticky 2xl:top-5">
-              <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-4 shadow-xl sm:p-5">
+                <aside className="pos-shift-summary min-w-0 space-y-5 2xl:sticky 2xl:top-5">
+              <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
@@ -1006,7 +1003,7 @@ export const PosPage = () => {
                   </div>
                   <Clock3 className="h-6 w-6 text-emerald-300" />
                 </div>
-                <dl className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2">
+                <dl className="mt-5 grid gap-4 border-t border-white/10 pt-5 sm:grid-cols-2">
                   <div>
                     <dt className="text-xs uppercase text-gray-400">Apertura</dt>
                     <dd className="mt-1 text-sm text-white">{formatDateTime(shift.opened_at)}</dd>
@@ -1018,18 +1015,15 @@ export const PosPage = () => {
                     </dd>
                   </div>
                 </dl>
-                <details className="pos-info-disclosure mt-3 border-t border-white/10 pt-3">
-                  <summary>Ventas y notas del turno</summary>
-                  <dl className="mt-3 grid gap-3 text-sm">
-                    <div><dt className="text-xs uppercase text-gray-400">Ventas completadas por medio de pago</dt><dd><PaymentSummaryList items={shift.sales_summary} /></dd></div>
-                    {shift.notes && <div><dt className="text-xs uppercase text-gray-400">Nota de apertura</dt><dd className="mt-1 text-sm text-gray-200">{shift.notes}</dd></div>}
-                  </dl>
-                </details>
+                <div className="mt-5 grid gap-4 border-t border-white/10 pt-5 text-sm">
+                  <div>
+                    <dt className="text-xs uppercase text-gray-400">Ventas completadas por medio de pago</dt>
+                    <dd><PaymentSummaryList items={shift.sales_summary} /></dd>
+                  </div>
+                  {shift.notes && <div><dt className="text-xs uppercase text-gray-400">Nota de apertura</dt><dd className="mt-1 text-gray-200">{shift.notes}</dd></div>}
+                </div>
 
-                <details className="pos-info-disclosure pos-close-details mt-3 border-t border-white/10 pt-3">
-                  <summary>Revisar y cerrar turno</summary>
-                  <div className="pt-2">
-                <label className="mt-3 block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
+                <label className="mt-5 block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
                   Efectivo contado físicamente (CLP)
                   <input
                     id="pos-counted-cash"
@@ -1065,8 +1059,6 @@ export const PosPage = () => {
                   Cerrar turno
                 </button>
                 {offlineMode && <p className="mt-3 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400">El cierre quedará pendiente y se enviará después de sincronizar las ventas y anulaciones del turno.</p>}
-                  </div>
-                </details>
                 {hasPendingPayment && <p role="alert" className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3 text-xs leading-relaxed text-amber-200">Hay una cotización o pago pendiente; resuélvelo antes de cerrar el turno.</p>}
                 {autoCloseDue ? <p role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-xs text-amber-100">Llegó la hora del cierre automático. {autoCloseWaitingForPayment ? 'Termina de resolver el pago pendiente para cerrar sin perder la venta.' : !offlineMode && hasQueuedOfflineSales ? 'Se cerrará al terminar de sincronizar las ventas pendientes.' : 'El turno se está cerrando y se sincronizará al recuperar la conexión.'}</p> : <p className="mt-3 text-xs text-gray-500">Cierre automático a las 00:30 (Chile).</p>}
               </div>
