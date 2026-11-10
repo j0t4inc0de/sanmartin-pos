@@ -80,6 +80,29 @@ export interface PosPendingPaymentDraft {
   saved_at: string;
 }
 
+export interface PosOfflineUser {
+  id: number;
+  username: string;
+  can_operate_pos: boolean;
+}
+
+export interface PosOfflineAccessRecord {
+  user: PosOfflineUser;
+  salt: string;
+  verifier: string;
+  last_online_auth_at: string;
+  failed_attempts: number;
+  blocked_until: string | null;
+  saved_at: string;
+}
+
+export interface PosCachedShiftState<TShift> {
+  shift: TShift | null;
+  another_shift_open: boolean;
+  next_order_number: number;
+  saved_at: string;
+}
+
 interface StoredCatalog {
   key: 'current';
   catalog: PosCatalog;
@@ -94,11 +117,21 @@ interface StoredPendingPaymentDraft extends PosPendingPaymentDraft {
   key: string;
 }
 
+interface StoredOfflineAccessRecord extends PosOfflineAccessRecord {
+  key: 'current';
+}
+
+interface StoredShiftState<TShift> extends PosCachedShiftState<TShift> {
+  key: number;
+}
+
 const DATABASE_NAME = 'san-martin-pos';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 const CATALOG_STORE = 'pos_catalog';
 const DRAFT_STORE = 'pos_sale_drafts';
 const PAYMENT_DRAFT_STORE = 'pos_pending_payments';
+const OFFLINE_ACCESS_STORE = 'pos_offline_access';
+const SHIFT_CACHE_STORE = 'pos_shift_cache';
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -121,6 +154,12 @@ const openDatabase = (): Promise<IDBDatabase> => {
         }
         if (!database.objectStoreNames.contains(PAYMENT_DRAFT_STORE)) {
           database.createObjectStore(PAYMENT_DRAFT_STORE, { keyPath: 'key' });
+        }
+        if (!database.objectStoreNames.contains(OFFLINE_ACCESS_STORE)) {
+          database.createObjectStore(OFFLINE_ACCESS_STORE, { keyPath: 'key' });
+        }
+        if (!database.objectStoreNames.contains(SHIFT_CACHE_STORE)) {
+          database.createObjectStore(SHIFT_CACHE_STORE, { keyPath: 'key' });
         }
       };
       request.onsuccess = () => {
@@ -265,5 +304,82 @@ export const eliminarCobroPendientePos = async (shiftUuid: string): Promise<void
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo limpiar la cotización local.'));
     transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló la limpieza de la cotización local.'));
+  });
+};
+
+export const guardarAccesoOfflinePos = async (
+  record: Omit<PosOfflineAccessRecord, 'saved_at'>,
+): Promise<void> => {
+  const database = await openDatabase();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_ACCESS_STORE, 'readwrite');
+    transaction.objectStore(OFFLINE_ACCESS_STORE).put({
+      ...record,
+      key: 'current',
+      saved_at: new Date().toISOString(),
+    } satisfies StoredOfflineAccessRecord);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el acceso offline.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del acceso offline.'));
+  });
+};
+
+export const cargarAccesoOfflinePos = async (): Promise<PosOfflineAccessRecord | null> => {
+  const database = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(OFFLINE_ACCESS_STORE, 'readonly');
+    const request = transaction.objectStore(OFFLINE_ACCESS_STORE).get('current');
+    request.onsuccess = () => {
+      const stored = request.result as StoredOfflineAccessRecord | undefined;
+      if (!stored) {
+        resolve(null);
+        return;
+      }
+      const { key: _key, ...record } = stored;
+      resolve(record);
+    };
+    request.onerror = () => reject(request.error ?? new Error('No se pudo leer el acceso offline.'));
+  });
+};
+
+export const guardarTurnoEnCachePos = async <TShift>(
+  userId: number,
+  state: Omit<PosCachedShiftState<TShift>, 'saved_at'>,
+): Promise<void> => {
+  const database = await openDatabase();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(SHIFT_CACHE_STORE, 'readwrite');
+    transaction.objectStore(SHIFT_CACHE_STORE).put({
+      ...state,
+      key: userId,
+      saved_at: new Date().toISOString(),
+    } satisfies StoredShiftState<TShift>);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el estado local del turno.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado local del turno.'));
+  });
+};
+
+export const cargarTurnoDesdeCachePos = async <TShift>(
+  userId: number,
+): Promise<PosCachedShiftState<TShift> | null> => {
+  const database = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(SHIFT_CACHE_STORE, 'readonly');
+    const request = transaction.objectStore(SHIFT_CACHE_STORE).get(userId);
+    request.onsuccess = () => {
+      const stored = request.result as StoredShiftState<TShift> | undefined;
+      if (!stored) {
+        resolve(null);
+        return;
+      }
+      const { key: _key, ...state } = stored;
+      resolve(state);
+    };
+    request.onerror = () => reject(request.error ?? new Error('No se pudo leer el estado local del turno.'));
   });
 };

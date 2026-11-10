@@ -28,7 +28,7 @@ interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | n
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
-export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange }: { shiftUuid: string; nextOrderNumber: number; onSale: () => Promise<void>; onPendingPaymentChange: (pending: boolean) => void }) => {
+export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, offlineMode = false }: { shiftUuid: string; nextOrderNumber: number; onSale: () => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; offlineMode?: boolean }) => {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [lines, setLines] = useState<CartLine[]>([]);
@@ -182,6 +182,12 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setCatalogNotice('No se pudo acceder al almacenamiento local. El catálogo no quedará disponible sin conexión.');
     }
 
+    if (offlineMode) {
+      if (!savedCatalog) setError('No hay un catálogo guardado disponible sin conexión.');
+      setLoadingCatalog(false);
+      return;
+    }
+
     try {
       const freshCatalog = await solicitarApi<Catalog>('/api/pos/catalog/');
       setCatalog(freshCatalog);
@@ -204,7 +210,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     try { const result = await solicitarApi<OrderHistory>('/api/orders/'); setOrders(result.orders); }
     catch (e) { setError(e instanceof Error ? e.message : 'No se pudo consultar el historial del turno.'); }
   };
-  useEffect(() => { void loadCatalog(); void loadOrders(); }, [shiftUuid]);
+  useEffect(() => { void loadCatalog(); if (!offlineMode) void loadOrders(); }, [shiftUuid, offlineMode]);
 
   const products = useMemo(() => catalog?.products.filter(p => category === 'all' || p.category_id === category) ?? [], [catalog, category]);
   const invalidateQuote = () => {
@@ -376,7 +382,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => sum + (catalog?.modifiers.find(m => m.id === value.modifier_id)?.price ?? value.price_at_sale) * value.quantity_per_unit, 0);
 
   return <section className="space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
-    <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Venta en línea</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog}><RefreshCw className="mr-2 inline h-4 w-4"/>Actualizar menú</button></header>
+    <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Catálogo guardado' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Sin conexión' : 'Actualizar menú'}</button></header>
+    {offlineMode && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">Vista local de solo lectura. Las ventas, cotizaciones y cambios de caja requieren conexión.</div>}
     <aside aria-label="Estado de datos locales" className="space-y-3 rounded-xl border border-white/10 bg-[#101010] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">Respaldo de caja</h3><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">El catálogo, el borrador y la cotización quedan guardados en este equipo. Los cobros se registran con conexión; si el servidor no confirma una venta cobrada, podrás reintentarla. La sincronización automática offline sigue pendiente.</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">Almacenamiento local</span></div>
       <div className="grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-2">
@@ -393,7 +400,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     {preparedQuoteExpired && <div role="alert" className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100"><p>La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.</p><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>El pago se recibió</button><button type="button" disabled={busy} className="rounded-lg border border-white/20 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={() => void discardExpiredQuote()}>El cliente no pagó; descartar</button></div></div>}
     {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && <p role="status" className="rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-300">Guardando localmente los datos del pago; espera antes de recibirlo.</p>}
     {pendingPaymentStatus === 'error' && quote && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-200">No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.</p>}
-    <fieldset disabled={busy || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed} className="grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
+    <fieldset disabled={offlineMode || busy || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed} className="grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="space-y-3"><div className="flex gap-2 overflow-x-auto pb-1"><button className={button} type="button" onClick={() => setCategory('all')}>Todos</button>{catalog?.categories.map(c => <button className={button} type="button" key={c.id} onClick={() => setCategory(c.id)}>{c.name}</button>)}</div>
         {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : <div className="grid grid-cols-2 gap-2">{products.map(p => <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => addProduct(p)} className="min-h-20 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-left hover:border-[#FACC15]/50 disabled:opacity-50"><span className="block text-sm font-semibold text-white">{p.name}</span><span className="mt-1 block text-sm text-[#FACC15]">{formatPrice(p.price)}</span></button>)}</div>}
       </div>
@@ -413,9 +420,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         </div>}
       </div>
     </fieldset>
-    <div className="border-t border-white/10 pt-4">
+    {!offlineMode && <div className="border-t border-white/10 pt-4">
       <h3 className="mb-3 text-sm font-semibold text-white">Ventas recientes</h3>
       {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method.replace('_', ' ')}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}{order.status === 'ANULADA' ? ` · Anulada: ${order.cancellation_reason}` : ''}</p></div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
-    </div>
+    </div>}
   </section>;
 };
