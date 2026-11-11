@@ -40,7 +40,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** una modificación en servidor llega al POS online sin borrar borradores ni ventas; al perder conexión se conserva el último catálogo local; el estado de última actualización y cualquier error son comprensibles; al recuperar señal la actualización ocurre automáticamente. Probar producto nuevo, cambio de precio/nombre, cambio de disponibilidad, desactivación de producto/categoría/modificador y categoría sin productos disponibles.
 
-**Estado:** implementada el 10 de noviembre de 2026. Pasaron 31 pruebas de `apps.sales` y `apps.catalog` en SQLite temporal, y `npm run build`. Falta aceptación manual en el POS, incluyendo reconexión automática, para cerrar esta etapa.
+**Estado:** implementada y aceptada manualmente por el usuario el 10 de noviembre de 2026. Confirmó actualización incremental, continuidad del borrador, disponibilidad offline y actualización automática al recuperar conexión. Pasaron 31 pruebas de `apps.sales` y `apps.catalog` en SQLite temporal, y `npm run build`.
 
 **Prueba manual pendiente:** cambiar el nombre/precio de un producto y verificar la actualización; marcarlo no disponible y confirmar que desaparece junto con su categoría si era el último disponible; desactivar un modificador y confirmar que deja de ofrecerse en una venta nueva; desconectar y reconectar la API y comprobar que el catálogo guardado sigue disponible y se actualiza automáticamente; recargar `/pos` y verificar que borrador, líneas y cola de ventas no se pierden.
 
@@ -82,7 +82,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** no hay folios duplicados ni ventas duplicadas; el total y el efectivo esperado se mantienen correctos; los conflictos quedan rechazados o marcados para revisión de forma explícita. Registrar comandos, versión PostgreSQL y resultados en una prueba de aceptación.
 
-**Estado:** verificación PostgreSQL funcional completada el 10 de noviembre de 2026: las 29 pruebas de `apps.sales` pasaron en PostgreSQL 16.15; Django creó y eliminó `test_sanmartin_pos`. Se concedió `CREATEDB` temporalmente a `sanmartin_dev` para ejecutar la suite y se revocó al terminar. Esto confirma migraciones y comportamiento funcional contra PostgreSQL, pero no cubre concurrencia real: siguen pendientes escenarios simultáneos de venta/folio, cierre e idempotencia. No se usó producción.
+**Estado:** la verificación funcional PostgreSQL se completó el 10 de noviembre de 2026: las 29 pruebas existentes de `apps.sales` pasaron en PostgreSQL 16.15 y Django eliminó la base temporal. Se añadieron tres escenarios PostgreSQL específicos en `apps/sales/test_postgres_concurrency.py`: apertura simultánea, reintento offline idempotente y conflicto de folio. La suite SQLite confirma que se omiten correctamente allí (29 pasan, 3 se omiten), pero aún hay que ejecutarlos con bloqueos reales de PostgreSQL. Para la ejecución se requiere conceder `CREATEDB` temporalmente a `sanmartin_dev` y revocarlo al terminar. No se usará producción.
 
 ### 6. Dashboard y reportes de ventas
 
@@ -116,7 +116,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-Completar la aceptación manual del **catálogo incremental**: actualizar un producto y observar la actualización automática del POS sin perder el borrador; probar disponibilidad y restauración; comprobar que el último catálogo sigue disponible offline y se actualiza al reconectar. Después abordar concurrencia PostgreSQL. La prueba física de la DINON sigue pendiente de acceso a la máquina.
+Ejecutar contra PostgreSQL los tres escenarios de concurrencia ya preparados en `apps/sales/test_postgres_concurrency.py`, con base temporal Django y permiso `CREATEDB` revocado después. Luego continuar con la prueba física de la DINON y la integración de impresión real. La aceptación del catálogo incremental y del dashboard Día/Mes ya quedó confirmada por el usuario.
 
 ## Registro de avance
 
@@ -124,12 +124,12 @@ Completar la aceptación manual del **catálogo incremental**: actualizar un pro
 |---|---|---|
 | Tema y escala | Aceptado | Probado y confirmado por el usuario el 10 nov 2026. |
 | Búsqueda rápida | Aceptada | El usuario confirmó que se ve bien en ambos temas. |
-| Catálogo incremental | Implementada; falta aceptación manual | Endpoint delta, bajas explícitas, reconexión automática y consulta cada 60 s; 31 pruebas backend y build aprobados. |
+| Catálogo incremental | Aceptado | El usuario confirmó actualización incremental, continuidad del borrador, uso del último catálogo offline y reconexión automática. 31 pruebas backend y build aprobados. |
 | Gestión del catálogo desde `/pos` | Aceptada | El usuario aprobó los temas claro/oscuro y confirmó que el producto retirado se restauró. Búsqueda y retiro/restauración reversible; historial preservado. |
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
 | Suite de ventas en PostgreSQL | Completada | PostgreSQL 16.15; 29/29 pasaron; base temporal creada y eliminada; `CREATEDB` temporal de `sanmartin_dev` revocado. |
-| PostgreSQL concurrencia | Pendiente | La suite funcional no simula peticiones simultáneas. |
+| PostgreSQL concurrencia | Pruebas preparadas; ejecución pendiente | Tres pruebas específicas añadidas y omitidas en SQLite; requieren ejecución con PostgreSQL real. |
 | Dashboard día/mes | Aceptado | El usuario aprobó Día/Mes en tema claro; capturas del 10 nov muestran totales conciliados con pagos y anulaciones separadas; 29 pruebas `apps.sales` pasaron en PostgreSQL 16.15. |
 | Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
 | Guía operativa | Pendiente | Último entregable local. |
