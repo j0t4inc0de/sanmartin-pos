@@ -1,0 +1,51 @@
+services:
+  sanmartin-db:
+    image: postgres:16-alpine
+    container_name: sanmartin-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sanmartin_pos
+      POSTGRES_USER: sanmartin_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - sanmartin_db_data:/var/lib/postgresql/data
+    networks:
+      - proxy_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sanmartin_user -d sanmartin_pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  sanmartin-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sanmartin-backend
+    restart: unless-stopped
+    depends_on:
+      sanmartin-db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_HOST: sanmartin-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: sanmartin_pos
+      POSTGRES_USER: sanmartin_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - sanmartin_static:/app/staticfiles
+    expose:
+      - "8000"
+    networks:
+      - proxy_network
+
+volumes:
+  sanmartin_db_data:
+  sanmartin_static:
+
+networks:
+  proxy_network:
+    external: true
