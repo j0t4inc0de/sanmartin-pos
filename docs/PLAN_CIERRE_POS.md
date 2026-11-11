@@ -94,7 +94,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** comparar el día y el mes contra un conjunto de ventas conocido; comprobar que el gráfico diario se agrupa por hora y el mensual por día, y alterna monto/cantidad; revisar el ranking de horas punta; confirmar ventas offline según su hora original; anulación excluida de ventas completadas y mostrada aparte; rangos y límites de día/mes correctos en `America/Santiago`; totales por medio de pago conciliados con los turnos; temas claro/oscuro, pantalla angosta y permisos de acceso correctos.
 
-**Estado:** el usuario confirmó que el dashboard está adaptado correctamente. Se implementó `GET /api/reports/sales/` y la pestaña **Reportes** dentro de `/pos`. Falta conciliar los totales contra ventas conocidas y ejecutar pruebas específicas de concurrencia. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
+**Estado:** el usuario aceptó los reportes **Día** y **Mes** en tema claro el 10 de noviembre de 2026. En las capturas, los pagos suman el total mostrado: día $24.000 en 6 ventas y mes $88.500 en 16 ventas; las anulaciones aparecen por separado. Las 29 pruebas de `apps.sales` pasaron en PostgreSQL 16.15. La implementación de reportes queda aceptada; la concurrencia PostgreSQL sigue siendo una verificación técnica separada. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
 
 ### 7. Aceptación integral del POS
 
@@ -116,7 +116,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-Conciliar manualmente **Reportes** en `/pos` con ventas y cierres conocidos. La suite de `apps.sales` ya fue verificada contra PostgreSQL 16.15 (29/29); quedan pendientes pruebas específicas de concurrencia y la prueba física de la DINON cuando haya acceso a la máquina. Después, completar aceptación integral y guía operativa.
+Completar la aceptación manual del **catálogo incremental**: actualizar un producto y observar la actualización automática del POS sin perder el borrador; probar disponibilidad y restauración; comprobar que el último catálogo sigue disponible offline y se actualiza al reconectar. Después abordar concurrencia PostgreSQL. La prueba física de la DINON sigue pendiente de acceso a la máquina.
 
 ## Registro de avance
 
@@ -130,6 +130,6 @@ Conciliar manualmente **Reportes** en `/pos` con ventas y cierres conocidos. La 
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
 | Suite de ventas en PostgreSQL | Completada | PostgreSQL 16.15; 29/29 pasaron; base temporal creada y eliminada; `CREATEDB` temporal de `sanmartin_dev` revocado. |
 | PostgreSQL concurrencia | Pendiente | La suite funcional no simula peticiones simultáneas. |
-| Dashboard día/mes | Interfaz aceptada; falta conciliación de datos | El usuario confirmó el ajuste visual; agregados protegidos en backend; filtros día/mes por `America/Santiago`; pagos, anulaciones, productos, horas y turnos; pruebas automatizadas y compilación aprobadas. |
+| Dashboard día/mes | Aceptado | El usuario aprobó Día/Mes en tema claro; capturas del 10 nov muestran totales conciliados con pagos y anulaciones separadas; 29 pruebas `apps.sales` pasaron en PostgreSQL 16.15. |
 | Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
 | Guía operativa | Pendiente | Último entregable local. |

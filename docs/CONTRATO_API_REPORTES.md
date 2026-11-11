@@ -2,7 +2,7 @@
 
 - **Versión:** 1.0
 - **Ruta:** `GET /api/reports/sales/`
-- **Estado:** implementado localmente; interfaz aceptada; pendiente conciliación de datos
+- **Estado:** implementado localmente y aceptado por el usuario en vistas Día/Mes y tema claro; totales visibles conciliados en capturas de prueba del 10 de noviembre de 2026
 - **Zona horaria:** `America/Santiago`
 
 ## Acceso
