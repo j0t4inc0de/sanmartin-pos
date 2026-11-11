@@ -82,7 +82,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** no hay folios duplicados ni ventas duplicadas; el total y el efectivo esperado se mantienen correctos; los conflictos quedan rechazados o marcados para revisión de forma explícita. Registrar comandos, versión PostgreSQL y resultados en una prueba de aceptación.
 
-**Estado:** pendiente. Las pruebas automatizadas existentes en SQLite no sustituyen este paso. El `.env` local apunta a `127.0.0.1:5433`, pero ese puerto no responde; `pg_ctl` indica que PostgreSQL 16 no tiene un servidor iniciado. El entorno de ejecución no pudo abrir el servicio de Windows para iniciarlo. No se ejecutaron pruebas contra otra base ni contra producción.
+**Estado:** verificación PostgreSQL funcional completada el 10 de noviembre de 2026: las 29 pruebas de `apps.sales` pasaron en PostgreSQL 16.15; Django creó y eliminó `test_sanmartin_pos`. Se concedió `CREATEDB` temporalmente a `sanmartin_dev` para ejecutar la suite y se revocó al terminar. Esto confirma migraciones y comportamiento funcional contra PostgreSQL, pero no cubre concurrencia real: siguen pendientes escenarios simultáneos de venta/folio, cierre e idempotencia. No se usó producción.
 
 ### 6. Dashboard y reportes de ventas
 
@@ -90,11 +90,11 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Alcance de esta entrega:** pantalla de reportes con selector **Día / Mes**, fecha o mes seleccionable y valor por defecto del día actual. Muestra monto total de ventas completadas, cantidad de ventas, ticket promedio, montos y proporciones por medio de pago, anulaciones separadas, productos más vendidos por unidades, actividad por hora/día local y turnos con detalle de cierre (efectivo esperado/contado/diferencia). El gráfico permite alternar entre recaudación y número de ventas; el mes incluye ranking de horas punta. Los agregados se calculan en Django; no se descarga el historial completo al navegador. Las ventas offline se agrupan por el `created_at` original y aparecen al sincronizar. Los controles y gráficos son responsive y contemplan ambos temas.
 
-**Secuencia técnica:** contrato, filtros y agregados protegidos implementados; la siguiente verificación es reconciliar los datos con ventas y cierres conocidos en la aceptación manual y en PostgreSQL de pruebas.
+**Secuencia técnica:** contrato, filtros y agregados protegidos implementados; la siguiente verificación es reconciliar los datos con ventas y cierres conocidos en la aceptación manual. La suite completa de `apps.sales` ya pasó en PostgreSQL de pruebas el 10 de noviembre de 2026; se debe agregar o ejecutar aparte una prueba real de concurrencia.
 
 **Aceptación:** comparar el día y el mes contra un conjunto de ventas conocido; comprobar que el gráfico diario se agrupa por hora y el mensual por día, y alterna monto/cantidad; revisar el ranking de horas punta; confirmar ventas offline según su hora original; anulación excluida de ventas completadas y mostrada aparte; rangos y límites de día/mes correctos en `America/Santiago`; totales por medio de pago conciliados con los turnos; temas claro/oscuro, pantalla angosta y permisos de acceso correctos.
 
-**Estado:** el usuario confirmó que el dashboard está adaptado correctamente. Se implementó `GET /api/reports/sales/` y la pestaña **Reportes** dentro de `/pos`. Falta conciliar los totales contra ventas conocidas y completar la validación PostgreSQL. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
+**Estado:** el usuario confirmó que el dashboard está adaptado correctamente. Se implementó `GET /api/reports/sales/` y la pestaña **Reportes** dentro de `/pos`. Falta conciliar los totales contra ventas conocidas y ejecutar pruebas específicas de concurrencia. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
 
 ### 7. Aceptación integral del POS
 
@@ -116,7 +116,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-Probar manualmente **Reportes** en `/pos` con los escenarios de aceptación y en ambos temas. La prueba física de la DINON queda pendiente de acceso a la máquina. La verificación contra PostgreSQL de pruebas queda pendiente hasta que el servicio de pruebas local esté disponible; nunca conectar la suite a producción. Tras estas verificaciones, completar aceptación integral y guía operativa.
+Conciliar manualmente **Reportes** en `/pos` con ventas y cierres conocidos. La suite de `apps.sales` ya fue verificada contra PostgreSQL 16.15 (29/29); quedan pendientes pruebas específicas de concurrencia y la prueba física de la DINON cuando haya acceso a la máquina. Después, completar aceptación integral y guía operativa.
 
 ## Registro de avance
 
@@ -128,7 +128,8 @@ Probar manualmente **Reportes** en `/pos` con los escenarios de aceptación y en
 | Gestión del catálogo desde `/pos` | Aceptada | El usuario aprobó los temas claro/oscuro y confirmó que el producto retirado se restauró. Búsqueda y retiro/restauración reversible; historial preservado. |
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
-| PostgreSQL concurrencia | Pendiente | Base de pruebas separada. |
+| Suite de ventas en PostgreSQL | Completada | PostgreSQL 16.15; 29/29 pasaron; base temporal creada y eliminada; `CREATEDB` temporal de `sanmartin_dev` revocado. |
+| PostgreSQL concurrencia | Pendiente | La suite funcional no simula peticiones simultáneas. |
 | Dashboard día/mes | Interfaz aceptada; falta conciliación de datos | El usuario confirmó el ajuste visual; agregados protegidos en backend; filtros día/mes por `America/Santiago`; pagos, anulaciones, productos, horas y turnos; pruebas automatizadas y compilación aprobadas. |
 | Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
 | Guía operativa | Pendiente | Último entregable local. |
