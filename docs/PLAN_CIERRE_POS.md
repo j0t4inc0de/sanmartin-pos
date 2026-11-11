@@ -108,6 +108,8 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** un operador puede seguir la guía en el entorno de pruebas sin instrucciones verbales del desarrollador.
 
+**Estado:** borrador creado en `docs/GUIA_OPERACION_POS.md`; incluye apertura, venta, pagos pendientes, operación offline, anulaciones, catálogo, reportes, cierre, preferencias y caída de API. La sección de impresión está marcada como pendiente, porque aún no se integró a las ventas. Falta recorrerla con un operador y completarla después de la prueba DINON.
+
 ## Fuera de este plan
 
 - Despliegue, dominio/HTTPS del servidor, configuración de producción, cuentas reales, respaldos productivos, permisos de infraestructura y publicación: responsabilidad del colega administrador.
@@ -132,4 +134,4 @@ La concurrencia PostgreSQL ya quedó validada. El próximo hito dependiente del 
 | PostgreSQL concurrencia | Completada | 3/3 pruebas pasaron en PostgreSQL 16.15; base temporal eliminada y `CREATEDB` revocado/verificado. |
 | Dashboard día/mes | Aceptado | El usuario aprobó Día/Mes en tema claro; capturas del 10 nov muestran totales conciliados con pagos y anulaciones separadas; 29 pruebas `apps.sales` pasaron en PostgreSQL 16.15. |
 | Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
-| Guía operativa | Pendiente | Último entregable local. |
+| Guía operativa | Borrador | `docs/GUIA_OPERACION_POS.md`; pendiente validar con operador y completar impresión tras la prueba DINON. |
