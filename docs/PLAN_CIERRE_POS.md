@@ -118,7 +118,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-La concurrencia PostgreSQL ya quedó validada. El próximo hito dependiente del usuario es probar físicamente la DINON 9390; con ese modelo y los resultados se cerrará la integración de impresión real y reimpresión/gaveta. Mientras tanto, avanzar la guía operativa y preparar la lista de aceptación integral. El catálogo incremental y el dashboard Día/Mes ya fueron aceptados.
+La concurrencia PostgreSQL ya quedó validada. La guía operativa y la matriz integral se contrastaron con la interfaz y contratos actuales; falta recorrer la guía con una persona operadora y llenar la conciliación de reportes. El próximo hito físico es probar la DINON 9390; con esos resultados se cerrará la integración de impresión real, reimpresión y gaveta. El catálogo incremental y el dashboard Día/Mes ya fueron aceptados.
 
 ## Registro de avance
 
