@@ -82,7 +82,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** no hay folios duplicados ni ventas duplicadas; el total y el efectivo esperado se mantienen correctos; los conflictos quedan rechazados o marcados para revisión de forma explícita. Registrar comandos, versión PostgreSQL y resultados en una prueba de aceptación.
 
-**Estado:** la verificación funcional PostgreSQL se completó el 10 de noviembre de 2026: las 29 pruebas existentes de `apps.sales` pasaron en PostgreSQL 16.15 y Django eliminó la base temporal. Se añadieron tres escenarios PostgreSQL específicos en `apps/sales/test_postgres_concurrency.py`: apertura simultánea, reintento offline idempotente y conflicto de folio. La suite SQLite confirma que se omiten correctamente allí (29 pasan, 3 se omiten), pero aún hay que ejecutarlos con bloqueos reales de PostgreSQL. Para la ejecución se requiere conceder `CREATEDB` temporalmente a `sanmartin_dev` y revocarlo al terminar. No se usará producción.
+**Estado:** completado el 10 de noviembre de 2026 contra PostgreSQL 16.15 en la base temporal `test_sanmartin_pos`. Pasaron las tres pruebas de concurrencia de `apps/sales/test_postgres_concurrency.py`: apertura simultánea de turnos (solo uno queda abierto), reintento offline simultáneo con el mismo UUID (sin duplicar venta) y reutilización simultánea de folio con UUID distinto (conflicto rechazado, sin duplicación). Django eliminó la base temporal. `CREATEDB` fue concedido temporalmente a `sanmartin_dev` para esta ejecución y luego revocado; se verificó `rolcreatedb = false`. No se usó producción.
 
 ### 6. Dashboard y reportes de ventas
 
@@ -90,11 +90,11 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Alcance de esta entrega:** pantalla de reportes con selector **Día / Mes**, fecha o mes seleccionable y valor por defecto del día actual. Muestra monto total de ventas completadas, cantidad de ventas, ticket promedio, montos y proporciones por medio de pago, anulaciones separadas, productos más vendidos por unidades, actividad por hora/día local y turnos con detalle de cierre (efectivo esperado/contado/diferencia). El gráfico permite alternar entre recaudación y número de ventas; el mes incluye ranking de horas punta. Los agregados se calculan en Django; no se descarga el historial completo al navegador. Las ventas offline se agrupan por el `created_at` original y aparecen al sincronizar. Los controles y gráficos son responsive y contemplan ambos temas.
 
-**Secuencia técnica:** contrato, filtros y agregados protegidos implementados; la siguiente verificación es reconciliar los datos con ventas y cierres conocidos en la aceptación manual. La suite completa de `apps.sales` ya pasó en PostgreSQL de pruebas el 10 de noviembre de 2026; se debe agregar o ejecutar aparte una prueba real de concurrencia.
+**Secuencia técnica:** contrato, filtros y agregados protegidos implementados. La verificación PostgreSQL de ventas y concurrencia pasó el 10 de noviembre de 2026; queda cubrir la conciliación de reportes con datos conocidos en la aceptación integral.
 
 **Aceptación:** comparar el día y el mes contra un conjunto de ventas conocido; comprobar que el gráfico diario se agrupa por hora y el mensual por día, y alterna monto/cantidad; revisar el ranking de horas punta; confirmar ventas offline según su hora original; anulación excluida de ventas completadas y mostrada aparte; rangos y límites de día/mes correctos en `America/Santiago`; totales por medio de pago conciliados con los turnos; temas claro/oscuro, pantalla angosta y permisos de acceso correctos.
 
-**Estado:** el usuario aceptó los reportes **Día** y **Mes** en tema claro el 10 de noviembre de 2026. En las capturas, los pagos suman el total mostrado: día $24.000 en 6 ventas y mes $88.500 en 16 ventas; las anulaciones aparecen por separado. Las 29 pruebas de `apps.sales` pasaron en PostgreSQL 16.15. La implementación de reportes queda aceptada; la concurrencia PostgreSQL sigue siendo una verificación técnica separada. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
+**Estado:** el usuario aceptó los reportes **Día** y **Mes** en tema claro el 10 de noviembre de 2026. En las capturas, los pagos suman el total mostrado: día $24.000 en 6 ventas y mes $88.500 en 16 ventas; las anulaciones aparecen por separado. Las 29 pruebas funcionales de `apps.sales` y las tres pruebas de concurrencia pasaron en PostgreSQL 16.15. La implementación de reportes queda aceptada; la conciliación de datos conocidos se revisará en la aceptación integral. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
 
 ### 7. Aceptación integral del POS
 
@@ -116,7 +116,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-Ejecutar contra PostgreSQL los tres escenarios de concurrencia ya preparados en `apps/sales/test_postgres_concurrency.py`, con base temporal Django y permiso `CREATEDB` revocado después. Luego continuar con la prueba física de la DINON y la integración de impresión real. La aceptación del catálogo incremental y del dashboard Día/Mes ya quedó confirmada por el usuario.
+La concurrencia PostgreSQL ya quedó validada. El próximo hito dependiente del usuario es probar físicamente la DINON 9390; con ese modelo y los resultados se cerrará la integración de impresión real y reimpresión/gaveta. Mientras tanto, avanzar la guía operativa y preparar la lista de aceptación integral. El catálogo incremental y el dashboard Día/Mes ya fueron aceptados.
 
 ## Registro de avance
 
@@ -129,7 +129,7 @@ Ejecutar contra PostgreSQL los tres escenarios de concurrencia ya preparados en 
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
 | Impresión real de ventas | Pendiente | Depende de la prueba física. |
 | Suite de ventas en PostgreSQL | Completada | PostgreSQL 16.15; 29/29 pasaron; base temporal creada y eliminada; `CREATEDB` temporal de `sanmartin_dev` revocado. |
-| PostgreSQL concurrencia | Pruebas preparadas; ejecución pendiente | Tres pruebas específicas añadidas y omitidas en SQLite; requieren ejecución con PostgreSQL real. |
+| PostgreSQL concurrencia | Completada | 3/3 pruebas pasaron en PostgreSQL 16.15; base temporal eliminada y `CREATEDB` revocado/verificado. |
 | Dashboard día/mes | Aceptado | El usuario aprobó Día/Mes en tema claro; capturas del 10 nov muestran totales conciliados con pagos y anulaciones separadas; 29 pruebas `apps.sales` pasaron en PostgreSQL 16.15. |
 | Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
 | Guía operativa | Pendiente | Último entregable local. |
