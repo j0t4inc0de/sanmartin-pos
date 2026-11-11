@@ -98,7 +98,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ### 7. Aceptación integral del POS
 
-**Trabajo:** recorrer desde inicio de sesión hasta cierre con operaciones online, offline y reconexión; cubrir venta, anulación, pagos, modificaciones de catálogo, impresora, gaveta, reportes, tema/escala y confirmación al cerrar sesión. Probar recuperación de recarga y errores recuperables.
+**Trabajo:** recorrer desde inicio de sesión hasta cierre con operaciones online, offline y reconexión; cubrir venta, anulación, pagos, modificaciones de catálogo, impresora, gaveta, reportes, tema/escala y confirmación al cerrar sesión. Probar recuperación de recarga y errores recuperables. La matriz de ejecución está en `docs/PRUEBAS_ACEPTACION_INTEGRAL_POS.md`.
 
 **Aceptación:** lista de casos con resultado aprobado y evidencia; sin pérdida ni duplicación de ventas; impresión y reportes conciliados con base de pruebas; defectos bloqueantes resueltos. Mantener las pruebas manuales de usuario separadas de las pruebas automatizadas.
 
@@ -133,5 +133,5 @@ La concurrencia PostgreSQL ya quedó validada. El próximo hito dependiente del 
 | Suite de ventas en PostgreSQL | Completada | PostgreSQL 16.15; 29/29 pasaron; base temporal creada y eliminada; `CREATEDB` temporal de `sanmartin_dev` revocado. |
 | PostgreSQL concurrencia | Completada | 3/3 pruebas pasaron en PostgreSQL 16.15; base temporal eliminada y `CREATEDB` revocado/verificado. |
 | Dashboard día/mes | Aceptado | El usuario aprobó Día/Mes en tema claro; capturas del 10 nov muestran totales conciliados con pagos y anulaciones separadas; 29 pruebas `apps.sales` pasaron en PostgreSQL 16.15. |
-| Aceptación integral | Pendiente | Tras completar los bloques anteriores. |
+| Aceptación integral | Preparada; ejecución pendiente | Matriz creada en `docs/PRUEBAS_ACEPTACION_INTEGRAL_POS.md`; los casos de impresión esperan DINON e integración. |
 | Guía operativa | Borrador | `docs/GUIA_OPERACION_POS.md`; pendiente validar con operador y completar impresión tras la prueba DINON. |
