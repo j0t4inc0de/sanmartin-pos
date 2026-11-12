@@ -348,7 +348,7 @@ describe('San Martín POS — UI/UX Enhancements Suite (R1–R5)', async () => {
         );
       });
 
-      it('R4.2: PosReports card sequence places "Actividad del día" in 1st position before payments', () => {
+      it('R4.2: PosReports card sequence places "Actividad del día" 1st, "Medios de pago" 2nd, and "Productos más vendidos" 3rd', () => {
         const filePath = path.join(PROJECT_ROOT, 'src', 'components', 'PosReports.tsx');
         const content = fs.readFileSync(filePath, 'utf-8');
 
@@ -361,12 +361,12 @@ describe('San Martín POS — UI/UX Enhancements Suite (R1–R5)', async () => {
         assert.ok(paymentsIndex !== -1, 'Must contain pos-report-payments card');
 
         assert.ok(
-          timelineIndex < productsIndex,
-          'pos-report-timeline (Actividad del día) must be 1st card (before products)'
+          timelineIndex < paymentsIndex,
+          'pos-report-timeline (Actividad del día) must be 1st card (before payments)'
         );
         assert.ok(
-          productsIndex < paymentsIndex,
-          'pos-report-products must be 2nd card (before payments)'
+          paymentsIndex < productsIndex,
+          'pos-report-payments (Medios de pago) must be 2nd card (before products)'
         );
       });
 
