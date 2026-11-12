@@ -567,6 +567,18 @@ html[data-theme="light"] .pos-type-choice.is-selected strong { color: #684800; }
 .pos-catalog-footer { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-top: 1rem; border-top: 1px solid rgb(148 163 184 / 14%); padding-top: .85rem; color: #8491a2; font-size: .68rem; }
 .pos-catalog-footer button { border: 1px solid rgb(148 163 184 / 20%); border-radius: .65rem; padding: .5rem .8rem; color: #d7e0ea; background: rgb(255 255 255 / 4%); font-size: .75rem; font-weight: 700; }
 
+html[data-theme="light"] .pos-session-card {
+  border-color: #e2e8f0;
+  background-color: #ffffff;
+  box-shadow: 0 4px 20px -2px rgb(15 23 42 / 0.08);
+}
+html[data-theme="light"] .pos-session-card [aria-label*="Hora local"] {
+  border-color: #e2e8f0;
+  background-color: #f8fafc;
+}
+html[data-theme="light"] .pos-session-card [aria-label*="Hora local"] time {
+  color: #172334;
+}
 html[data-theme="light"] .pos-workspace-nav { border-color: #e2e8f0; }
 html[data-theme="light"] .pos-workspace-nav button { color: #64748b; }
 html[data-theme="light"] .pos-workspace-nav button:hover { color: #172334; background: #f1f5f9; }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BarChart3, Boxes, CircleDollarSign, Clock3, LogOut } from 'lucide-react';
+import { BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, RefreshCw, User, Wifi, WifiOff } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
@@ -917,40 +917,93 @@ export const PosPage = () => {
           </form>
         ) : (
           <section className="pos-authenticated space-y-5">
-            <div className="pos-session-card flex flex-col gap-4 rounded-2xl border border-white/10 bg-[#171717] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-3">
-                <div>
-                <p className="text-xs uppercase tracking-wider text-gray-400">Sesión activa</p>
-                <p className="mt-1 font-semibold text-white">{user.username}</p>
+            <div className="pos-session-card flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#16191F]/90 backdrop-blur-md p-3.5 sm:p-4 shadow-xl transition-all duration-200 lg:flex-row lg:items-center lg:justify-between">
+              {/* Bloque Izquierdo: Operador / Sesión activa */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#FACC15]/30 bg-gradient-to-br from-[#FACC15]/15 to-transparent text-[#FACC15] shadow-[0_0_12px_rgba(250,204,21,0.15)]">
+                  <User className="h-5 w-5" />
                 </div>
-                {offlineMode && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">Modo offline · cambios guardados en este equipo</span>}
-                <div className="inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.02] px-3 py-2 shadow-inner shadow-black/20" aria-label={`Hora local: ${chileClock.date}, ${chileClock.time}`}>
-                  <span className="grid h-9 w-9 place-items-center rounded-xl border border-[#FACC15]/20 bg-[#FACC15]/[0.08] text-[#FACC15]" aria-hidden="true">
-                    <Clock3 className="h-4 w-4" />
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 leading-none">
+                    Sesión activa
                   </span>
-                  <span className="text-xs font-medium capitalize tracking-wide text-gray-400">{chileClock.date}</span>
-                  <span className="h-5 w-px bg-white/10" aria-hidden="true" />
-                  <time className="font-heading text-lg tracking-[0.08em] tabular-nums text-white" dateTime={new Date().toISOString()}>{chileClock.time}</time>
+                  <div className="mt-1 flex items-center gap-2">
+                    <p className="font-heading text-lg font-bold uppercase tracking-wide text-white leading-tight">
+                      {user.username}
+                    </p>
+                    <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-gray-300">
+                      Cajero
+                    </span>
+                  </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleReconnect()}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/25 px-3 py-2 text-sm text-emerald-200 transition hover:bg-emerald-950/30 disabled:opacity-50"
-                hidden={!offlineMode}
-              >
-                {isSubmitting ? 'Conectando…' : 'Reconectar y sincronizar'}
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-300 transition hover:bg-white/5 hover:text-white disabled:opacity-50"
-              >
-                <LogOut className="h-4 w-4" />
-                Cerrar sesión
-              </button>
+
+              {/* Bloque Centro: Estado de Conectividad & Sincronización */}
+              <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                {offlineMode ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 shadow-sm">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400"></span>
+                      </span>
+                      <WifiOff className="h-4 w-4 text-amber-400 shrink-0" />
+                      <span>Modo offline · cambios guardados en este equipo</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleReconnect()}
+                      disabled={isSubmitting}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-gradient-to-r from-emerald-600/25 to-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200 shadow-sm transition-all hover:brightness-125 hover:border-emerald-400/50 active:scale-95 disabled:opacity-50 cursor-pointer"
+                      title="Reintentar conexión y sincronizar ventas offline"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isSubmitting ? 'animate-spin text-emerald-300' : 'text-emerald-400'}`} />
+                      <span>{isSubmitting ? 'Conectando…' : 'Reconectar y sincronizar'}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 shadow-sm">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                    </span>
+                    <Wifi className="h-4 w-4 text-emerald-400 shrink-0" />
+                    <span>En línea · Servidor sincronizado</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Bloque Derecho: Reloj Local (Santiago) & Cerrar Sesión */}
+              <div className="flex items-center justify-between sm:justify-end gap-2.5 sm:gap-3">
+                <div
+                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 shadow-inner"
+                  aria-label={`Hora local: ${chileClock.date}, ${chileClock.time}`}
+                >
+                  <Clock3 className="h-4 w-4 text-[#FACC15] shrink-0" aria-hidden="true" />
+                  <span className="text-xs font-medium capitalize tracking-wide text-gray-300">
+                    {chileClock.date}
+                  </span>
+                  <span className="h-4 w-px bg-white/15" aria-hidden="true" />
+                  <time
+                    className="font-heading text-base font-bold tracking-wider tabular-nums text-white"
+                    dateTime={new Date().toISOString()}
+                  >
+                    {chileClock.time}
+                  </time>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-xs sm:text-sm font-semibold text-gray-300 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-200 active:scale-95 disabled:opacity-50 cursor-pointer"
+                  title="Cerrar sesión actual"
+                >
+                  <LogOut className="h-4 w-4 text-gray-400 transition-colors" />
+                  <span>Cerrar sesión</span>
+                </button>
+              </div>
             </div>
 
             <nav className="pos-workspace-nav" aria-label="Secciones del punto de venta">
