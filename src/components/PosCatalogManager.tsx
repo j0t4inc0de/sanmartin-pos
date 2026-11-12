@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Archive, ArrowLeft, Check, CirclePlus, Package, RefreshCw, RotateCcw, Search, Tag, Trash2, X } from 'lucide-react';
+import { Archive, ArrowLeft, Check, CirclePlus, ImagePlus, Package, RefreshCw, RotateCcw, Search, Tag, Trash2, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { asegurarModificadoresEnServidor, cargarCatalogoPos, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
 import { usePosDialogs } from './PosDialogs';
@@ -32,6 +32,18 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+
+  useEffect(() => {
+    if (!selectedImage) {
+      setImagePreview('');
+      return;
+    }
+    const previewUrl = URL.createObjectURL(selectedImage);
+    setImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [selectedImage]);
 
   const applyStoredCatalog = (stored: StoredCatalog) => {
     const loadedCategories: Category[] = stored.catalog.categories.map(item => ({
@@ -193,6 +205,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
 
   const startNew = () => {
     if (offlineMode) return;
+    setSelectedImage(null);
     setError('');
     setMessage('');
     if (section === 'products') setProductForm(blankProduct(categories.find(item => item.is_active)?.id ?? categories[0]?.id ?? 0));
@@ -220,7 +233,14 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       if (section === 'products') {
         id = productForm.id;
         path = '/api/pos/catalog/manage/products/';
-        body = { ...productForm, price: Number(productForm.price), ingredients: productForm.ingredients_text.split('\n').map(value => value.trim()).filter(Boolean) };
+        let imageUrl = productForm.image_url;
+        if (selectedImage) {
+          const imageData = new FormData();
+          imageData.append('image', selectedImage);
+          const uploaded = await solicitarApi<{ image_url: string }>('/api/pos/catalog/manage/product-images/', { method: 'POST', body: imageData });
+          imageUrl = uploaded.image_url;
+        }
+        body = { ...productForm, image_url: imageUrl, price: Number(productForm.price), ingredients: productForm.ingredients_text.split('\n').map(value => value.trim()).filter(Boolean) };
         delete body.id;
         delete body.ingredients_text;
       } else if (section === 'categories') {
@@ -239,6 +259,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       }
       await solicitarApi(`${path}${id ? `${id}/` : ''}`, { method: id ? 'PATCH' : 'POST', body });
       await loadData();
+      setSelectedImage(null);
       setMessage('Cambios guardados. El POS actualizará la carta y el menú automáticamente.');
       window.dispatchEvent(new Event('pos:catalog-updated'));
     } catch (cause) {
@@ -249,6 +270,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   };
 
   const selectSection = (next: Section) => {
+    setSelectedImage(null);
     setSection(next);
     setError('');
     setMessage('');
@@ -276,7 +298,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
     }
   };
 
-  const selectProduct = (item: Product) => setProductForm({ ...item, ingredients_text: (item.ingredients || []).join('\n') });
+  const selectProduct = (item: Product) => {
+    setSelectedImage(null);
+    setProductForm({ ...item, ingredients_text: (item.ingredients || []).join('\n') });
+  };
   const selectCategory = (item: Category) => setCategoryForm({ id: item.id, name: item.name, sort_order: item.sort_order, is_active: item.is_active });
   const selectModifier = (item: Modifier) => setModifierForm({ id: item.id, name: item.name, price: item.price, modifier_type: item.modifier_type, is_available: item.is_available, is_active: item.is_active });
   const close = onClose;
@@ -601,16 +626,60 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                     />
                   </label>
                 </div>
-                <label>
-                  Ruta o URL de imagen
-                  <input
-                    maxLength={500}
-                    disabled={offlineMode}
-                    value={productForm.image_url}
-                    onChange={event => setProductForm({ ...productForm, image_url: event.target.value })}
-                    placeholder="/productos/mi-producto.jpg"
-                  />
-                </label>
+                <div className="pos-catalog-image-field">
+                  <div className="pos-catalog-image-heading">
+                    <span>Foto del producto</span>
+                    <small>JPEG, PNG o WEBP · máximo 5 MB</small>
+                  </div>
+                  <div className="pos-catalog-image-card">
+                    <div className="pos-catalog-image-preview">
+                      {(imagePreview || productForm.image_url) ? (
+                        <img src={imagePreview || productForm.image_url} alt={`Vista previa de ${productForm.name || 'producto'}`} />
+                      ) : (
+                        <ImagePlus aria-hidden="true" />
+                      )}
+                    </div>
+                    <div className="pos-catalog-image-copy">
+                      <strong>{selectedImage ? selectedImage.name : productForm.image_url ? 'Imagen actual del producto' : 'Agrega una foto a tu producto'}</strong>
+                      <span>{selectedImage ? `${(selectedImage.size / 1024 / 1024).toFixed(2)} MB · lista para guardar` : 'Una imagen clara ayuda a identificarlo en la carta.'}</span>
+                      <div className="pos-catalog-image-actions">
+                        <label className="pos-catalog-image-upload">
+                          <ImagePlus aria-hidden="true" />
+                          {productForm.image_url || selectedImage ? 'Cambiar foto' : 'Elegir imagen'}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                            disabled={offlineMode || saving}
+                            onChange={event => {
+                              const file = event.target.files?.[0];
+                              event.currentTarget.value = '';
+                              if (!file) return;
+                              if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                                setError('Elige una imagen JPEG, PNG o WEBP de máximo 5 MB.');
+                                return;
+                              }
+                              setError('');
+                              setSelectedImage(file);
+                            }}
+                          />
+                        </label>
+                        {(productForm.image_url || selectedImage) && (
+                          <button
+                            className="pos-catalog-image-remove"
+                            type="button"
+                            disabled={offlineMode || saving}
+                            onClick={() => {
+                              setSelectedImage(null);
+                              setProductForm({ ...productForm, image_url: '' });
+                            }}
+                          >
+                            Quitar imagen
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div className="pos-catalog-switches">
                   <label>
                     <input

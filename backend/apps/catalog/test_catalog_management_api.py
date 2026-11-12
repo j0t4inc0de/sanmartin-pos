@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -104,3 +105,30 @@ class PosCatalogManagementApiTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(Product.objects.count(), 0)
+
+    def test_operator_can_upload_a_product_image(self):
+        image = SimpleUploadedFile(
+            "producto.png",
+            b"\x89PNG\r\n\x1a\n" + b"test-image-data",
+            content_type="image/png",
+        )
+        response = self.client.post(
+            "/api/pos/catalog/manage/product-images/",
+            {"image": image},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["image_url"].startswith("/media/catalog-products/"))
+
+    def test_product_image_upload_rejects_unsupported_content(self):
+        image = SimpleUploadedFile(
+            "producto.svg", b"<svg></svg>", content_type="image/svg+xml"
+        )
+        response = self.client.post(
+            "/api/pos/catalog/manage/product-images/",
+            {"image": image},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400)

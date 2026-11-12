@@ -57,11 +57,15 @@ export const solicitarApi = async <T>(
 ): Promise<T> => {
   const method = options.method ?? 'GET';
   const headers = new Headers({ Accept: 'application/json' });
-  let body: string | undefined;
+  let body: BodyInit | undefined;
 
   if (options.body !== undefined) {
-    headers.set('Content-Type', 'application/json');
-    body = JSON.stringify(options.body);
+    if (options.body instanceof FormData) {
+      body = options.body;
+    } else {
+      headers.set('Content-Type', 'application/json');
+      body = JSON.stringify(options.body);
+    }
   }
 
   if (method !== 'GET') {

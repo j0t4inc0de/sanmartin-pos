@@ -1,7 +1,12 @@
+from pathlib import Path
+from uuid import uuid4
+
+from django.core.files.storage import default_storage
 from django.db.models import QuerySet
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
@@ -180,6 +185,35 @@ class PosCatalogView(APIView):
 
 class ManageCatalogPermissionMixin:
     permission_classes = [IsAuthenticated, CanOperatePOS]
+
+
+class ManageProductImageUploadView(ManageCatalogPermissionMixin, APIView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        image = request.FILES.get("image")
+        if image is None:
+            return Response({"image": "Selecciona una imagen para subir."}, status=400)
+        if image.size <= 0 or image.size > 5 * 1024 * 1024:
+            return Response({"image": "La imagen debe pesar entre 1 byte y 5 MB."}, status=400)
+
+        extension = Path(image.name).suffix.lower()
+        signatures = {
+            ".jpg": lambda data: data.startswith(b"\xff\xd8\xff"),
+            ".jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+            ".png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+            ".webp": lambda data: data.startswith(b"RIFF") and data[8:12] == b"WEBP",
+        }
+        validator = signatures.get(extension)
+        header = image.read(12)
+        image.seek(0)
+        if validator is None or not validator(header):
+            return Response({"image": "Usa una imagen JPEG, PNG o WEBP válida."}, status=400)
+
+        stored_path = default_storage.save(
+            f"catalog-products/{uuid4().hex}{extension}", image
+        )
+        return Response({"image_url": default_storage.url(stored_path)}, status=201)
 
 
 class ManageCategoryListView(ManageCatalogPermissionMixin, ListCreateAPIView):
