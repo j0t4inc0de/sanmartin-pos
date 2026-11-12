@@ -463,8 +463,9 @@ class OrderQuoteView(APIView):
                 for modifier_input in item["modifiers"]:
                     modifier = modifiers.get(modifier_input["modifier_id"])
                     if modifier is None:
+                        nombre_mod = modifier_input.get("expected_name") or f"ID #{modifier_input['modifier_id']}"
                         return Response(
-                            {"detail": f"Un modificador de la línea {index + 1} ya no está disponible."},
+                            {"detail": f"El modificador '{nombre_mod}' de la línea {index + 1} ya no está disponible."},
                             status=status.HTTP_409_CONFLICT,
                         )
                     if (

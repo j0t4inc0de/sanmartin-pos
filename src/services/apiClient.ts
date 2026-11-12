@@ -100,7 +100,12 @@ export const solicitarApi = async <T>(
       const errorParts: string[] = [];
       const extractErrors = (obj: unknown, prefix = '') => {
         if (!obj || typeof obj !== 'object') {
-          if (obj !== undefined) errorParts.push(`${prefix}${String(obj)}`);
+          if (obj !== undefined) {
+            const cleanMessage = String(obj).trim();
+            if (cleanMessage) {
+              errorParts.push(prefix ? `${prefix}${cleanMessage}` : cleanMessage);
+            }
+          }
           return;
         }
         if (Array.isArray(obj)) {
@@ -108,7 +113,16 @@ export const solicitarApi = async <T>(
           return;
         }
         for (const [key, val] of Object.entries(obj)) {
-          const nextPrefix = prefix ? `${prefix}.${key}: ` : `${key}: `;
+          let nextPrefix = '';
+          if (key === 'items') {
+            nextPrefix = prefix;
+          } else if (/^\d+$/.test(key)) {
+            nextPrefix = prefix ? `${prefix}Línea #${Number(key) + 1}: ` : `Línea #${Number(key) + 1}: `;
+          } else if (key === 'modifiers' || key === 'product_id') {
+            nextPrefix = prefix ? `${prefix}` : '';
+          } else {
+            nextPrefix = prefix ? `${prefix}.${key}: ` : `${key}: `;
+          }
           extractErrors(val, nextPrefix);
         }
       };
