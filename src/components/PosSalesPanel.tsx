@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Filter, Minus, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
+import { ChevronDown, Filter, Minus, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
 import { printPosSale } from '../services/posPrinter';
+import { Alert } from './Alert';
+import { playSaleSuccessSound } from '../utils/soundEffects';
 import {
   cargarBorradorVentaPos,
   cargarCobroPendientePos,
   cargarCatalogoPos,
+  obtenerCatalogoBasePos,
   type StoredCatalog,
   guardarBorradorVentaPos,
   guardarCobroPendientePos,
@@ -93,10 +96,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftLoadError, setDraftLoadError] = useState(false);
-  const [draftRestored, setDraftRestored] = useState(false);
   const [draftLoadAttempt, setDraftLoadAttempt] = useState(0);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
-  const [catalogNotice, setCatalogNotice] = useState('');
   const catalogSyncInProgress = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -141,7 +142,6 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           setConsumptionType(draft.consumption_type);
           setPaymentMethod(draft.payment_method);
           setAmountReceived(draft.amount_received);
-          setDraftRestored(true);
         }
         if (pendingPayment) {
           setQuote({
@@ -292,6 +292,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         })),
       });
       await saveAndPrintSale(targetQuote, paymentMethod, amountReceived);
+      void playSaleSuccessSound();
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
       setPaymentRecordWriteFailed(false);
@@ -311,21 +312,18 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const loadCatalog = async (background = false) => {
     if (catalogSyncInProgress.current) return;
     catalogSyncInProgress.current = true;
-    if (!background) { setLoadingCatalog(true); setError(''); setCatalogNotice(''); }
+    if (!background) { setLoadingCatalog(true); setError(''); }
     let savedCatalog: StoredCatalog | null = null;
     try {
       savedCatalog = await cargarCatalogoPos();
       if (savedCatalog) setCatalog(savedCatalog.catalog);
     } catch {
-      setCatalogNotice('No se pudo acceder al almacenamiento local. El catálogo no quedará disponible sin conexión.');
+      // Almacenamiento local no accesible
     }
 
     try {
       if (offlineMode) {
-        if (savedCatalog) {
-          const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
-          setCatalogNotice(`Sin conexión. Usando catálogo guardado el ${savedDate}; revisa los precios en la próxima sincronización.`);
-        } else setError('No hay un catálogo guardado disponible sin conexión.');
+        if (!savedCatalog) setError('No hay un catálogo guardado disponible sin conexión.');
         return;
       }
 
@@ -346,6 +344,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         const freshCatalog = isRealServerCatalog && savedCatalog
           ? applyCatalogDelta(savedCatalog.catalog, response)
           : response;
+        if (!freshCatalog.modifiers || freshCatalog.modifiers.length === 0) {
+          freshCatalog.modifiers = obtenerCatalogoBasePos().modifiers;
+        }
         setCatalog(freshCatalog);
 
         // Reconcile and re-map any existing cart lines or selected items
@@ -379,20 +380,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
         try {
           await guardarCatalogoPos(freshCatalog, true);
-          const syncedAt = new Intl.DateTimeFormat('es-CL', { timeStyle: 'short' }).format(new Date(freshCatalog.generated_at));
-          const changeCount = response.categories.length + response.products.length + response.modifiers.length
-            + (response.removed?.categories.length ?? 0) + (response.removed?.products.length ?? 0) + (response.removed?.modifiers.length ?? 0);
-          setCatalogNotice(changeCount && isRealServerCatalog
-            ? `Catálogo actualizado (${changeCount} cambios) a las ${syncedAt}.`
-            : `Catálogo sincronizado a las ${syncedAt}.`);
         } catch {
-          setCatalogNotice('Catálogo cargado desde el servidor, pero no se pudo guardar en este equipo. No estará disponible sin conexión.');
+          // No se pudo guardar el catálogo localmente
         }
       } catch (e) {
-        if (savedCatalog) {
-          const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
-          setCatalogNotice(`No se pudo actualizar el catálogo. Usando la copia guardada el ${savedDate}.`);
-        } else {
+        if (!savedCatalog) {
           setError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo y no hay una copia local disponible.');
         }
       }
@@ -603,6 +595,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         ...(paymentMethod === 'EFECTIVO' ? { amount_received: Number(amountReceived) } : {}),
         confirm_repriced: quote.requires_confirmation && quote.price_confirmation_accepted,
       } });
+      void playSaleSuccessSound();
       const printJob = createPrintJob(quote, paymentMethod, amountReceived, sale.total_amount, sale.amount_paid, sale.change_given);
       try { await guardarTrabajoImpresionPos(printJob); }
       catch { setPrintNotice(`La venta #${sale.shift_order_number} quedó guardada, pero no se pudo respaldar el comprobante local para reimpresión.`); }
@@ -726,24 +719,73 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   return <section className="pos-sales-container space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Venta offline' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Catálogo guardado' : 'Actualizar menú'}</button></header>
-    {offlineMode && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">Modo offline: puedes registrar la venta en este equipo. No cierres el turno hasta sincronizar todas las ventas pendientes.</div>}
+    {offlineMode && <Alert severity="warning">Modo offline: puedes registrar la venta en este equipo. No cierres el turno hasta sincronizar todas las ventas pendientes.</Alert>}
     {(offlineOrders.length > 0 || offlineCancellations.length > 0) && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{offlineOrders.length} ventas y {offlineCancellations.length} anulaciones pendientes</strong><span>{syncingOfflineOrders ? 'Sincronizando…' : offlineMode ? 'Se enviarán al reconectar' : 'Reintento automático al recuperar conexión'}</span>{!offlineMode && <button type="button" className="rounded-lg border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50" disabled={syncingOfflineOrders || !navigator.onLine} onClick={() => void syncOfflineOrders()}>Reintentar sincronización</button>}</div>{offlineOrders.map(order => <div key={order.uuid} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/10 pt-3"><span>Venta #{String(order.shift_order_number).padStart(3, '0')} {offlineCancellations.some(item => item.order_uuid === order.uuid) ? '· Anulación pendiente' : '· Pendiente de sincronización'}</span>{!offlineCancellations.some(item => item.order_uuid === order.uuid) && <button type="button" disabled={busy || syncingOfflineOrders} className="rounded-lg border border-red-200/30 px-3 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50" onClick={() => void cancelOfflineOrder(order)}>Anular</button>}</div>)}{[...offlineOrders.map(order => order.sync_error), ...offlineCancellations.map(item => item.sync_error)].filter(Boolean).length > 0 && <p className="mt-2 text-xs text-amber-200">{offlineOrders.find(order => order.sync_error)?.sync_error ?? offlineCancellations.find(item => item.sync_error)?.sync_error} · Los eventos siguientes esperan que se resuelva este folio.</p>}</div>}
-    <aside aria-label="Estado de datos locales" className="space-y-3 rounded-xl border border-white/10 bg-[#101010] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">Respaldo de caja</h3><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">El catálogo, el borrador y la cotización quedan guardados en este equipo. Los cobros se registran con conexión; si el servidor no confirma una venta cobrada, podrás reintentarlo.</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">Almacenamiento local</span></div>
-        <div className="grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-2">
-        <p role={draftLoadError || draftSaveStatus === 'error' ? 'alert' : 'status'} className={`rounded-lg px-3 py-2 text-xs ${draftLoadError || draftSaveStatus === 'error' ? 'bg-red-950/30 text-red-200' : 'bg-white/[0.035] text-gray-300'}`}>
-          <span className="font-medium text-white">Borrador</span><span className="mx-2 text-gray-600">·</span>{draftLoadError ? 'No se pudo leer; el cobro está bloqueado.' : draftSaveStatus === 'loading' ? 'Recuperando…' : draftSaveStatus === 'saving' ? 'Guardando…' : draftSaveStatus === 'saved' ? draftRestored ? 'Restaurado y guardado en este equipo.' : 'Guardado en este equipo.' : 'No se pudo guardar; el cobro está bloqueado.'}
-          {draftLoadError && <button type="button" className="ml-2 font-semibold underline" onClick={() => setDraftLoadAttempt(attempt => attempt + 1)}>Reintentar</button>}
-        </p>
-        {catalogNotice && <p role="status" className={`rounded-lg px-3 py-2 text-xs ${catalogNotice.startsWith('No se pudo') || catalogNotice.startsWith('Sin conexión') ? 'bg-amber-950/30 text-amber-200' : 'bg-white/[0.035] text-gray-300'}`}><span className="font-medium text-white">Catálogo</span><span className="mx-2 text-gray-600">·</span>{catalogNotice}</p>}
-        </div>
-    </aside>
-    {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-200">{error}</div>}{message && <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-950/30 p-3 text-sm text-emerald-200"><Check className="mr-2 inline h-4 w-4"/>{message}</div>}
-    {paymentReceivedPending && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100"><span>El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.</span><button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>{busy ? 'Registrando…' : 'Reintentar registro'}</button></div>}
-    {paymentRecordWriteFailed && quote && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-100"><span>La recepción del pago no quedó respaldada. No cobres otra vez; mantén esta venta abierta e intenta guardar el registro.</span><button type="button" disabled={busy || pendingPaymentStatus === 'saving'} className="rounded-lg bg-red-200 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>Reintentar respaldo local</button></div>}
-    {preparedQuoteExpired && <div role="alert" className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100"><p>La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.</p><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>El pago se recibió</button><button type="button" disabled={busy} className="rounded-lg border border-white/20 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={() => void discardExpiredQuote()}>El cliente no pagó; descartar</button></div></div>}
-    {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && <p role="status" className="rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-300">Guardando localmente los datos del pago; espera antes de recibirlo.</p>}
-    {pendingPaymentStatus === 'error' && quote && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-200">No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.</p>}
+    {draftLoadError && (
+      <Alert
+        severity="error"
+        action={
+          <button type="button" className="underline font-bold text-white hover:text-white/80" onClick={() => setDraftLoadAttempt(attempt => attempt + 1)}>
+            Reintentar
+          </button>
+        }
+      >
+        No se pudo leer el borrador de venta en este equipo; el cobro está bloqueado.
+      </Alert>
+    )}
+    {error && <Alert severity="error">{error}</Alert>}
+    {message && <Alert severity="success">{message}</Alert>}
+    {paymentReceivedPending && (
+      <Alert
+        severity="warning"
+        action={
+          <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>
+            {busy ? 'Registrando…' : 'Reintentar registro'}
+          </button>
+        }
+      >
+        El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.
+      </Alert>
+    )}
+    {paymentRecordWriteFailed && quote && (
+      <Alert
+        severity="error"
+        action={
+          <button type="button" disabled={busy || pendingPaymentStatus === 'saving'} className="rounded-lg bg-red-200 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>
+            Reintentar respaldo local
+          </button>
+        }
+      >
+        La recepción del pago no quedó respaldada. No cobres otra vez; mantén esta venta abierta e intenta guardar el registro.
+      </Alert>
+    )}
+    {preparedQuoteExpired && (
+      <Alert
+        severity="warning"
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>
+              El pago se recibió
+            </button>
+            <button type="button" disabled={busy} className="rounded-lg border border-white/20 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={() => void discardExpiredQuote()}>
+              El cliente no pagó; descartar
+            </button>
+          </div>
+        }
+      >
+        La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.
+      </Alert>
+    )}
+    {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && (
+      <Alert severity="info">
+        Guardando localmente los datos del pago; espera antes de recibirlo.
+      </Alert>
+    )}
+    {pendingPaymentStatus === 'error' && quote && (
+      <Alert severity="error">
+        No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.
+      </Alert>
+    )}
     <fieldset disabled={busy || syncingOfflineOrders || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed || shiftSyncBlocked || (!offlineMode && offlineOrders.length > 0)} className="pos-sales-fields grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="min-w-0 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-300"><Filter className="h-4 w-4 text-[#FACC15]" />Filtrar productos</h3><span className="text-xs text-gray-500">{products.length} {products.length === 1 ? 'producto' : 'productos'}</span></div>
         <label className="sr-only" htmlFor="pos-product-search">Buscar producto por nombre</label>

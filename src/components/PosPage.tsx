@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, Printer, RefreshCw, User, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, Printer, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
+import { Alert } from './Alert';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
@@ -959,12 +960,9 @@ export const PosPage = () => {
         )}
 
         {errorMessage && (
-          <div
-            role="alert"
-            className="mb-5 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-200"
-          >
+          <Alert severity="error" className="mb-5">
             {errorMessage}
-          </div>
+          </Alert>
         )}
 
         {isLoading ? (
@@ -1150,21 +1148,6 @@ export const PosPage = () => {
                   </time>
                 </div>
 
-                {/* Operador / Sesión activa */}
-                <div className="pos-navbar-user-chip inline-flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-[#090C10] px-3 shadow-inner">
-                  <div className="pos-navbar-user-avatar grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-[#FACC15]/30 bg-[#FACC15]/15 text-[#FACC15]">
-                    <User className="h-3.5 w-3.5" />
-                  </div>
-                  <div className="min-w-0 pr-1 text-left leading-none">
-                    <span className="block text-[8px] font-bold uppercase tracking-wider text-gray-400 leading-none">
-                      Sesión activa
-                    </span>
-                    <span className="block text-xs font-bold text-white capitalize leading-tight truncate mt-0.5">
-                      {user.username}
-                    </span>
-                  </div>
-                </div>
-
                 {/* Botón Cerrar sesión */}
                 <button
                   type="button"
@@ -1179,7 +1162,31 @@ export const PosPage = () => {
               </div>
             </header>
 
-            {activeWorkspace === 'catalog' ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} /> : activeWorkspace === 'reports' ? <PosReports offlineMode={offlineMode} /> : activeWorkspace === 'devices' ? <div className="space-y-4"><header className="pos-report-workspace"><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Configuración del equipo</p><h2 className="mt-1 font-heading text-2xl font-bold">Impresora y gaveta</h2><p className="mt-2 text-sm text-gray-400">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p></header><PosPrinterDiagnostics /></div> : <>
+            {activeWorkspace === 'catalog' ? (
+              <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
+            ) : activeWorkspace === 'reports' ? (
+              <PosReports offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
+            ) : activeWorkspace === 'devices' ? (
+              <div className="space-y-4">
+                <header className="pos-report-workspace flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Configuración del equipo</p>
+                    <h2 className="mt-1 font-heading text-2xl font-bold text-white">Impresora y gaveta</h2>
+                    <p className="mt-2 text-sm text-gray-400">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkspace('sales')}
+                    className="pos-back-to-caja"
+                    title="Volver a la vista de caja"
+                  >
+                    <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                    <span>VOLVER A CAJA</span>
+                  </button>
+                </header>
+                <PosPrinterDiagnostics />
+              </div>
+            ) : <>
 
             {(!shift || !shift.is_open) && lastClosedShift && (
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5">

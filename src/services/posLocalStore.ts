@@ -413,11 +413,12 @@ export const precargarCatalogoPos = async (): Promise<PosCatalog> => {
       solicitarApi<PosCatalogProduct[]>('/api/pos/catalog/manage/products/'),
       solicitarApi<PosCatalogModifier[]>('/api/pos/catalog/manage/modifiers/'),
     ]);
+    const base = obtenerCatalogoBasePos();
     const catalog: PosCatalog = {
       generated_at: new Date().toISOString(),
       categories: nextCategories,
       products: nextProducts,
-      modifiers: nextModifiers,
+      modifiers: (nextModifiers && nextModifiers.length > 0) ? nextModifiers : base.modifiers,
     };
     await guardarCatalogoPos(catalog);
     return catalog;

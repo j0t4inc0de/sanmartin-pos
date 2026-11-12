@@ -107,11 +107,22 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
     }
 
     try {
-      const [nextCategories, nextProducts, nextModifiers] = await Promise.all([
+      const [nextCategories, nextProducts, fetchedModifiers] = await Promise.all([
         solicitarApi<Category[]>('/api/pos/catalog/manage/categories/'),
         solicitarApi<Product[]>('/api/pos/catalog/manage/products/'),
         solicitarApi<Modifier[]>('/api/pos/catalog/manage/modifiers/'),
       ]);
+      const nextModifiers: Modifier[] = (fetchedModifiers && fetchedModifiers.length > 0)
+        ? fetchedModifiers
+        : obtenerCatalogoBasePos().modifiers.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            modifier_type: item.modifier_type,
+            is_available: item.is_available ?? true,
+            is_active: item.is_active ?? true,
+            updated_at: item.updated_at ?? new Date().toISOString(),
+          }));
       setCategories(nextCategories);
       setProducts(nextProducts);
       setModifiers(nextModifiers);
@@ -195,7 +206,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       } else {
         id = modifierForm.id;
         path = '/api/pos/catalog/manage/modifiers/';
-        body = modifierForm;
+        body = {
+          ...modifierForm,
+          price: modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : modifierForm.price,
+        };
         delete body.id;
       }
       await solicitarApi(`${path}${id ? `${id}/` : ''}`, { method: id ? 'PATCH' : 'POST', body });
@@ -295,9 +309,9 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                 : 'Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.'}
             </p>
           </div>
-          <button type="button" className="pos-catalog-close" onClick={close}>
+          <button type="button" className="pos-back-to-caja" onClick={close} title="Volver a la vista de caja">
             <ArrowLeft aria-hidden="true" />
-            <span>Volver a caja</span>
+            <span>VOLVER A CAJA</span>
           </button>
         </header>
 
@@ -651,7 +665,14 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                       <select
                         disabled={offlineMode}
                         value={modifierForm.modifier_type}
-                        onChange={event => setModifierForm({ ...modifierForm, modifier_type: event.target.value as Modifier['modifier_type'] })}
+                        onChange={event => {
+                          const nextType = event.target.value as Modifier['modifier_type'];
+                          setModifierForm({
+                            ...modifierForm,
+                            modifier_type: nextType,
+                            price: nextType === 'EXCLUSION_COCINA' ? 0 : modifierForm.price,
+                          });
+                        }}
                       >
                         <option value="EXTRA_PAGO">Extra con costo</option>
                         <option value="EXCLUSION_COCINA">Indicación para cocina</option>
@@ -664,9 +685,12 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                         type="number"
                         min="0"
                         step="1"
-                        disabled={offlineMode}
-                        value={modifierForm.price}
-                        onChange={event => setModifierForm({ ...modifierForm, price: Number(event.target.value) })}
+                        disabled={offlineMode || modifierForm.modifier_type === 'EXCLUSION_COCINA'}
+                        value={modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : modifierForm.price}
+                        onChange={event => setModifierForm({
+                          ...modifierForm,
+                          price: modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : Number(event.target.value)
+                        })}
                       />
                     </label>
                   </div>
@@ -704,7 +728,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
         </div>
         <footer className="pos-catalog-footer">
           <span>Los registros se desactivan para conservar el historial de ventas.</span>
-          <button type="button" onClick={close}>Volver a caja</button>
+          <button type="button" className="pos-back-to-caja" onClick={close} title="Volver a la vista de caja">
+            <ArrowLeft aria-hidden="true" />
+            <span>VOLVER A CAJA</span>
+          </button>
         </footer>
       </div>
     </section>
