@@ -386,6 +386,20 @@ html[data-theme="light"] .appearance-trigger:hover {
 .pos-type-choice.is-selected strong { color: #fff2b1; }
 .pos-type-choice:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
 
+.pos-modifier-disclosure { overflow: hidden; border: 1px solid rgb(148 163 184 / 16%); border-radius: .7rem; background: rgb(255 255 255 / 2%); }
+.pos-modifier-disclosure > summary { display: flex; min-height: 2.7rem; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .7rem; color: #c5cfdb; cursor: pointer; list-style: none; }
+.pos-modifier-disclosure > summary::-webkit-details-marker { display: none; }
+.pos-modifier-disclosure > summary > span { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: .55rem; }
+.pos-modifier-disclosure > summary strong { font-size: .72rem; font-weight: 700; }
+.pos-modifier-disclosure > summary small { border-radius: 999px; padding: .18rem .45rem; color: #b6c2d0; background: rgb(148 163 184 / 10%); font-size: .625rem; font-weight: 600; }
+.pos-modifier-disclosure > summary > svg { color: #facc15; transition: transform 160ms ease; }
+.pos-modifier-disclosure[open] > summary { border-bottom: 1px solid rgb(148 163 184 / 12%); }
+.pos-modifier-disclosure[open] > summary > svg { transform: rotate(180deg); }
+.pos-modifier-disclosure > summary:hover { color: #ffffff; background: rgb(255 255 255 / 3%); }
+.pos-modifier-disclosure > summary:focus-visible { outline: 2px solid #facc15; outline-offset: -2px; }
+.pos-modifier-options { display: grid; gap: .15rem; padding: .45rem; }
+.pos-modifier-options > div:hover { background: rgb(255 255 255 / 3%); }
+
 html[data-theme="light"] .pos-info-disclosure > summary { color: #334155; }
 html[data-theme="light"] .pos-info-disclosure > summary:hover { color: #172334; }
 html[data-theme="light"] .pos-info-disclosure > summary::after { border-color: #d6dee8; color: #9a6700; }
@@ -408,6 +422,12 @@ html[data-theme="light"] .pos-type-choice strong { color: #334155; }
 html[data-theme="light"] .pos-type-choice small { color: #64748b; }
 html[data-theme="light"] .pos-type-choice.is-selected { border-color: #c28a00; color: #8a5a00; background: #fff7df; }
 html[data-theme="light"] .pos-type-choice.is-selected strong { color: #684800; }
+html[data-theme="light"] .pos-modifier-disclosure { border-color: #dce3ec; background: #f8fafc; }
+html[data-theme="light"] .pos-modifier-disclosure > summary { color: #334155; }
+html[data-theme="light"] .pos-modifier-disclosure > summary small { color: #526174; background: #e9eef4; }
+html[data-theme="light"] .pos-modifier-disclosure > summary:hover { color: #172334; background: #f1f5f9; }
+html[data-theme="light"] .pos-modifier-disclosure[open] > summary { border-color: #e2e8f0; }
+html[data-theme="light"] .pos-modifier-options > div:hover { background: #f1f5f9; }
 
 .pos-workspace-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; border-bottom: 1px solid rgb(148 163 184 / 14%); padding: .15rem 0 .75rem; }
 .pos-master-navbar .pos-workspace-nav { border-bottom: none; padding: 0; }
