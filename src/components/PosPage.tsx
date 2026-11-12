@@ -1172,24 +1172,21 @@ export const PosPage = () => {
             {offlineMode && !shift && <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">No hay un turno guardado. Puedes abrir un turno localmente mientras no haya otro evento de caja pendiente.</div>}
             {pendingShiftEvents.length > 0 && <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">Hay {pendingShiftEvents.length} {pendingShiftEvents.length === 1 ? 'evento de turno pendiente' : 'eventos de turno pendientes'}.</p><p className="mt-1 text-xs text-amber-100/75">{pendingShiftEvents.some(event => event.event_type === 'OPEN') ? 'La apertura se enviará al reconectar.' : 'El cierre se enviará después de sincronizar todas las ventas de este turno.'}{pendingShiftEvents.find(event => event.sync_error)?.sync_error && ` ${pendingShiftEvents.find(event => event.sync_error)?.sync_error}`}</p></div>{!offlineMode && pendingShiftEvents.some(event => event.event_type === 'CLOSE') && <button type="button" onClick={() => void handleRetryPendingShiftClose()} disabled={isSubmitting || hasQueuedOfflineSales} className="shrink-0 rounded-lg border border-amber-200/30 px-3 py-2 text-xs font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50">{hasQueuedOfflineSales ? 'Sincronizando ventas primero' : 'Reintentar cierre'}</button>}</div>}
             {shift?.is_open ? (
-            <div className="pos-shift-layout grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:gap-6 2xl:grid-cols-[minmax(0,1fr)_24rem]">
-                <div className="min-w-0">
-                  <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} onBeforeCreateSale={comprobarTurnoAntesDeVenta} />
-                </div>
-                <aside className="pos-shift-summary min-w-0 space-y-5 2xl:sticky 2xl:top-5">
-              <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6">
-                <div className="flex items-start justify-between gap-4">
+            <div className="pos-shift-layout min-w-0 space-y-5">
+              <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} onBeforeCreateSale={comprobarTurnoAntesDeVenta} />
+              <aside aria-labelledby="pos-active-shift-title" className="pos-shift-summary grid min-w-0 gap-5 rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6 lg:grid-cols-2">
+                <header className="flex items-start justify-between gap-4 lg:col-span-2">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-emerald-300">
                       {offlineMode ? 'Turno local' : 'Turno abierto'}
                     </p>
-                    <h2 className="mt-1 font-heading text-2xl font-bold text-white">
+                    <h2 id="pos-active-shift-title" className="mt-1 font-heading text-2xl font-bold text-white">
                       Caja activa
                     </h2>
                   </div>
                   <Clock3 className="h-6 w-6 text-emerald-300" />
-                </div>
-                <dl className="mt-5 grid gap-4 border-t border-white/10 pt-5 sm:grid-cols-2">
+                </header>
+                <dl className="grid gap-4 border-t border-white/10 pt-4 sm:grid-cols-2 lg:col-span-2">
                   <div>
                     <dt className="text-xs uppercase text-gray-400">Apertura</dt>
                     <dd className="mt-1 text-sm text-white">{formatDateTime(shift.opened_at)}</dd>
@@ -1201,7 +1198,7 @@ export const PosPage = () => {
                     </dd>
                   </div>
                 </dl>
-                <div className="mt-5 grid gap-4 border-t border-white/10 pt-5 text-sm">
+                <div className="grid gap-4 border-t border-white/10 pt-4 text-sm lg:col-span-2">
                   <div>
                     <dt className="text-xs uppercase text-gray-400">Ventas completadas por medio de pago</dt>
                     <dd><PaymentSummaryList items={shift.sales_summary} /></dd>
@@ -1209,7 +1206,7 @@ export const PosPage = () => {
                   {shift.notes && <div><dt className="text-xs uppercase text-gray-400">Nota de apertura</dt><dd className="mt-1 text-gray-200">{shift.notes}</dd></div>}
                 </div>
 
-                <label className="mt-5 block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
+                <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
                   Efectivo contado físicamente (CLP)
                   <input
                     id="pos-counted-cash"
@@ -1226,7 +1223,7 @@ export const PosPage = () => {
                     El sistema calculará el efectivo esperado y mostrará la diferencia.
                   </span>
                 </label>
-                <label className="mt-5 block space-y-2 text-sm text-gray-300" htmlFor="pos-closing-notes">
+                <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-closing-notes">
                   Nota de cierre (opcional)
                   <textarea
                     id="pos-closing-notes"
@@ -1240,15 +1237,14 @@ export const PosPage = () => {
                   type="button"
                   onClick={handleCloseShift}
                   disabled={isSubmitting || hasPendingPayment || pendingShiftEvents.some(item => item.event_type === 'CLOSE')}
-                  className="mt-4 w-full rounded-xl border border-red-500/30 px-4 py-3 font-bold text-red-200 transition hover:bg-red-950/40 disabled:opacity-50"
+                  className="w-full rounded-xl border border-red-500/30 px-4 py-3 font-bold text-red-200 transition hover:bg-red-950/40 disabled:opacity-50 lg:col-span-2"
                 >
                   Cerrar turno
                 </button>
-                {offlineMode && <p className="mt-3 rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400">El cierre quedará pendiente y se enviará después de sincronizar las ventas y anulaciones del turno.</p>}
-                {hasPendingPayment && <p role="alert" className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3 text-xs leading-relaxed text-amber-200">Hay una cotización o pago pendiente; resuélvelo antes de cerrar el turno.</p>}
-                {autoCloseDue ? <p role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-xs text-amber-100">Llegó la hora del cierre automático. {autoCloseWaitingForPayment ? 'Termina de resolver el pago pendiente para cerrar sin perder la venta.' : !offlineMode && hasQueuedOfflineSales ? 'Se cerrará al terminar de sincronizar las ventas pendientes.' : 'El turno se está cerrando y se sincronizará al recuperar la conexión.'}</p> : <p className="mt-3 text-xs text-gray-500">Cierre automático a las 00:30 (Chile).</p>}
-              </div>
-                </aside>
+                {offlineMode && <p className="rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400 lg:col-span-2">El cierre quedará pendiente y se enviará después de sincronizar las ventas y anulaciones del turno.</p>}
+                {hasPendingPayment && <p role="alert" className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3 text-xs leading-relaxed text-amber-200 lg:col-span-2">Hay una cotización o pago pendiente; resuélvelo antes de cerrar el turno.</p>}
+                {autoCloseDue ? <p role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-xs text-amber-100 lg:col-span-2">Llegó la hora del cierre automático. {autoCloseWaitingForPayment ? 'Termina de resolver el pago pendiente para cerrar sin perder la venta.' : !offlineMode && hasQueuedOfflineSales ? 'Se cerrará al terminar de sincronizar las ventas pendientes.' : 'El turno se está cerrando y se sincronizará al recuperar la conexión.'}</p> : <p className="text-xs text-gray-500 lg:col-span-2">Cierre automático a las 00:30 (Chile).</p>}
+              </aside>
               </div>
             ) : shift && offlineMode ? (
               <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">Este turno ya quedó cerrado en el equipo. Espera a que se sincronice para abrir otro.</div>
