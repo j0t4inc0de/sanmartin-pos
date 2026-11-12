@@ -1025,7 +1025,7 @@ export const PosPage = () => {
               <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                 {/* Brand Emblem */}
                 <div className="flex h-10 items-center gap-2.5 pr-2 sm:pr-4 sm:border-r border-white/10 shrink-0">
-                  <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-[#FACC15]/40 shadow-[0_0_10px_rgba(250,204,21,0.25)] shrink-0 bg-[#0D0D0D]">
+                  <div className="pos-navbar-logo w-8 h-8 rounded-full overflow-hidden border-2 border-[#FACC15]/40 shadow-[0_0_10px_rgba(250,204,21,0.25)] shrink-0 bg-[#0D0D0D]">
                     <img
                       src="/logo-sanmartin.png"
                       alt="San Martín Food Truck"
@@ -1039,7 +1039,7 @@ export const PosPage = () => {
                     <span className="block font-heading text-base font-extrabold uppercase tracking-wider text-white leading-none">
                       San Martín
                     </span>
-                    <span className="block text-[9px] font-bold uppercase tracking-[0.2em] text-[#FACC15] leading-none mt-1">
+                    <span className="pos-brand-tag block text-[9px] font-bold uppercase tracking-[0.2em] text-[#FACC15] leading-none mt-1">
                       Punto de Venta
                     </span>
                   </div>
@@ -1137,7 +1137,7 @@ export const PosPage = () => {
 
                 {/* Reloj local Santiago */}
                 <div
-                  className="inline-flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-[#090C10] px-3.5 shadow-inner"
+                  className="pos-navbar-clock inline-flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-[#090C10] px-3.5 shadow-inner"
                   aria-label={`Hora local: ${chileClock.date}, ${chileClock.time}`}
                 >
                   <Clock3 className="h-4 w-4 text-[#FACC15] shrink-0" aria-hidden="true" />
@@ -1151,8 +1151,8 @@ export const PosPage = () => {
                 </div>
 
                 {/* Operador / Sesión activa */}
-                <div className="inline-flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-[#090C10] px-3 shadow-inner">
-                  <div className="grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-[#FACC15]/30 bg-[#FACC15]/15 text-[#FACC15]">
+                <div className="pos-navbar-user-chip inline-flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-[#090C10] px-3 shadow-inner">
+                  <div className="pos-navbar-user-avatar grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-[#FACC15]/30 bg-[#FACC15]/15 text-[#FACC15]">
                     <User className="h-3.5 w-3.5" />
                   </div>
                   <div className="min-w-0 pr-1 text-left leading-none">
@@ -1170,7 +1170,7 @@ export const PosPage = () => {
                   type="button"
                   onClick={handleLogout}
                   disabled={isSubmitting}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#090C10] hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-200 text-gray-300 px-3.5 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-inner"
+                  className="pos-navbar-logout inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-[#090C10] hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-200 text-gray-300 px-3.5 text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-inner"
                   title="Cerrar sesión actual"
                 >
                   <LogOut className="h-3.5 w-3.5 text-gray-400 transition-colors" />
