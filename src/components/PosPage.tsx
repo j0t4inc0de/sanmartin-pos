@@ -6,7 +6,7 @@ import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
 import { PosReports } from './PosReports';
 import { usePosDialogs } from './PosDialogs';
-import { cargarAccesoOfflinePos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -170,6 +170,7 @@ export const PosPage = () => {
     const queuedCancellations = await listarAnulacionesOfflinePos(cached.shift?.uuid);
     setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
     setPendingShiftEvents(await listarEventosTurnoOfflinePos(offlineUser.id));
+    void cargarCatalogoPos().catch(() => undefined);
     setOfflineMode(true);
     setErrorMessage('');
   }, []);
@@ -370,6 +371,7 @@ export const PosPage = () => {
       setAnotherShiftOpen(currentShift.another_shift_open);
       setNextOrderNumber(currentShift.next_order_number);
       setOfflineMode(false);
+      void precargarCatalogoPos().catch(() => undefined);
       setHasQueuedOfflineSales(currentShift.shift?.uuid === cachedShift?.shift?.uuid && (queuedSales.length > 0 || queuedCancellations.length > 0));
       await guardarTurnoEnCachePos(session.user.id, currentShift);
     } catch (error) {
@@ -429,6 +431,7 @@ export const PosPage = () => {
         if (cancelled) return;
         setUser(response.user);
         await guardarAccesoOfflinePos({ user: response.user }).catch(() => undefined);
+        void precargarCatalogoPos().catch(() => undefined);
         await syncPendingOpenEvents(response.user.id);
         const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
         const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
@@ -461,6 +464,7 @@ export const PosPage = () => {
           setUser(null);
           setShift(null);
         } else {
+          void cargarCatalogoPos().catch(() => undefined);
           try {
             const record = await cargarAccesoOfflinePos();
             if (cancelled) return;
@@ -504,6 +508,7 @@ export const PosPage = () => {
       setPassword('');
       setOfflineMode(false);
       await guardarAccesoOfflinePos({ user: response.user });
+      void precargarCatalogoPos().catch(() => undefined);
       await syncPendingOpenEvents(response.user.id);
       const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(response.user.id);
       const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
@@ -950,7 +955,22 @@ export const PosPage = () => {
 
             <nav className="pos-workspace-nav" aria-label="Secciones del punto de venta">
               <button type="button" aria-current={activeWorkspace === 'sales' ? 'page' : undefined} className={activeWorkspace === 'sales' ? 'is-active' : ''} onClick={() => setActiveWorkspace('sales')}><CircleDollarSign aria-hidden="true" />Caja</button>
-              <button type="button" aria-current={activeWorkspace === 'catalog' ? 'page' : undefined} className={activeWorkspace === 'catalog' ? 'is-active' : ''} onClick={() => setActiveWorkspace('catalog')}><Boxes aria-hidden="true" />Catálogo</button>
+              <button
+                type="button"
+                aria-current={activeWorkspace === 'catalog' ? 'page' : undefined}
+                className={activeWorkspace === 'catalog' ? 'is-active' : ''}
+                onClick={() => {
+                  setActiveWorkspace('catalog');
+                  if (offlineMode) {
+                    void cargarCatalogoPos().catch(() => undefined);
+                  } else {
+                    void precargarCatalogoPos().catch(() => undefined);
+                  }
+                }}
+              >
+                <Boxes aria-hidden="true" />
+                Catálogo
+              </button>
               <button type="button" aria-current={activeWorkspace === 'reports' ? 'page' : undefined} className={activeWorkspace === 'reports' ? 'is-active' : ''} onClick={() => setActiveWorkspace('reports')}><BarChart3 aria-hidden="true" />Reportes</button>
               {offlineMode && activeWorkspace === 'catalog' && <span>Solo lectura sin conexión</span>}
             </nav>

@@ -1,9 +1,14 @@
+import { BASE_POS_CATALOG } from '../data/defaultCatalog';
+import { solicitarApi } from './apiClient';
+
 export interface PosCatalogModifier {
   id: number;
   name: string;
   price: number;
   modifier_type: 'EXTRA_PAGO' | 'EXCLUSION_COCINA';
   updated_at: string;
+  is_available?: boolean;
+  is_active?: boolean;
 }
 
 export interface PosCatalogProduct {
@@ -15,13 +20,34 @@ export interface PosCatalogProduct {
   price: number;
   updated_at: string;
   image_url: string;
+  description?: string;
+  ingredients?: string[];
+  original_price?: number | null;
+  badge?: string;
+  is_available?: boolean;
+  is_active?: boolean;
+}
+
+export interface PosCatalogCategory {
+  id: number;
+  name: string;
+  slug: string;
+  sort_order: number;
+  is_active?: boolean;
+  updated_at?: string;
 }
 
 export interface PosCatalog {
   generated_at: string;
-  categories: { id: number; name: string; slug: string; sort_order: number }[];
+  categories: PosCatalogCategory[];
   products: PosCatalogProduct[];
   modifiers: PosCatalogModifier[];
+}
+
+export interface StoredCatalog {
+  key: 'current';
+  catalog: PosCatalog;
+  saved_at: string;
 }
 
 export interface PosSaleDraft {
@@ -148,12 +174,6 @@ export interface PosOfflineCancellation {
   sync_error: string | null;
 }
 
-interface StoredCatalog {
-  key: 'current';
-  catalog: PosCatalog;
-  saved_at: string;
-}
-
 interface StoredSaleDraft extends PosSaleDraft {
   key: string;
 }
@@ -238,31 +258,140 @@ const openDatabase = (): Promise<IDBDatabase> => {
   return databasePromise;
 };
 
+export const obtenerCatalogoBasePos = (): PosCatalog => {
+  return JSON.parse(JSON.stringify(BASE_POS_CATALOG)) as PosCatalog;
+};
+
 export const guardarCatalogoPos = async (catalog: PosCatalog): Promise<void> => {
+  const record: StoredCatalog = {
+    key: 'current',
+    catalog,
+    saved_at: new Date().toISOString(),
+  };
+
+  try {
+    localStorage.setItem('san-martin-pos:catalog-cache', JSON.stringify(record));
+  } catch {}
+
   const database = await openDatabase();
 
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(CATALOG_STORE, 'readwrite');
-    transaction.objectStore(CATALOG_STORE).put({
-      key: 'current',
-      catalog,
-      saved_at: new Date().toISOString(),
-    } satisfies StoredCatalog);
+    transaction.objectStore(CATALOG_STORE).put(record);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el catálogo local.'));
     transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del catálogo local.'));
   });
 };
 
-export const cargarCatalogoPos = async (): Promise<StoredCatalog | null> => {
-  const database = await openDatabase();
+export const cargarCatalogoPos = async (): Promise<StoredCatalog> => {
+  let stored: StoredCatalog | null = null;
 
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(CATALOG_STORE, 'readonly');
-    const request = transaction.objectStore(CATALOG_STORE).get('current');
-    request.onsuccess = () => resolve((request.result as StoredCatalog | undefined) ?? null);
-    request.onerror = () => reject(request.error ?? new Error('No se pudo leer el catálogo local.'));
+  try {
+    const database = await openDatabase();
+    stored = await new Promise<StoredCatalog | null>((resolve, reject) => {
+      const transaction = database.transaction(CATALOG_STORE, 'readonly');
+      const request = transaction.objectStore(CATALOG_STORE).get('current');
+      request.onsuccess = () => resolve((request.result as StoredCatalog | undefined) ?? null);
+      request.onerror = () => reject(request.error ?? new Error('No se pudo leer el catálogo local.'));
+    });
+  } catch (error) {
+    console.warn('No se pudo leer el catálogo desde IndexedDB, intentando respaldo:', error);
+  }
+
+  if (!stored) {
+    try {
+      const raw = localStorage.getItem('san-martin-pos:catalog-cache');
+      if (raw) {
+        stored = JSON.parse(raw) as StoredCatalog;
+      }
+    } catch {}
+  }
+
+  const base = obtenerCatalogoBasePos();
+
+  // If no stored catalog or it has empty categories/products, initialize with base catalog
+  if (!stored || !stored.catalog || !stored.catalog.products?.length || !stored.catalog.categories?.length) {
+    const initialStored: StoredCatalog = {
+      key: 'current',
+      catalog: base,
+      saved_at: new Date().toISOString(),
+    };
+    try {
+      await guardarCatalogoPos(base);
+    } catch {}
+    return initialStored;
+  }
+
+  // Enrich any products missing ingredients/description from base catalog
+  const baseProductBySlug = new Map(base.products.map(p => [p.slug, p]));
+  const baseProductByName = new Map(base.products.map(p => [p.name.trim().toLowerCase(), p]));
+
+  let needsSave = false;
+  const products = stored.catalog.products.map(p => {
+    const fallback = baseProductBySlug.get(p.slug) || baseProductByName.get(p.name.trim().toLowerCase());
+    if (!fallback) return p;
+
+    const hasIngredients = Array.isArray(p.ingredients) && p.ingredients.length > 0;
+    const hasDesc = typeof p.description === 'string' && p.description.trim() !== '';
+
+    if (!hasIngredients || !hasDesc || p.is_available === undefined || p.is_active === undefined) {
+      needsSave = true;
+      return {
+        ...p,
+        description: hasDesc ? p.description : fallback.description,
+        ingredients: hasIngredients ? p.ingredients : fallback.ingredients,
+        original_price: p.original_price !== undefined ? p.original_price : fallback.original_price,
+        badge: p.badge || fallback.badge,
+        is_available: p.is_available ?? fallback.is_available ?? true,
+        is_active: p.is_active ?? fallback.is_active ?? true,
+      };
+    }
+    return p;
   });
+
+  let modifiers = stored.catalog.modifiers;
+  if (!modifiers || modifiers.length === 0) {
+    modifiers = base.modifiers;
+    needsSave = true;
+  }
+
+  const fullCatalog: PosCatalog = {
+    ...stored.catalog,
+    products,
+    modifiers,
+  };
+
+  if (needsSave) {
+    void guardarCatalogoPos(fullCatalog).catch(() => undefined);
+  }
+
+  return {
+    key: 'current',
+    catalog: fullCatalog,
+    saved_at: stored.saved_at ?? new Date().toISOString(),
+  };
+};
+
+export const precargarCatalogoPos = async (): Promise<PosCatalog> => {
+  try {
+    const [nextCategories, nextProducts, nextModifiers] = await Promise.all([
+      solicitarApi<PosCatalogCategory[]>('/api/pos/catalog/manage/categories/'),
+      solicitarApi<PosCatalogProduct[]>('/api/pos/catalog/manage/products/'),
+      solicitarApi<PosCatalogModifier[]>('/api/pos/catalog/manage/modifiers/'),
+    ]);
+    const catalog: PosCatalog = {
+      generated_at: new Date().toISOString(),
+      categories: nextCategories,
+      products: nextProducts,
+      modifiers: nextModifiers,
+    };
+    await guardarCatalogoPos(catalog);
+    return catalog;
+  } catch {
+    const stored = await cargarCatalogoPos();
+    return stored.catalog;
+  }
 };
 
 export const guardarBorradorVentaPos = async (

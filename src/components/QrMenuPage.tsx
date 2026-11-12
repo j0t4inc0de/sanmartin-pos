@@ -20,7 +20,14 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const status = useBusinessStatus();
-  const { categories: menuCategories, items, isLoading, hasError, retry } = useMenuCatalog();
+  const {
+    categories: menuCategories,
+    items,
+    isLoading,
+    hasError,
+    isOfflineFallback,
+    retry,
+  } = useMenuCatalog();
 
   // Filtered menu items
   const filteredItems = useMemo(() => {
@@ -158,10 +165,15 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-5 sm:py-6 space-y-6">
 
-        <CatalogStatus isLoading={isLoading} hasError={hasError} onRetry={retry} />
+        <CatalogStatus
+          isLoading={isLoading && items.length === 0}
+          hasError={hasError}
+          isOfflineFallback={isOfflineFallback}
+          onRetry={retry}
+        />
         
         {/* Empty Search State */}
-        {!isLoading && !hasError && totalResults === 0 ? (
+        {(!isLoading || items.length > 0) && !hasError && totalResults === 0 ? (
           <div className="text-center py-16 bg-[#141414] rounded-2xl border border-white/10 p-6">
             <h3 className="font-heading text-lg text-white font-bold uppercase mb-1">
               No encontramos resultados para tu búsqueda
@@ -182,7 +194,7 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
         ) : null}
 
         {/* Individual Sandwiches & Items Section */}
-        {!isLoading && !hasError && filteredItems.length > 0 && (
+        {filteredItems.length > 0 && (
           <div className="space-y-4">
             <motion.div 
               key={`header_${activeCategory}`}

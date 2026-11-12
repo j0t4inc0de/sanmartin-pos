@@ -24,7 +24,14 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [addedItemId, setAddedItemId] = useState<string | null>(null);
-  const { categories, items, isLoading, hasError, retry } = useMenuCatalog();
+  const {
+    categories,
+    items,
+    isLoading,
+    hasError,
+    isOfflineFallback,
+    retry,
+  } = useMenuCatalog();
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -130,9 +137,14 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
         </div>
 
         {/* Menu Grid - Compact & Responsive */}
-        <CatalogStatus isLoading={isLoading} hasError={hasError} onRetry={retry} />
+        <CatalogStatus
+          isLoading={isLoading && items.length === 0}
+          hasError={hasError}
+          isOfflineFallback={isOfflineFallback}
+          onRetry={retry}
+        />
 
-        {!isLoading && !hasError && filteredItems.length === 0 ? (
+        {(!isLoading || items.length > 0) && !hasError && filteredItems.length === 0 ? (
           <div className="text-center py-12 bg-[#141414] rounded-2xl border border-white/10 max-w-md mx-auto p-6">
             <Info className="w-8 h-8 text-amber-400 mx-auto mb-2" />
             <h3 className="font-heading text-lg text-white font-bold uppercase mb-1">
@@ -153,7 +165,7 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
           </div>
         ) : null}
 
-        {!isLoading && !hasError && filteredItems.length > 0 && (
+        {filteredItems.length > 0 && (
           <motion.div 
             layout
             className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"

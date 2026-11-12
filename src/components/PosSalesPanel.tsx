@@ -6,6 +6,7 @@ import {
   cargarBorradorVentaPos,
   cargarCobroPendientePos,
   cargarCatalogoPos,
+  type StoredCatalog,
   guardarBorradorVentaPos,
   guardarCobroPendientePos,
   guardarCatalogoPos,
@@ -41,7 +42,10 @@ interface CatalogDelta extends Catalog {
 const applyCatalogDelta = (current: Catalog, delta: CatalogDelta): Catalog => {
   const mergeById = <T extends { id: number }>(existing: T[], changed: T[], removed: number[]) => {
     const entries = new Map(existing.filter(item => !removed.includes(item.id)).map(item => [item.id, item]));
-    changed.forEach(item => entries.set(item.id, item));
+    changed.forEach(item => {
+      const prior = entries.get(item.id);
+      entries.set(item.id, prior ? { ...prior, ...item } : item);
+    });
     return [...entries.values()];
   };
   const categories = mergeById(current.categories, delta.categories, delta.removed?.categories ?? [])
@@ -254,7 +258,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     if (catalogSyncInProgress.current) return;
     catalogSyncInProgress.current = true;
     if (!background) { setLoadingCatalog(true); setError(''); setCatalogNotice(''); }
-    let savedCatalog: Awaited<ReturnType<typeof cargarCatalogoPos>> = null;
+    let savedCatalog: StoredCatalog | null = null;
     try {
       savedCatalog = await cargarCatalogoPos();
       if (savedCatalog) setCatalog(savedCatalog.catalog);
