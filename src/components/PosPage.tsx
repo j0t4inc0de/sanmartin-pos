@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, RefreshCw, User, Wifi, WifiOff } from 'lucide-react';
+import { BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, Printer, RefreshCw, User, Wifi, WifiOff } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
@@ -129,7 +129,7 @@ export const PosPage = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
   const [offlineMode, setOfflineMode] = useState(false);
-  const [activeWorkspace, setActiveWorkspace] = useState<'sales' | 'catalog' | 'reports'>('sales');
+  const [activeWorkspace, setActiveWorkspace] = useState<'sales' | 'catalog' | 'reports' | 'devices'>('sales');
   const [hasQueuedOfflineSales, setHasQueuedOfflineSales] = useState(false);
   const [autoCloseDue, setAutoCloseDue] = useState(false);
   const [autoCloseWaitingForPayment, setAutoCloseWaitingForPayment] = useState(false);
@@ -1030,6 +1030,20 @@ export const PosPage = () => {
                     <span>Reportes</span>
                   </button>
 
+                  <button
+                    type="button"
+                    aria-current={activeWorkspace === 'devices' ? 'page' : undefined}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                      activeWorkspace === 'devices'
+                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
+                        : 'text-gray-300 hover:text-white hover:bg-white/5'
+                    }`}
+                    onClick={() => setActiveWorkspace('devices')}
+                  >
+                    <Printer className={`w-4 h-4 ${activeWorkspace === 'devices' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <span>Impresora</span>
+                  </button>
+
                   {offlineMode && activeWorkspace === 'catalog' && (
                     <span className="hidden md:inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
                       Solo lectura offline
@@ -1117,8 +1131,7 @@ export const PosPage = () => {
               </div>
             </header>
 
-            {activeWorkspace === 'catalog' ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} /> : activeWorkspace === 'reports' ? <PosReports offlineMode={offlineMode} /> : <>
-            <PosPrinterDiagnostics />
+            {activeWorkspace === 'catalog' ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} /> : activeWorkspace === 'reports' ? <PosReports offlineMode={offlineMode} /> : activeWorkspace === 'devices' ? <div className="space-y-4"><header className="pos-report-workspace"><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Configuración del equipo</p><h2 className="mt-1 font-heading text-2xl font-bold">Impresora y gaveta</h2><p className="mt-2 text-sm text-gray-400">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p></header><PosPrinterDiagnostics /></div> : <>
 
             {(!shift || !shift.is_open) && lastClosedShift && (
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5">
