@@ -414,14 +414,13 @@ html[data-theme="light"] .appearance-trigger:hover {
 .pos-type-choice.is-selected { border-color: #facc15; color: #facc15; background: rgb(250 204 21 / 10%); box-shadow: inset 0 0 0 1px rgb(250 204 21 / 13%); }
 .pos-type-choice.is-selected strong { color: #fff2b1; }
 .pos-type-choice:focus-visible { outline: 2px solid #facc15; outline-offset: 2px; }
-.pos-sales-quick-actions { position: sticky; top: .75rem; z-index: 20; display: grid; gap: .65rem; border: 1px solid rgb(250 204 21 / 20%); border-radius: 1rem; padding: .75rem; background: rgb(23 27 33 / 96%); box-shadow: 0 12px 30px rgb(0 0 0 / 20%); backdrop-filter: blur(12px); }
-.pos-sales-quick-actions legend { color: #cbd5e1; }
-.pos-sales-quick-quote { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; border-top: 1px solid rgb(148 163 184 / 14%); padding-top: .65rem; }
-.pos-sales-quick-quote > span { color: #aeb9c8; font-size: .72rem; font-weight: 600; }
-.pos-sales-quick-quote > button { min-height: 2.7rem; flex: 1 1 12rem; border: 1px solid #e5b800; border-radius: .7rem; padding: .65rem 1rem; color: #201900; background: #facc15; font-size: .82rem; font-weight: 800; transition: background-color 140ms, transform 140ms; }
-.pos-sales-quick-quote > button:hover:not(:disabled) { background: #ffe05b; transform: translateY(-1px); }
-.pos-sales-quick-quote > button:disabled { cursor: not-allowed; opacity: .48; }
-.pos-sales-quick-quote > button:focus-visible { outline: 2px solid #facc15; outline-offset: 3px; }
+.pos-quote-sticky { position: sticky; top: .75rem; z-index: 20; display: grid; gap: .55rem; border: 1px solid rgb(250 204 21 / 22%); border-radius: .9rem; padding: .7rem; background: rgb(23 27 33 / 97%); box-shadow: 0 10px 26px rgb(0 0 0 / 18%); backdrop-filter: blur(12px); }
+.pos-quote-sticky > span { color: #aeb9c8; font-size: .7rem; font-weight: 650; }
+.pos-quote-sticky > button { min-height: 2.75rem; width: 100%; border: 1px solid #e5b800; border-radius: .7rem; padding: .65rem 1rem; color: #201900; background: #facc15; font-size: .84rem; font-weight: 800; transition: background-color 140ms, transform 140ms; }
+.pos-quote-sticky > button:hover:not(:disabled) { background: #ffe05b; transform: translateY(-1px); }
+.pos-quote-sticky > button:disabled { cursor: not-allowed; opacity: .48; }
+.pos-quote-sticky > button:focus-visible { outline: 2px solid #facc15; outline-offset: 3px; }
+.pos-quote-sticky.is-quoted { position: static; box-shadow: none; backdrop-filter: none; }
 
 .pos-modifier-disclosure { border: 1px solid rgb(148 163 184 / 16%); border-radius: .7rem; background: rgb(255 255 255 / 2%); }
 .pos-modifier-disclosure > summary { display: flex; min-height: 2.7rem; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem .7rem; color: #c5cfdb; cursor: pointer; list-style: none; }
@@ -459,10 +458,10 @@ html[data-theme="light"] .pos-type-choice strong { color: #334155; }
 html[data-theme="light"] .pos-type-choice small { color: #64748b; }
 html[data-theme="light"] .pos-type-choice.is-selected { border-color: #c28a00; color: #8a5a00; background: #fff7df; }
 html[data-theme="light"] .pos-type-choice.is-selected strong { color: #684800; }
-html[data-theme="light"] .pos-sales-quick-actions { border-color: #e4ca78; background: rgb(255 255 255 / 97%); box-shadow: 0 12px 28px rgb(15 23 42 / 12%); }
-html[data-theme="light"] .pos-sales-quick-actions legend { color: #334155; }
-html[data-theme="light"] .pos-sales-quick-quote { border-color: #e2e8f0; }
-html[data-theme="light"] .pos-sales-quick-quote > span { color: #526174; }
+html[data-theme="light"] .pos-quote-sticky { border-color: #e4ca78; background: rgb(255 255 255 / 98%); box-shadow: 0 10px 26px rgb(15 23 42 / 12%); }
+html[data-theme="light"] .pos-quote-sticky > span { color: #526174; }
+html[data-theme="light"] .pos-quote-sticky > button { border-color: #d6a800; color: #201900; background: #f4c64e; }
+html[data-theme="light"] .pos-quote-sticky > button:hover:not(:disabled) { background: #f9d878; }
 html[data-theme="light"] .pos-modifier-disclosure { border-color: #dce3ec; background: #f8fafc; }
 html[data-theme="light"] .pos-modifier-disclosure > summary { color: #334155; }
 html[data-theme="light"] .pos-modifier-disclosure > summary small { color: #526174; background: #e9eef4; }
