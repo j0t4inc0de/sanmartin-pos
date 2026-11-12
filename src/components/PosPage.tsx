@@ -245,11 +245,16 @@ export const PosPage = () => {
         await solicitarApi('/api/shifts/open/', { method: 'POST', body: { uuid: event.shift_uuid, ...event.payload } });
         await eliminarEventoTurnoOfflinePos(event);
       } catch (error) {
-        // Si el servidor responde 409 (ya existe un turno abierto):
-        if (error instanceof ApiError && (error.status === 409 || error.message.includes('Ya existe un turno abierto'))) {
+        // Si el servidor responde 409 o 400 con mensaje de turno ya abierto:
+        const isConflict = error instanceof ApiError && (
+          error.status === 409 ||
+          error.status === 400 ||
+          error.message.includes('Ya existe un turno abierto')
+        );
+        if (isConflict) {
           try {
             const currentShiftState = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
-            if (currentShiftState?.shift && !currentShiftState.another_shift_open) {
+            if (currentShiftState?.shift) {
               // El usuario actual ya tiene un turno abierto y válido en el servidor.
               // Reasignamos cualquier venta/anulación offline al turno activo del servidor:
               const queuedSales = await listarVentasOfflineEnColaPos(event.shift_uuid);
@@ -262,6 +267,7 @@ export const PosPage = () => {
               }
               // Descartamos la apertura duplicada que ya no es necesaria
               await eliminarEventoTurnoOfflinePos(event);
+              await guardarTurnoEnCachePos(userId, currentShiftState).catch(() => undefined);
               continue;
             }
           } catch (innerError) {
@@ -388,17 +394,22 @@ export const PosPage = () => {
     try {
       await cargarTokenCsrf(true);
       const session = await solicitarApi<{ user: PosUser }>('/api/auth/session/');
-      if (!await syncPendingOpenEvents(session.user.id)) throw new Error('La apertura del turno sigue pendiente; reintenta la sincronización.');
+      await syncPendingOpenEvents(session.user.id);
       const cachedShift = await cargarTurnoDesdeCachePos<CashShift>(session.user.id);
       const queuedSales = cachedShift?.shift ? await listarVentasOfflineEnColaPos(cachedShift.shift.uuid) : [];
       const queuedCancellations = cachedShift?.shift ? await listarAnulacionesOfflinePos(cachedShift.shift.uuid) : [];
       if (queuedSales.length === 0 && queuedCancellations.length === 0) await syncPendingCloseEvents(session.user.id);
       const currentShift = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
       if (cachedShift?.shift && currentShift.shift?.uuid !== cachedShift.shift.uuid) {
-        setShift(null);
-        setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
-        await syncOfflineOperationsForClosedShift(session.user.id, cachedShift.shift.uuid);
-        await guardarTurnoEnCachePos(session.user.id, { ...currentShift, shift: null });
+        if (!currentShift.shift) {
+          setShift(null);
+          setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
+          await syncOfflineOperationsForClosedShift(session.user.id, cachedShift.shift.uuid).catch(() => undefined);
+          await guardarTurnoEnCachePos(session.user.id, { ...currentShift, shift: null });
+        } else {
+          await syncOfflineOperationsForClosedShift(session.user.id, cachedShift.shift.uuid).catch(() => undefined);
+          await guardarTurnoEnCachePos(session.user.id, currentShift);
+        }
       }
       setUser(session.user);
       setShift(currentShift.shift);
@@ -475,17 +486,23 @@ export const PosPage = () => {
           '/api/shifts/current/',
         );
         if (cachedShift?.shift && currentShift.shift?.uuid !== cachedShift.shift.uuid) {
-          serverConfirmedCachedShiftClosed = true;
-          setShift(null);
-          setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
-          const closedShift = await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid);
-          setLastClosedShift(closedShift);
-          await guardarTurnoEnCachePos(response.user.id, { ...currentShift, shift: null });
+          if (!currentShift.shift) {
+            serverConfirmedCachedShiftClosed = true;
+            setShift(null);
+            setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
+            const closedShift = await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid);
+            setLastClosedShift(closedShift);
+            await guardarTurnoEnCachePos(response.user.id, { ...currentShift, shift: null });
+          } else {
+            await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid).catch(() => undefined);
+            await guardarTurnoEnCachePos(response.user.id, currentShift);
+          }
         }
         if (!cancelled) {
           setShift(currentShift.shift);
           setAnotherShiftOpen(currentShift.another_shift_open);
           setNextOrderNumber(currentShift.next_order_number);
+          setErrorMessage('');
           void guardarTurnoEnCachePos(response.user.id, currentShift).catch(() => undefined);
         }
       } catch (error) {
@@ -551,13 +568,22 @@ export const PosPage = () => {
       await refreshShift();
       const shiftState = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
       if (cachedShift?.shift && shiftState.shift?.uuid !== cachedShift.shift.uuid) {
-        serverConfirmedCachedShiftClosed = true;
-        setShift(null);
-        setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
-        const closedShift = await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid);
-        setLastClosedShift(closedShift);
-        await guardarTurnoEnCachePos(response.user.id, { ...shiftState, shift: null });
+        if (!shiftState.shift) {
+          serverConfirmedCachedShiftClosed = true;
+          setShift(null);
+          setHasQueuedOfflineSales(queuedSales.length > 0 || queuedCancellations.length > 0);
+          const closedShift = await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid);
+          setLastClosedShift(closedShift);
+          await guardarTurnoEnCachePos(response.user.id, { ...shiftState, shift: null });
+        } else {
+          await syncOfflineOperationsForClosedShift(response.user.id, cachedShift.shift.uuid).catch(() => undefined);
+          await guardarTurnoEnCachePos(response.user.id, shiftState);
+        }
       }
+      setShift(shiftState.shift);
+      setAnotherShiftOpen(shiftState.another_shift_open);
+      setNextOrderNumber(shiftState.next_order_number);
+      setErrorMessage('');
       await guardarTurnoEnCachePos(response.user.id, shiftState);
     } catch (error) {
       if (serverConfirmedCachedShiftClosed) {
@@ -837,19 +863,59 @@ export const PosPage = () => {
     return false;
   }, [shift, cerrarTurnoAutomaticamente]);
 
-  const handleRetryPendingShiftClose = async () => {
-    if (!user || offlineMode || isSubmitting || hasQueuedOfflineSales) return;
+  const handleRetryPendingShiftEvents = async () => {
+    if (!user || isSubmitting) return;
     setIsSubmitting(true);
     setErrorMessage('');
     try {
-      const synced = await syncPendingCloseEvents(user.id);
-      if (synced) await refreshShift();
+      const openSynced = await syncPendingOpenEvents(user.id);
+      if (openSynced) {
+        if (!hasQueuedOfflineSales) {
+          await syncPendingCloseEvents(user.id);
+        }
+        await refreshShift();
+      }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'No se pudo reintentar el cierre del turno.');
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudieron sincronizar los eventos de turno pendientes.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleDiscardPendingOpenEvent = async (event: PosOfflineShiftEvent) => {
+    if (!user || isSubmitting) return;
+    const confirmed = await confirm({
+      title: '¿Descartar apertura huérfana?',
+      message: 'Esta apertura offline no se pudo sincronizar porque ya existe un turno activo en el servidor. Si descartas este evento, podrás operar el turno activo sin bloqueos. Cualquier venta offline pendiente se vinculará al turno activo del servidor.',
+      confirmLabel: 'Descartar apertura',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    setIsSubmitting(true);
+    try {
+      const currentShiftState = await solicitarApi<ShiftStateResponse>('/api/shifts/current/').catch(() => null);
+      if (currentShiftState?.shift) {
+        const queuedSales = await listarVentasOfflineEnColaPos(event.shift_uuid);
+        for (const sale of queuedSales) {
+          await guardarVentaOfflineEnColaPos({ ...sale, shift_uuid: currentShiftState.shift.uuid });
+        }
+        const queuedCancellations = await listarAnulacionesOfflinePos(event.shift_uuid);
+        for (const cancellation of queuedCancellations) {
+          await guardarAnulacionOfflinePos({ ...cancellation, shift_uuid: currentShiftState.shift.uuid });
+        }
+      }
+      await eliminarEventoTurnoOfflinePos(event);
+      setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
+      await refreshShift().catch(() => undefined);
+      setErrorMessage('');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo descartar la apertura pendiente.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
 
   useEffect(() => {
     if (!shift?.is_open || !user) {
@@ -1170,7 +1236,54 @@ export const PosPage = () => {
             )}
 
             {offlineMode && !shift && <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">No hay un turno guardado. Puedes abrir un turno localmente mientras no haya otro evento de caja pendiente.</div>}
-            {pendingShiftEvents.length > 0 && <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">Hay {pendingShiftEvents.length} {pendingShiftEvents.length === 1 ? 'evento de turno pendiente' : 'eventos de turno pendientes'}.</p><p className="mt-1 text-xs text-amber-100/75">{pendingShiftEvents.some(event => event.event_type === 'OPEN') ? 'La apertura se enviará al reconectar.' : 'El cierre se enviará después de sincronizar todas las ventas de este turno.'}{pendingShiftEvents.find(event => event.sync_error)?.sync_error && ` ${pendingShiftEvents.find(event => event.sync_error)?.sync_error}`}</p></div>{!offlineMode && pendingShiftEvents.some(event => event.event_type === 'CLOSE') && <button type="button" onClick={() => void handleRetryPendingShiftClose()} disabled={isSubmitting || hasQueuedOfflineSales} className="shrink-0 rounded-lg border border-amber-200/30 px-3 py-2 text-xs font-semibold text-amber-100 disabled:cursor-not-allowed disabled:opacity-50">{hasQueuedOfflineSales ? 'Sincronizando ventas primero' : 'Reintentar cierre'}</button>}</div>}
+            {pendingShiftEvents.length > 0 && (
+              <div
+                role="status"
+                className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-semibold">
+                    Hay {pendingShiftEvents.length}{' '}
+                    {pendingShiftEvents.length === 1
+                      ? 'evento de turno pendiente'
+                      : 'eventos de turno pendientes'}.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-100/75">
+                    {pendingShiftEvents.some((event) => event.event_type === 'OPEN')
+                      ? 'La apertura se enviará al reconectar.'
+                      : 'El cierre se enviará después de sincronizar todas las ventas de este turno.'}
+                    {pendingShiftEvents.find((event) => event.sync_error)?.sync_error &&
+                      ` ${pendingShiftEvents.find((event) => event.sync_error)?.sync_error}`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {!offlineMode && (
+                    <button
+                      type="button"
+                      onClick={() => void handleRetryPendingShiftEvents()}
+                      disabled={isSubmitting}
+                      className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-amber-200/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isSubmitting ? 'animate-spin' : ''}`} />
+                      Sincronizar ahora
+                    </button>
+                  )}
+                  {pendingShiftEvents.find((e) => e.event_type === 'OPEN') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const openEvent = pendingShiftEvents.find((e) => e.event_type === 'OPEN');
+                        if (openEvent) void handleDiscardPendingOpenEvent(openEvent);
+                      }}
+                      disabled={isSubmitting}
+                      className="shrink-0 rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-900/50 disabled:opacity-50 cursor-pointer"
+                    >
+                      Descartar apertura huérfana
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {shift?.is_open ? (
             <div className="pos-shift-layout min-w-0 space-y-5">
               <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} onBeforeCreateSale={comprobarTurnoAntesDeVenta} />
@@ -1255,8 +1368,45 @@ export const PosPage = () => {
                   La regla de caja permite un solo turno abierto. Solicita al responsable que lo cierre antes de abrir otro.
                 </p>
               </div>
-            ) : pendingShiftEvents.some(item => item.event_type === 'OPEN') ? (
-              <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100">La apertura del turno sigue pendiente. Reintenta la sincronización antes de iniciar otra caja.</div>
+            ) : pendingShiftEvents.some((item) => item.event_type === 'OPEN') ? (
+              <div
+                role="status"
+                className="space-y-4 rounded-2xl border border-amber-500/25 bg-amber-950/20 p-6 text-sm text-amber-100"
+              >
+                <div>
+                  <h3 className="font-heading text-lg font-bold text-white">
+                    Apertura de turno pendiente
+                  </h3>
+                  <p className="mt-1 text-sm text-amber-100/80">
+                    Hay un registro de apertura local que no ha podido confirmarse en el servidor
+                    {pendingShiftEvents.find((e) => e.event_type === 'OPEN')?.sync_error
+                      ? `: «${pendingShiftEvents.find((e) => e.event_type === 'OPEN')?.sync_error}»`
+                      : '.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleRetryPendingShiftEvents()}
+                    disabled={isSubmitting}
+                    className="inline-flex items-center gap-2 rounded-xl border border-amber-400/40 bg-amber-500/20 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-amber-500/30 disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isSubmitting ? 'animate-spin' : ''}`} />
+                    Reintentar sincronización
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const openEvent = pendingShiftEvents.find((e) => e.event_type === 'OPEN');
+                      if (openEvent) void handleDiscardPendingOpenEvent(openEvent);
+                    }}
+                    disabled={isSubmitting}
+                    className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-2.5 text-xs font-bold text-red-200 transition hover:bg-red-900/60 disabled:opacity-50 cursor-pointer"
+                  >
+                    Descartar apertura huérfana
+                  </button>
+                </div>
+              </div>
             ) : hasQueuedOfflineSales ? (
               <div role="status" className="rounded-2xl border border-amber-500/25 bg-amber-950/20 p-5 text-sm text-amber-100"><p className="font-semibold">Hay operaciones offline de un turno cerrado pendientes de conciliación.</p><p className="mt-1 text-amber-100/75">Los datos siguen guardados en este equipo. Sincronízalos antes de abrir otra caja.</p><button type="button" onClick={() => void handleReconnect()} disabled={isSubmitting} className="mt-3 rounded-lg border border-amber-200/30 px-3 py-2 text-xs font-semibold text-amber-100 disabled:opacity-50">Reintentar conciliación</button></div>
             ) : (

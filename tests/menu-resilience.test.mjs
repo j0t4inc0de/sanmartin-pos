@@ -43,32 +43,40 @@ describe('Public Menu & Edge Cache Resilience', () => {
   });
 
   it('Cloudflare Pages onRequest handler returns fallback when backend is offline and no cache exists', async () => {
-    const fakeContext = {
-      request: new Request('https://sangucheriasanmartin.cl/api/menu/', {
-        method: 'GET',
-        headers: new Headers(),
-      }),
-      env: {},
-      params: {},
-      waitUntil: () => {},
-      next: async () => new Response('Not found', { status: 404 }),
-    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new TypeError('Backend offline simulated'); };
+    try {
+      const fakeContext = {
+        request: new Request('https://sangucheriasanmartin.cl/api/menu/', {
+          method: 'GET',
+          headers: new Headers(),
+        }),
+        env: {},
+        params: {},
+        waitUntil: () => {},
+        next: async () => new Response('Not found', { status: 404 }),
+      };
 
-    const response = await onRequest(fakeContext);
+      const response = await onRequest(fakeContext);
 
-    assert.equal(response.status, 200, 'Must return HTTP 200 even when backend is offline');
-    assert.equal(
-      response.headers.get('Content-Type'),
-      'application/json; charset=utf-8'
-    );
-    assert.equal(response.headers.get('X-Catalog-Source'), 'fallback');
+      assert.equal(response.status, 200, 'Must return HTTP 200 even when backend is offline');
+      assert.equal(
+        response.headers.get('Content-Type'),
+        'application/json; charset=utf-8'
+      );
+      assert.equal(response.headers.get('X-Catalog-Source'), 'fallback');
 
-    const body = await response.json();
-    assert.equal(body.categories.length, 8);
-    assert.equal(body.products.length, 64);
+      const body = await response.json();
+      assert.equal(body.categories.length, 8);
+      assert.equal(body.products.length, 64);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('Cloudflare Pages onRequest handler serves from caches.default when backend fails', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new TypeError('Backend offline simulated'); };
     const cachedBody = JSON.stringify({
       generated_at: '2026-11-12T00:00:00Z',
       categories: [{ slug: 'sandwiches', name: 'Sándwiches (Cached)', sort_order: 1 }],
@@ -120,27 +128,35 @@ describe('Public Menu & Edge Cache Resilience', () => {
     } finally {
       // @ts-ignore
       globalThis.caches = originalCaches;
+      globalThis.fetch = originalFetch;
     }
   });
 
   it('Cloudflare Pages onRequest passes non-menu endpoints to origin proxy', async () => {
-    const fakeContext = {
-      request: new Request('https://sangucheriasanmartin.cl/api/pos/orders/', {
-        method: 'POST',
-        headers: new Headers(),
-        body: JSON.stringify({ test: 123 }),
-      }),
-      env: {},
-      params: {},
-      waitUntil: () => {},
-      next: async () => new Response('Not found', { status: 404 }),
+    const originalFetch = globalThis.fetch;
+    let proxiedUrl = '';
+    globalThis.fetch = async (input, init) => {
+      proxiedUrl = typeof input === 'string' ? input : input.url;
+      return new Response(JSON.stringify({ proxied: true }), { status: 200 });
     };
+    try {
+      const fakeContext = {
+        request: new Request('https://sangucheriasanmartin.cl/api/pos/orders/', {
+          method: 'POST',
+          headers: new Headers(),
+          body: JSON.stringify({ test: 123 }),
+        }),
+        env: {},
+        params: {},
+        waitUntil: () => {},
+        next: async () => new Response('Not found', { status: 404 }),
+      };
 
-    const response = await onRequest(fakeContext);
-    // Backend is unreachable, so origin/proxy returns 5xx error (530 from Cloudflare or 502)
-    assert.ok(
-      response.status >= 500,
-      `Non-menu endpoints proxy to backend (status was ${response.status})`
-    );
+      const response = await onRequest(fakeContext);
+      assert.equal(response.status, 200);
+      assert.ok(proxiedUrl.includes('api.sangucheriasanmartin.cl'), 'Must forward to origin api domain');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
