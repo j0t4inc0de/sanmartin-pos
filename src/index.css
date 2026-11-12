@@ -1180,3 +1180,30 @@ html[data-theme="light"] .pos-dialog-secondary:hover { background: #e2e8f0; }
 ::-webkit-scrollbar-thumb:hover {
   background: #dc2626;
 }
+
+/* POS Navbar Wifi Status (Phone-style icon without pill/oval container) */
+.pos-wifi-indicator {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.pos-wifi-online {
+  color: #10b981;
+  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.6));
+}
+
+html[data-theme="light"] .pos-wifi-online {
+  color: #059669;
+  filter: drop-shadow(0 0 4px rgba(5, 150, 105, 0.45));
+}
+
+.pos-wifi-offline {
+  color: #f59e0b;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6));
+}
+
+html[data-theme="light"] .pos-wifi-offline {
+  color: #d97706;
+  filter: drop-shadow(0 0 4px rgba(217, 119, 6, 0.45));
+}

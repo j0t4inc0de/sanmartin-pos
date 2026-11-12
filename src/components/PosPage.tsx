@@ -1112,32 +1112,37 @@ export const PosPage = () => {
               <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2.5">
                 {/* Conectividad & Sincronización */}
                 {offlineMode ? (
-                  <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 shadow-sm">
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
-                    </span>
-                    <WifiOff className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    <span className="hidden sm:inline">Modo offline</span>
-                    <button
-                      type="button"
-                      onClick={() => void handleReconnect()}
-                      disabled={isSubmitting}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/40 px-2.5 text-[11px] font-bold text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm ml-1"
-                      title="Reconectar y sincronizar ventas offline con el servidor"
-                    >
-                      <RefreshCw className={`h-3 w-3 ${isSubmitting ? 'animate-spin text-white' : 'text-emerald-100'}`} />
-                      <span>{isSubmitting ? 'Conectando…' : 'Reconectar'}</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleReconnect()}
+                    disabled={isSubmitting}
+                    className="pos-wifi-indicator pos-wifi-offline inline-flex h-10 w-10 items-center justify-center transition-transform active:scale-90 hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer disabled:opacity-50"
+                    title={isSubmitting ? 'Reconectando con el servidor…' : 'Sin conexión (modo offline) — Toca para reconectar'}
+                    aria-label={isSubmitting ? 'Reconectando con el servidor' : 'Sin conexión a internet. Toca para reconectar'}
+                  >
+                    {isSubmitting ? (
+                      <RefreshCw className="h-6 w-6 animate-spin" strokeWidth={2.5} aria-hidden="true" />
+                    ) : (
+                      <div className="relative inline-flex items-center justify-center">
+                        <WifiOff className="h-6 w-6 animate-pulse" strokeWidth={2.5} aria-hidden="true" />
+                        <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
+                      </div>
+                    )}
+                  </button>
                 ) : (
-                  <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 text-xs font-semibold text-emerald-300 shadow-sm">
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                    </span>
-                    <Wifi className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                    <span>En línea</span>
+                  <div
+                    className="pos-wifi-indicator pos-wifi-online inline-flex h-10 w-10 items-center justify-center select-none"
+                    title="En línea (servidor conectado)"
+                    aria-label="En línea"
+                  >
+                    <Wifi
+                      className="h-6 w-6 animate-pulse"
+                      strokeWidth={2.5}
+                      aria-hidden="true"
+                    />
                   </div>
                 )}
 
