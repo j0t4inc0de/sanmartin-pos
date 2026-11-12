@@ -7,6 +7,7 @@ import { Alert } from './Alert';
 import { PosSnackbarAlert } from './PosSnackbarAlert';
 import { playSaleSuccessSound } from '../utils/soundEffects';
 import {
+  asegurarModificadoresEnServidor,
   cargarBorradorVentaPos,
   cargarCobroPendientePos,
   cargarCatalogoPos,
@@ -345,6 +346,21 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         const freshCatalog = isRealServerCatalog && savedCatalog
           ? applyCatalogDelta(savedCatalog.catalog, response)
           : response;
+
+        if (!offlineMode) {
+          try {
+            const needsSync = !freshCatalog.modifiers || freshCatalog.modifiers.length === 0 || freshCatalog.modifiers.some(m => m.updated_at === '2026-01-01T00:00:00.000Z');
+            if (needsSync) {
+              const synced = await asegurarModificadoresEnServidor(freshCatalog.modifiers);
+              if (synced && synced.length > 0) {
+                freshCatalog.modifiers = synced;
+              }
+            }
+          } catch (err) {
+            console.warn('No se pudo verificar o asegurar modificadores en servidor:', err);
+          }
+        }
+
         if (!freshCatalog.modifiers || freshCatalog.modifiers.length === 0) {
           freshCatalog.modifiers = obtenerCatalogoBasePos().modifiers;
         }
@@ -492,13 +508,27 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const requestQuote = async () => {
     if (!lines.length || quote || paymentReceivedPending) return;
     if (!await onBeforeCreateSale()) return;
-    if (!catalog || lines.some(line => {
-      const prodFound = catalog.products.some(product => product.id === line.product_id || product.name.trim().toLowerCase() === line.product_name.trim().toLowerCase());
-      const modFound = line.modifiers.every(entry => catalog.modifiers.some(modifier => modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase()));
-      return !prodFound || !modFound;
-    })) {
-      setError('El catálogo ya no contiene un producto o modificador del borrador. Revisa y quita las opciones marcadas antes de cotizar.');
+    if (!catalog) {
+      setError('El catálogo no está disponible.');
       return;
+    }
+    for (const line of lines) {
+      const prodFound = catalog.products.find(product => product.id === line.product_id || product.name.trim().toLowerCase() === line.product_name.trim().toLowerCase());
+      if (!prodFound || prodFound.is_active === false) {
+        setError(`El producto "${line.product_name}" ya no está disponible en el catálogo. Quítalo del pedido antes de cotizar.`);
+        return;
+      }
+      for (const entry of line.modifiers) {
+        const modFound = catalog.modifiers.find(modifier => modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase());
+        if (!modFound) {
+          setError(`El modificador "${entry.modifier_name}" ya no existe en el catálogo. Quítalo de la lista antes de cotizar.`);
+          return;
+        }
+        if (modFound.is_available === false || modFound.is_active === false) {
+          setError(`El modificador "${entry.modifier_name}" no está disponible actualmente. Quítalo de la lista antes de cotizar.`);
+          return;
+        }
+      }
     }
     setBusy(true); setError(''); setMessage('');
     try {
@@ -541,12 +571,12 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
             notes: line.notes || '',
             modifiers: line.modifiers.map(entry => {
               const modifier = catalog!.modifiers.find(m => m.id === entry.modifier_id)
-                || catalog!.modifiers.find(m => m.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase())!;
+                || catalog!.modifiers.find(m => m.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase());
               return {
-                modifier_id: Number(modifier.id),
-                expected_name: modifier.name,
-                expected_price: modifier.price,
-                expected_updated_at: modifier.updated_at,
+                modifier_id: Number(modifier ? modifier.id : entry.modifier_id),
+                expected_name: modifier ? modifier.name : entry.modifier_name,
+                expected_price: modifier ? modifier.price : entry.price_at_sale,
+                expected_updated_at: modifier?.updated_at,
                 quantity_per_unit: Math.max(1, Number(entry.quantity_per_unit) || 1),
               };
             }),
@@ -716,7 +746,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     } catch (error) { setError(error instanceof Error ? error.message : 'No se pudo guardar la anulación offline.'); }
   };
 
-  const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => sum + (catalog?.modifiers.find(m => m.id === value.modifier_id)?.price ?? value.price_at_sale) * value.quantity_per_unit, 0);
+  const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => {
+    const mod = catalog?.modifiers.find(m => m.id === value.modifier_id || m.name.trim().toLowerCase() === value.modifier_name.trim().toLowerCase());
+    return sum + (mod ? mod.price : value.price_at_sale) * value.quantity_per_unit;
+  }, 0);
 
   return <section className="pos-sales-container space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Venta offline' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Catálogo guardado' : 'Actualizar menú'}</button></header>
@@ -848,8 +881,70 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
               <span><strong>Agregados y exclusiones</strong><small>{line.modifiers.length ? `${line.modifiers.length} seleccionado${line.modifiers.length === 1 ? '' : 's'}` : 'Sin modificaciones'}</small></span>
               <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" />
             </summary>
-            <div className="pos-modifier-options">{catalog.modifiers.map(m => {const selected = line.modifiers.find(x => x.modifier_id === m.id); return <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs" key={m.id}><label className="flex min-h-8 flex-1 cursor-pointer items-center gap-2 text-gray-300"><input type="checkbox" checked={!!selected} onChange={e => updateLine(line.key, l => ({...l, modifiers: e.target.checked ? [...l.modifiers, {modifier_id: m.id, modifier_name: m.name, price_at_sale: m.price, quantity_per_unit: 1}] : l.modifiers.filter(x => x.modifier_id !== m.id)}))}/>{m.name} {m.price ? `(+${formatPrice(m.price)})` : '(sin costo)'}</label>{selected && m.modifier_type === 'EXTRA_PAGO' && <input aria-label={`Cantidad de ${m.name}`} className="w-14 rounded border border-white/10 bg-[#171717] px-2 py-1 text-white" type="number" min="1" max="20" value={selected.quantity_per_unit} onChange={e => updateLine(line.key, l => ({...l, modifiers: l.modifiers.map(x => x.modifier_id === m.id ? {...x, quantity_per_unit: Math.max(1, Number(e.target.value))} : x)}))}/>}</div>;})}
-            {line.modifiers.filter(entry => !catalog.modifiers.some(modifier => modifier.id === entry.modifier_id)).map(entry => <div key={entry.modifier_id} className="flex items-center justify-between rounded border border-amber-500/20 bg-amber-950/20 px-2 py-1 text-xs text-amber-200"><span>{entry.modifier_name} ya no está disponible.</span><button type="button" className="underline" onClick={() => updateLine(line.key, current => ({...current, modifiers: current.modifiers.filter(modifier => modifier.modifier_id !== entry.modifier_id)}))}>Quitar</button></div>)}
+            <div className="pos-modifier-options">
+              {catalog.modifiers
+                .filter(m => m.is_available !== false && m.is_active !== false)
+                .map(m => {
+                  const selected = line.modifiers.find(x => x.modifier_id === m.id || x.modifier_name.trim().toLowerCase() === m.name.trim().toLowerCase());
+                  return (
+                    <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs" key={m.id}>
+                      <label className="flex min-h-8 flex-1 cursor-pointer items-center gap-2 text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={!!selected}
+                          onChange={e => updateLine(line.key, l => ({
+                            ...l,
+                            modifiers: e.target.checked
+                              ? [...l.modifiers, { modifier_id: m.id, modifier_name: m.name, price_at_sale: m.price, quantity_per_unit: 1 }]
+                              : l.modifiers.filter(x => x.modifier_id !== m.id && x.modifier_name.trim().toLowerCase() !== m.name.trim().toLowerCase()),
+                          }))}
+                        />
+                        {m.name} {m.price ? `(+${formatPrice(m.price)})` : '(sin costo)'}
+                      </label>
+                      {selected && m.modifier_type === 'EXTRA_PAGO' && (
+                        <input
+                          aria-label={`Cantidad de ${m.name}`}
+                          className="w-14 rounded border border-white/10 bg-[#171717] px-2 py-1 text-white"
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={selected.quantity_per_unit}
+                          onChange={e => updateLine(line.key, l => ({
+                            ...l,
+                            modifiers: l.modifiers.map(x => (x.modifier_id === m.id || x.modifier_name.trim().toLowerCase() === m.name.trim().toLowerCase())
+                              ? { ...x, quantity_per_unit: Math.max(1, Number(e.target.value)) }
+                              : x
+                            ),
+                          }))}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              {line.modifiers
+                .filter(entry => !catalog.modifiers.some(modifier =>
+                  (modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase()) &&
+                  modifier.is_available !== false &&
+                  modifier.is_active !== false
+                ))
+                .map(entry => (
+                  <div key={entry.modifier_id || entry.modifier_name} className="flex items-center justify-between rounded border border-amber-500/20 bg-amber-950/20 px-2 py-1 text-xs text-amber-200">
+                    <span>{entry.modifier_name} no está disponible actualmente.</span>
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => updateLine(line.key, current => ({
+                        ...current,
+                        modifiers: current.modifiers.filter(modifier =>
+                          modifier.modifier_id !== entry.modifier_id &&
+                          modifier.modifier_name.trim().toLowerCase() !== entry.modifier_name.trim().toLowerCase()
+                        ),
+                      }))}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ))}
             </div>
           </details>}
           <input className="mt-3 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-xs text-white" maxLength={150} placeholder="Nota para cocina (opcional)" value={line.notes} onChange={e => updateLine(line.key, l => ({...l, notes: e.target.value}))}/>

@@ -128,23 +128,23 @@ class OrderQuoteInputSerializer(serializers.Serializer):
                 pk=linea["product_id"], is_active=True, is_available=True
             ).first()
             if product is None:
+                nombre_prod = linea.get("expected_name") or f"ID #{linea['product_id']}"
                 raise serializers.ValidationError(
-                    {"items": {indice: {"product_id": "El producto no existe o no está disponible."}}}
+                    {"items": {indice: {"product_id": f"El producto '{nombre_prod}' no existe o no está disponible."}}}
                 )
             vistos: set[int] = set()
             for modifier_data in linea["modifiers"]:
                 modifier = Modifier.objects.filter(
                     pk=modifier_data["modifier_id"],
-                    is_active=True,
-                    is_available=True,
                 ).first()
-                if modifier is None:
+                nombre_mod = modifier_data.get("expected_name") or (modifier.name if modifier else f"ID #{modifier_data['modifier_id']}")
+                if modifier is None or not modifier.is_active or not modifier.is_available:
                     raise serializers.ValidationError(
-                        {"items": {indice: {"modifiers": "Hay un modificador no disponible."}}}
+                        {"items": {indice: {"modifiers": f"El modificador '{nombre_mod}' no está disponible o no existe en el catálogo."}}}
                     )
                 if modifier.pk in vistos:
                     raise serializers.ValidationError(
-                        {"items": {indice: {"modifiers": "Envía cada modificador una vez e indica su cantidad por unidad."}}}
+                        {"items": {indice: {"modifiers": f"Envía cada modificador una vez e indica su cantidad por unidad ({nombre_mod})."}}}
                     )
                 vistos.add(modifier.pk)
                 if (
@@ -152,7 +152,7 @@ class OrderQuoteInputSerializer(serializers.Serializer):
                     and modifier_data["quantity_per_unit"] != 1
                 ):
                     raise serializers.ValidationError(
-                        {"items": {indice: {"modifiers": "Una exclusión de cocina no se puede repetir."}}}
+                        {"items": {indice: {"modifiers": f"Una exclusión de cocina no se puede repetir ({nombre_mod})."}}}
                     )
         return attrs
 
@@ -213,18 +213,21 @@ class OfflineOrderSyncInputSerializer(serializers.Serializer):
             raise serializers.ValidationError({"amount_received": "Este dato solo se registra para pagos en efectivo."})
 
         for index, item in enumerate(attrs["items"]):
-            if not Product.objects.filter(pk=item["product_id"]).exists():
-                raise serializers.ValidationError({"items": {index: {"product_id": "El producto ya no existe en el catálogo."}}})
+            product = Product.objects.filter(pk=item["product_id"]).first()
+            if product is None:
+                nombre_prod = item.get("expected_name") or f"ID #{item['product_id']}"
+                raise serializers.ValidationError({"items": {index: {"product_id": f"El producto '{nombre_prod}' ya no existe en el catálogo."}}})
             seen = set()
             for modifier_data in item["modifiers"]:
                 modifier = Modifier.objects.filter(pk=modifier_data["modifier_id"]).first()
+                nombre_mod = modifier_data.get("expected_name") or (modifier.name if modifier else f"ID #{modifier_data['modifier_id']}")
                 if modifier is None:
-                    raise serializers.ValidationError({"items": {index: {"modifiers": "Un modificador ya no existe en el catálogo."}}})
+                    raise serializers.ValidationError({"items": {index: {"modifiers": f"El modificador '{nombre_mod}' ya no existe en el catálogo."}}})
                 if modifier.pk in seen:
-                    raise serializers.ValidationError({"items": {index: {"modifiers": "Envía cada modificador una sola vez."}}})
+                    raise serializers.ValidationError({"items": {index: {"modifiers": f"Envía cada modificador una sola vez ({nombre_mod})."}}})
                 seen.add(modifier.pk)
                 if modifier.modifier_type == Modifier.ModifierType.EXCLUSION_COCINA and modifier_data["quantity_per_unit"] != 1:
-                    raise serializers.ValidationError({"items": {index: {"modifiers": "Una exclusión de cocina no se puede repetir."}}})
+                    raise serializers.ValidationError({"items": {index: {"modifiers": f"Una exclusión de cocina no se puede repetir ({nombre_mod})."}}})
         return attrs
 
 

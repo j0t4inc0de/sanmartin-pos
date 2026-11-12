@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Archive, ArrowLeft, Check, CirclePlus, Package, RefreshCw, RotateCcw, Search, Tag, Trash2, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
-import { cargarCatalogoPos, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
+import { asegurarModificadoresEnServidor, cargarCatalogoPos, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
 import { usePosDialogs } from './PosDialogs';
 import { PosSnackbarAlert } from './PosSnackbarAlert';
 
@@ -113,7 +113,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
         solicitarApi<Product[]>('/api/pos/catalog/manage/products/'),
         solicitarApi<Modifier[]>('/api/pos/catalog/manage/modifiers/'),
       ]);
-      const nextModifiers: Modifier[] = (fetchedModifiers && fetchedModifiers.length > 0)
+      let nextModifiers: Modifier[] = (fetchedModifiers && fetchedModifiers.length > 0)
         ? fetchedModifiers
         : obtenerCatalogoBasePos().modifiers.map(item => ({
             id: item.id,
@@ -124,6 +124,26 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
             is_active: item.is_active ?? true,
             updated_at: item.updated_at ?? new Date().toISOString(),
           }));
+
+      if (!offlineMode && (!fetchedModifiers || fetchedModifiers.length === 0)) {
+        try {
+          const synced = await asegurarModificadoresEnServidor(fetchedModifiers);
+          if (synced && synced.length > 0) {
+            nextModifiers = synced.map(item => ({
+              id: item.id,
+              name: item.name,
+              price: item.price,
+              modifier_type: item.modifier_type,
+              is_available: item.is_available ?? true,
+              is_active: item.is_active ?? true,
+              updated_at: item.updated_at ?? new Date().toISOString(),
+            }));
+          }
+        } catch (err) {
+          console.warn('No se pudo asegurar modificadores en servidor:', err);
+        }
+      }
+
       setCategories(nextCategories);
       setProducts(nextProducts);
       setModifiers(nextModifiers);

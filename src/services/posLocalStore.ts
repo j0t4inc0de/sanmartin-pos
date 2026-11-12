@@ -406,6 +406,63 @@ export const cargarCatalogoPos = async (): Promise<StoredCatalog> => {
   };
 };
 
+/**
+ * Sincroniza los modificadores canónicos con el servidor PostgreSQL.
+ * Si el servidor tiene 0 modificadores registrados (por ejemplo, si la base de datos está sin sembrar),
+ * registra los 21 modificadores base para que obtengan sus IDs primarios reales en la base de datos.
+ */
+export const asegurarModificadoresEnServidor = async (
+  currentModifiers?: PosCatalogModifier[],
+): Promise<PosCatalogModifier[]> => {
+  let existing = currentModifiers;
+  const isSynthetic = !existing || existing.length === 0 || existing.some(m => m.updated_at === '2026-01-01T00:00:00.000Z');
+  if (isSynthetic) {
+    try {
+      existing = await solicitarApi<PosCatalogModifier[]>('/api/pos/catalog/manage/modifiers/');
+    } catch {
+      existing = [];
+    }
+  }
+
+  const baseModifiers = obtenerCatalogoBasePos().modifiers;
+  const existingByName = new Map<string, PosCatalogModifier>();
+  for (const mod of (existing || [])) {
+    existingByName.set(mod.name.trim().toLowerCase(), mod);
+  }
+
+  const missing = baseModifiers.filter(
+    base => !existingByName.has(base.name.trim().toLowerCase()),
+  );
+
+  if (missing.length === 0 && !isSynthetic && existing && existing.length > 0) {
+    return existing;
+  }
+
+  const seededList: PosCatalogModifier[] = [...(existing || [])];
+  for (const m of missing) {
+    try {
+      const created = await solicitarApi<PosCatalogModifier>('/api/pos/catalog/manage/modifiers/', {
+        method: 'POST',
+        body: {
+          name: m.name,
+          price: m.price,
+          modifier_type: m.modifier_type,
+          is_available: true,
+          is_active: true,
+        },
+      });
+      if (created && created.id) {
+        seededList.push(created);
+        existingByName.set(created.name.trim().toLowerCase(), created);
+      }
+    } catch (err) {
+      console.warn(`[Auto-Seed] No se pudo registrar modificador '${m.name}' en la base de datos:`, err);
+    }
+  }
+
+  return seededList.length > 0 ? seededList : baseModifiers;
+};
+
 export const precargarCatalogoPos = async (): Promise<PosCatalog> => {
   try {
     const [nextCategories, nextProducts, nextModifiers] = await Promise.all([
@@ -414,12 +471,20 @@ export const precargarCatalogoPos = async (): Promise<PosCatalog> => {
       solicitarApi<PosCatalogModifier[]>('/api/pos/catalog/manage/modifiers/'),
     ]);
     const base = obtenerCatalogoBasePos();
+    let finalModifiers = (nextModifiers && nextModifiers.length > 0) ? nextModifiers : base.modifiers;
+    if (!nextModifiers || nextModifiers.length === 0) {
+      try {
+        const seeded = await asegurarModificadoresEnServidor(nextModifiers);
+        if (seeded && seeded.length > 0) finalModifiers = seeded;
+      } catch {}
+    }
     const catalog: PosCatalog = {
       generated_at: new Date().toISOString(),
       categories: nextCategories,
       products: nextProducts,
       modifiers: (nextModifiers && nextModifiers.length > 0) ? nextModifiers : base.modifiers,
     };
+    catalog.modifiers = finalModifiers;
     await guardarCatalogoPos(catalog);
     return catalog;
   } catch {
