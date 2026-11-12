@@ -279,14 +279,59 @@ const openDatabase = (): Promise<IDBDatabase> => {
   return databasePromise;
 };
 
+/**
+ * Elimina modificadores duplicados normalizando por nombre (trim y minúsculas).
+ * Si hay duplicados (por ejemplo, respaldo local sintético y registro del servidor),
+ * da prioridad al que tenga datos reales del servidor (updated_at no sintético) o mayor ID.
+ */
+export const deduplicarModificadores = (
+  modifiers?: PosCatalogModifier[],
+): PosCatalogModifier[] => {
+  if (!modifiers || !modifiers.length) return [];
+  const map = new Map<string, PosCatalogModifier>();
+  for (const m of modifiers) {
+    if (!m || !m.name) continue;
+    const key = m.name.trim().toLowerCase();
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, m);
+    } else {
+      const isExistingSynthetic =
+        existing.updated_at === '2026-01-01T00:00:00.000Z' ||
+        existing.updated_at?.startsWith('2026-01-01') ||
+        (existing.id <= 21 && m.id > 21);
+      const isMSynthetic =
+        m.updated_at === '2026-01-01T00:00:00.000Z' ||
+        m.updated_at?.startsWith('2026-01-01');
+
+      if (isExistingSynthetic && !isMSynthetic) {
+        map.set(key, m);
+      } else if (!isExistingSynthetic && isMSynthetic) {
+        continue;
+      } else {
+        const existingScore = (existing.is_active ? 2 : 0) + (existing.is_available ? 1 : 0);
+        const mScore = (m.is_active ? 2 : 0) + (m.is_available ? 1 : 0);
+        if (mScore > existingScore || (mScore === existingScore && m.id > existing.id)) {
+          map.set(key, m);
+        }
+      }
+    }
+  }
+  return [...map.values()];
+};
+
 export const obtenerCatalogoBasePos = (): PosCatalog => {
   return JSON.parse(JSON.stringify(BASE_POS_CATALOG)) as PosCatalog;
 };
 
 export const guardarCatalogoPos = async (catalog: PosCatalog, serverSynced = true): Promise<void> => {
+  const cleanCatalog: PosCatalog = {
+    ...catalog,
+    modifiers: deduplicarModificadores(catalog.modifiers),
+  };
   const record: StoredCatalog = {
     key: 'current',
-    catalog,
+    catalog: cleanCatalog,
     saved_at: new Date().toISOString(),
     server_synced: serverSynced,
   };
@@ -373,7 +418,11 @@ export const cargarCatalogoPos = async (): Promise<StoredCatalog> => {
     return p;
   });
 
-  let modifiers = stored.catalog.modifiers;
+  const rawModifiers = stored.catalog.modifiers || [];
+  let modifiers = deduplicarModificadores(rawModifiers);
+  if (modifiers.length !== rawModifiers.length) {
+    needsSave = true;
+  }
   if (!modifiers || modifiers.length === 0) {
     modifiers = base.modifiers;
     needsSave = true;
@@ -460,7 +509,7 @@ export const asegurarModificadoresEnServidor = async (
     }
   }
 
-  return seededList.length > 0 ? seededList : baseModifiers;
+  return deduplicarModificadores(seededList.length > 0 ? seededList : baseModifiers);
 };
 
 export const precargarCatalogoPos = async (): Promise<PosCatalog> => {
@@ -484,7 +533,7 @@ export const precargarCatalogoPos = async (): Promise<PosCatalog> => {
       products: nextProducts,
       modifiers: (nextModifiers && nextModifiers.length > 0) ? nextModifiers : base.modifiers,
     };
-    catalog.modifiers = finalModifiers;
+    catalog.modifiers = deduplicarModificadores(finalModifiers);
     await guardarCatalogoPos(catalog);
     return catalog;
   } catch {

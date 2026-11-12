@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Archive, ArrowLeft, Check, CirclePlus, ImagePlus, Package, RefreshCw, RotateCcw, Search, Tag, Trash2, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
-import { asegurarModificadoresEnServidor, cargarCatalogoPos, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
+import { asegurarModificadoresEnServidor, cargarCatalogoPos, deduplicarModificadores, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
 import { usePosDialogs } from './PosDialogs';
 import { PosSnackbarAlert } from './PosSnackbarAlert';
 
@@ -70,7 +70,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       is_active: item.is_active ?? true,
       updated_at: item.updated_at ?? stored.catalog.generated_at,
     }));
-    const loadedModifiers: Modifier[] = stored.catalog.modifiers.map(item => ({
+    const loadedModifiers: Modifier[] = deduplicarModificadores(stored.catalog.modifiers).map(item => ({
       id: item.id,
       name: item.name,
       price: item.price,
@@ -155,6 +155,15 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
           console.warn('No se pudo asegurar modificadores en servidor:', err);
         }
       }
+      nextModifiers = deduplicarModificadores(nextModifiers).map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        modifier_type: item.modifier_type,
+        is_available: item.is_available ?? true,
+        is_active: item.is_active ?? true,
+        updated_at: item.updated_at ?? new Date().toISOString(),
+      }));
 
       setCategories(nextCategories);
       setProducts(nextProducts);

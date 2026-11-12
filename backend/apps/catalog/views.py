@@ -5,6 +5,7 @@ from django.core.files.storage import default_storage
 from django.db.models import QuerySet
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
+from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
@@ -58,6 +59,16 @@ class PublicMenuView(APIView):
             },
             headers={"Cache-Control": "no-store"},
         )
+
+
+def _deduplicate_modifiers(modifiers_iterable):
+    """Elimina modificadores duplicados normalizando por nombre."""
+    seen = {}
+    for mod in modifiers_iterable:
+        key = mod.name.strip().lower()
+        if key not in seen or mod.id > seen[key].id:
+            seen[key] = mod
+    return sorted(seen.values(), key=lambda m: (m.modifier_type, m.name, m.id))
 
 
 class PosCatalogView(APIView):
@@ -131,10 +142,10 @@ class PosCatalogView(APIView):
                     .values_list("id", flat=True)
                 )
 
-            modifiers = [
+            modifiers = _deduplicate_modifiers([
                 modifier for modifier in changed_modifiers
                 if modifier.is_active and modifier.is_available
-            ]
+            ])
             removed_modifier_ids = {
                 modifier.id for modifier in changed_modifiers if modifier not in modifiers
             }
@@ -167,10 +178,11 @@ class PosCatalogView(APIView):
             is_active=True,
             id__in=products.values("category_id"),
         ).order_by("sort_order", "id")
-        modifiers: QuerySet[Modifier] = Modifier.objects.filter(
+        modifiers_qs: QuerySet[Modifier] = Modifier.objects.filter(
             is_active=True,
             is_available=True,
         ).order_by("modifier_type", "name", "id")
+        modifiers = _deduplicate_modifiers(modifiers_qs)
 
         return Response(
             {
@@ -239,6 +251,23 @@ class ManageProductDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIVie
 class ManageModifierListView(ManageCatalogPermissionMixin, ListCreateAPIView):
     serializer_class = ManageModifierSerializer
     queryset = Modifier.objects.all().order_by("modifier_type", "name", "id")
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        deduped = _deduplicate_modifiers(queryset)
+        serializer = self.get_serializer(deduped, many=True)
+        return Response(serializer.data)
+
+    def create(self, request, *args, **kwargs):
+        name = request.data.get("name", "").strip()
+        if name:
+            existing = Modifier.objects.filter(name__iexact=name).first()
+            if existing:
+                serializer = self.get_serializer(existing, data=request.data, partial=True)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
 
 
 class ManageModifierDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIView):

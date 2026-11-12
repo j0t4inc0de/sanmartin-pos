@@ -11,6 +11,7 @@ import {
   cargarBorradorVentaPos,
   cargarCobroPendientePos,
   cargarCatalogoPos,
+  deduplicarModificadores,
   obtenerCatalogoBasePos,
   type StoredCatalog,
   guardarBorradorVentaPos,
@@ -64,7 +65,8 @@ const applyCatalogDelta = (current: Catalog, delta: CatalogDelta): Catalog => {
   const products = mergeById(current.products, delta.products, delta.removed?.products ?? [])
     .sort((a, b) => (categoryOrder.get(a.category_id) ?? Number.MAX_SAFE_INTEGER) - (categoryOrder.get(b.category_id) ?? Number.MAX_SAFE_INTEGER)
       || a.name.localeCompare(b.name, 'es-CL') || a.id - b.id);
-  const modifiers = mergeById(current.modifiers, delta.modifiers, delta.removed?.modifiers ?? [])
+  const rawModifiers = mergeById(current.modifiers, delta.modifiers, delta.removed?.modifiers ?? []);
+  const modifiers = deduplicarModificadores(rawModifiers)
     .sort((a, b) => a.modifier_type.localeCompare(b.modifier_type) || a.name.localeCompare(b.name, 'es-CL') || a.id - b.id);
   return { generated_at: delta.generated_at, categories, products, modifiers };
 };
@@ -333,7 +335,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     let savedCatalog: StoredCatalog | null = null;
     try {
       savedCatalog = await cargarCatalogoPos();
-      if (savedCatalog) setCatalog(savedCatalog.catalog);
+      if (savedCatalog) setCatalog({ ...savedCatalog.catalog, modifiers: deduplicarModificadores(savedCatalog.catalog.modifiers) });
     } catch {
       // Almacenamiento local no accesible
     }
@@ -376,6 +378,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           }
         }
 
+        freshCatalog.modifiers = deduplicarModificadores(freshCatalog.modifiers);
         if (!freshCatalog.modifiers || freshCatalog.modifiers.length === 0) {
           freshCatalog.modifiers = obtenerCatalogoBasePos().modifiers;
         }
@@ -893,7 +896,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
               <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" />
             </summary>
             <div className="pos-modifier-options">
-              {catalog.modifiers
+              {deduplicarModificadores(catalog.modifiers)
                 .filter(m => m.is_available !== false && m.is_active !== false)
                 .map(m => {
                   const selected = line.modifiers.find(x => x.modifier_id === m.id || x.modifier_name.trim().toLowerCase() === m.name.trim().toLowerCase());
@@ -906,7 +909,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
                           onChange={e => updateLine(line.key, l => ({
                             ...l,
                             modifiers: e.target.checked
-                              ? [...l.modifiers, { modifier_id: m.id, modifier_name: m.name, price_at_sale: m.price, quantity_per_unit: 1 }]
+                              ? [...l.modifiers.filter(x => x.modifier_id !== m.id && x.modifier_name.trim().toLowerCase() !== m.name.trim().toLowerCase()), { modifier_id: m.id, modifier_name: m.name, price_at_sale: m.price, quantity_per_unit: 1 }]
                               : l.modifiers.filter(x => x.modifier_id !== m.id && x.modifier_name.trim().toLowerCase() !== m.name.trim().toLowerCase()),
                           }))}
                         />
@@ -933,7 +936,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
                   );
                 })}
               {line.modifiers
-                .filter(entry => !catalog.modifiers.some(modifier =>
+                .filter(entry => !deduplicarModificadores(catalog.modifiers).some(modifier =>
                   (modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase()) &&
                   modifier.is_available !== false &&
                   modifier.is_active !== false
