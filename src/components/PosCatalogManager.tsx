@@ -300,11 +300,11 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   return (
     <section className="pos-catalog-workspace" aria-labelledby="pos-catalog-title">
       <div className="pos-catalog-surface">
-        <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 bg-[#14181e] border border-white/10 rounded-2xl shadow-xl mb-6">
+        <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
           <div>
             <p className="pos-catalog-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Administración del POS</p>
-            <h2 id="pos-catalog-title" className="mt-1 font-heading text-2xl font-bold text-white tracking-tight">Catálogo y menú</h2>
-            <p className="mt-1.5 text-sm text-gray-400">
+            <h2 id="pos-catalog-title" className="mt-1 font-heading text-2xl font-bold tracking-tight">Catálogo y menú</h2>
+            <p className="pos-workspace-desc mt-1.5 text-sm">
               {offlineMode ? 'Modo consulta (sin conexión). Los cambios requieren conexión con el servidor.' : 'Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.'}
             </p>
           </div>

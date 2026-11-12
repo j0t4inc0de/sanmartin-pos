@@ -99,11 +99,11 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
   const topProductMaximum = Math.max(1, ...(topProducts.map(item => item.quantity) ?? []));
 
   return <section className="pos-report-workspace" aria-labelledby="pos-report-title">
-    <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 bg-[#14181e] border border-white/10 rounded-2xl shadow-xl mb-6">
+    <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
       <div>
         <p className="pos-report-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Control de gestión</p>
-        <h2 id="pos-report-title" className="mt-1 font-heading text-2xl font-bold text-white tracking-tight">Reportes de ventas</h2>
-        <p className="mt-1.5 text-sm text-gray-400">Consulta las ventas y cierres registrados en la zona horaria de Chile.</p>
+        <h2 id="pos-report-title" className="mt-1 font-heading text-2xl font-bold tracking-tight">Reportes de ventas</h2>
+        <p className="pos-workspace-desc mt-1.5 text-sm">Consulta las ventas y cierres registrados en la zona horaria de Chile.</p>
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <button

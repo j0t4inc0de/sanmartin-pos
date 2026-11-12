@@ -1176,11 +1176,11 @@ export const PosPage = () => {
               <PosReports offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
             ) : activeWorkspace === 'devices' ? (
               <div className="space-y-4">
-                <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 bg-[#14181e] border border-white/10 rounded-2xl shadow-xl mb-6">
+                <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
                   <div>
-                    <p className="text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Configuración del equipo</p>
-                    <h2 className="mt-1 font-heading text-2xl font-bold text-white tracking-tight">Impresora y gaveta</h2>
-                    <p className="mt-1.5 text-sm text-gray-400">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p>
+                    <p className="pos-device-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Configuración del equipo</p>
+                    <h2 className="mt-1 font-heading text-2xl font-bold tracking-tight">Impresora y gaveta</h2>
+                    <p className="pos-workspace-desc mt-1.5 text-sm">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p>
                   </div>
                   <button
                     type="button"
