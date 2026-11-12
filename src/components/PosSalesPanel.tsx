@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Filter, Minus, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
+import { printPosSale } from '../services/posPrinter';
 import {
   cargarBorradorVentaPos,
   cargarCobroPendientePos,
@@ -19,10 +20,14 @@ import {
   guardarAnulacionOfflinePos,
   eliminarAnulacionOfflinePos,
   guardarVentaOfflineEnColaPos,
+  guardarTrabajoImpresionPos,
+  listarTrabajosImpresionPos,
+  actualizarEstadoImpresionPos,
   type PosCatalog as Catalog,
   type PosPendingPaymentDraft,
   type PosSaleDraft,
   type PosOfflineOrder,
+  type PosPrintJob,
 } from '../services/posLocalStore';
 
 type ConsumptionType = 'PARA_SERVIR' | 'PARA_LLEVAR';
@@ -68,6 +73,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
   const [offlineOrders, setOfflineOrders] = useState<PosOfflineOrder[]>([]);
   const [offlineCancellations, setOfflineCancellations] = useState<Awaited<ReturnType<typeof listarAnulacionesOfflinePos>>>([]);
+  const [printJobs, setPrintJobs] = useState<PosPrintJob[]>([]);
+  const [printingJobUuid, setPrintingJobUuid] = useState<string | null>(null);
+  const [printNotice, setPrintNotice] = useState('');
   const [syncingOfflineOrders, setSyncingOfflineOrders] = useState(false);
   const syncInProgress = useRef(false);
   const [lines, setLines] = useState<CartLine[]>([]);
@@ -101,6 +109,12 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   }, [draftLoaded, draftLoadError, quote, onPendingPaymentChange]);
 
   useEffect(() => { onQueueChange(offlineOrders.length > 0 || offlineCancellations.length > 0); }, [offlineOrders, offlineCancellations, onQueueChange]);
+
+  useEffect(() => {
+    let active = true;
+    void listarTrabajosImpresionPos().then(jobs => { if (active) setPrintJobs(jobs); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [shiftUuid]);
 
   const currentDraft = (): Omit<PosSaleDraft, 'saved_at'> => ({
     shift_uuid: shiftUuid,
@@ -218,6 +232,45 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
   };
 
+  const createPrintJob = (targetQuote: Quote, method: PaymentMethod, receivedAmount: string, totalAmount = targetQuote.total_amount, paidAmount: number | null = null, changeGiven: number | null = null): Omit<PosPrintJob, 'saved_at'> => {
+    const effectivePaid = method === 'EFECTIVO' ? paidAmount ?? Number(receivedAmount) : null;
+    return {
+      uuid: targetQuote.uuid, shift_uuid: shiftUuid, shift_order_number: targetQuote.shift_order_number,
+      created_at: targetQuote.created_at, consumption_type: targetQuote.consumption_type, payment_method: method,
+      total_amount: totalAmount, amount_paid: effectivePaid,
+      change_given: method === 'EFECTIVO' ? changeGiven ?? Math.max(0, (effectivePaid ?? 0) - totalAmount) : null,
+      items: targetQuote.items.map((item, index) => ({
+        product_id: item.product_id, product_name: item.product_name, quantity: item.quantity,
+        unit_price: item.unit_price, notes: item.notes ?? lines[index]?.notes ?? '', modifiers: item.modifiers,
+      })),
+      printed_at: null, print_error: null,
+    };
+  };
+
+  const printStoredJob = async (job: PosPrintJob, reprint = false) => {
+    setPrintingJobUuid(job.uuid);
+    setPrintNotice(`Enviando comprobante y comanda para la venta #${job.shift_order_number}…`);
+    try {
+      await printPosSale(job, { reprint, openDrawer: !reprint && job.payment_method === 'EFECTIVO' });
+      const printedAt = new Date().toISOString();
+      await actualizarEstadoImpresionPos(job.uuid, printedAt, null).catch(() => undefined);
+      setPrintJobs(await listarTrabajosImpresionPos());
+      setPrintNotice(`Impresión solicitada para la venta #${job.shift_order_number}: comprueba que salieron ambos papeles${!reprint && job.payment_method === 'EFECTIVO' ? ' y que abrió la gaveta' : ''}.`);
+    } catch (printError) {
+      const reason = printError instanceof Error ? printError.message : 'No se pudo enviar el trabajo a la impresora.';
+      await actualizarEstadoImpresionPos(job.uuid, null, reason).catch(() => undefined);
+      setPrintJobs(await listarTrabajosImpresionPos().catch(() => printJobs));
+      setPrintNotice(`La venta #${job.shift_order_number} quedó guardada, pero no se confirmó la impresión: ${reason}`);
+    } finally { setPrintingJobUuid(null); }
+  };
+
+  const saveAndPrintSale = async (targetQuote: Quote, method: PaymentMethod, receivedAmount: string, sale?: Sale) => {
+    const job = createPrintJob(targetQuote, method, receivedAmount, sale?.total_amount ?? targetQuote.total_amount, sale?.amount_paid ?? null, sale?.change_given ?? null);
+    try { await guardarTrabajoImpresionPos(job); }
+    catch { setPrintNotice(`La venta #${job.shift_order_number} se guardó, pero no se pudo respaldar el comprobante local para reimpresión.`); }
+    await printStoredJob({ ...job, saved_at: new Date().toISOString() });
+  };
+
   const queueOfflineSale = async (targetQuote: Quote): Promise<boolean> => {
     try {
       await guardarVentaOfflineEnColaPos({
@@ -238,6 +291,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           modifiers: item.modifiers,
         })),
       });
+      await saveAndPrintSale(targetQuote, paymentMethod, amountReceived);
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
       setPaymentRecordWriteFailed(false);
@@ -481,12 +535,16 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         ...(paymentMethod === 'EFECTIVO' ? { amount_received: Number(amountReceived) } : {}),
         confirm_repriced: quote.requires_confirmation && quote.price_confirmation_accepted,
       } });
+      const printJob = createPrintJob(quote, paymentMethod, amountReceived, sale.total_amount, sale.amount_paid, sale.change_given);
+      try { await guardarTrabajoImpresionPos(printJob); }
+      catch { setPrintNotice(`La venta #${sale.shift_order_number} quedó guardada, pero no se pudo respaldar el comprobante local para reimpresión.`); }
       await eliminarCobroPendientePos(shiftUuid);
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
       setPaymentRecordWriteFailed(false);
       setMessage(`Venta #${sale.shift_order_number} guardada. Total ${formatPrice(sale.total_amount)}${sale.change_given !== null ? ` · Vuelto ${formatPrice(sale.change_given)}` : ''}.`);
       setLines([]); setQuote(null); setAmountReceived('');
+      await printStoredJob({ ...printJob, saved_at: new Date().toISOString() });
       await loadOrders();
       try { await onSale(); }
       catch { setError('La venta quedó guardada. No se pudo actualizar el folio; recarga esta pantalla antes de iniciar otra venta.'); }
@@ -677,5 +735,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       <summary>Ventas recientes <span className="pos-disclosure-meta">{orders.length} registros</span></summary>
       {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method.replace('_', ' ')}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
     </details>}
+    {!!printJobs.length && <details className="pos-info-disclosure border-t border-white/10 pt-3">
+      <summary>Impresiones recientes <span className="pos-disclosure-meta">{printJobs.length} comprobantes · este equipo</span></summary>
+      <div className="mt-3 space-y-2">{printJobs.map(job => <div key={job.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">Venta #{String(job.shift_order_number).padStart(3, '0')} · {formatPrice(job.total_amount)}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle: 'short', timeStyle: 'short'}).format(new Date(job.created_at))} · {job.print_error ? 'Impresión pendiente' : job.printed_at ? 'Enviada a impresora' : 'Pendiente de imprimir'}</p>{job.print_error && <p className="mt-1 text-xs text-amber-200">{job.print_error}</p>}</div><button type="button" disabled={printingJobUuid !== null} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white hover:border-[#FACC15]/50 hover:text-[#FACC15] disabled:opacity-50" onClick={() => void printStoredJob(job, true)}>{printingJobUuid === job.uuid ? 'Enviando…' : 'Reimprimir'}</button></div>)}</div>
+    </details>}
+    {printNotice && <p role="status" className="rounded-lg border border-amber-400/20 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">{printNotice}</p>}
   </section>;
 };

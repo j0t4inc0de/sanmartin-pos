@@ -71,7 +71,9 @@ Una venta ya anulada no se elimina del historial. Si se anuló por error, no cre
 
 ### Impresión
 
-La pantalla actual solo ofrece diagnóstico: vincular USB, imprimir dos muestras y probar la gaveta mediante una acción separada. **Todavía no imprime ventas reales, no ofrece reimpresión de ventas ni controla automáticamente la apertura de gaveta por medio de pago.** No prometas al operador que el papel de una venta ya salió por el hecho de haber registrado el pago.
+Antes de vender, vincula la DINON en **Impresora y gaveta** desde Configuración del equipo. Al registrar el pago, el POS guarda la venta primero y luego envía un comprobante para el cliente y una comanda para cocina. Las notas escritas en cada producto y sus agregados aparecen en la comanda; no aparecen en el comprobante del cliente. Para efectivo se envía también el pulso de apertura de gaveta; Transbank y transferencia no la abren.
+
+La venta no se pierde si la impresora está desconectada o falla. El POS muestra que la venta quedó guardada y que no se confirmó la impresión; revisa la impresora y usa **Impresiones recientes → Reimprimir**. La reimpresión conserva el folio, se identifica como copia y no abre la gaveta. El navegador puede confirmar el envío a USB, pero el operador debe revisar físicamente que hayan salido ambos papeles. Estos comprobantes no son boletas tributarias.
 
 Cuando esté disponible la DINON, sigue la prueba física de [`PROPUESTA_IMPRESION_POS.md`](PROPUESTA_IMPRESION_POS.md). Haz la prueba de gaveta únicamente con autorización y el área despejada.
 
@@ -85,6 +87,6 @@ Cuando esté disponible la DINON, sigue la prueba física de [`PROPUESTA_IMPRESI
 ## 9. Verificaciones pendientes antes de entregar esta guía como final
 
 - Completar la prueba física de la DINON 9390 y documentar ancho, corte, legibilidad, acentos, comprobante de cliente, comanda y gaveta.
-- Integrar y validar impresión de venta, reimpresión sin duplicar cobros, cola offline y apertura de gaveta condicionada al pago en efectivo.
+- Completar validación física de impresión online/offline, notas por producto, reimpresión sin duplicar cobros y apertura de gaveta solo en efectivo.
 - Recorrer con una persona operadora la guía de inicio a cierre y ajustar los nombres de controles si difieren de la interfaz final.
 - Conciliar un período de reportes con ventas/cierres conocidos y cerrar la lista de aceptación integral.

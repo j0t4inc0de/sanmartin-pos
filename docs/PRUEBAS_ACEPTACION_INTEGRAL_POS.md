@@ -20,8 +20,8 @@
 | B1 | Abrir turno online con fondo inicial; el turno queda activo una sola vez. | ________ |
 | B2 | En un equipo ya habilitado, abrir turno sin conexión; el control indica **Abrir turno offline**, se guarda localmente y se sincroniza al reconectar sin duplicarse. | ________ |
 | B3 | Agregar productos, cantidades, modificadores/exclusiones y nota; seleccionar Para servir/Para llevar; cotización coincide con el detalle. | ________ |
-| B4 | Completar pago de prueba en efectivo; total, recibido y vuelto son correctos y la venta queda registrada una sola vez. | ________ |
-| B5 | Completar pagos de prueba por Transbank y transferencia; método y total se conservan. | ________ |
+| B4 | Completar pago de prueba en efectivo; total, recibido y vuelto son correctos, se imprime cliente + cocina tras guardar y la gaveta se activa una vez. | ________ |
+| B5 | Completar pagos de prueba por Transbank y transferencia; método y total se conservan y la gaveta no se activa. | ________ |
 | B6 | Si el servidor no confirma el pago, el mismo folio/UUID se conserva para reintento; no se vuelve a cobrar y no aparece venta duplicada. | ________ |
 | B7 | Intentar cerrar con cotización/pago pendiente; el POS bloquea el cierre y comunica qué resolver. | ________ |
 
@@ -56,12 +56,12 @@
 | E2 | Verificar que el usuario sin permiso de operación no puede acceder a acciones protegidas del POS/API. | ________ |
 | E3 | Enlazar DINON 9390 y ejecutar muestras: ancho, acentos, legibilidad, corte, dos papeles, folio compartido y comanda sin precios/pago. | ________ |
 | E4 | Con gaveta conectada y área despejada, probar pulso autorizado; comprobar que una prueba de impresión no abre la gaveta. | ________ |
-| E5 | Venta real online y offline imprime comprobante cliente y comanda cocina después de persistirse; fallo de impresora no duplica ni pierde venta. | ________ |
-| E6 | Reimprimir comprobante/comanda identificando reimpresión y conservando folio original, sin crear una venta nueva. | ________ |
-| E7 | Gaveta abre solo para efectivo y según flujo acordado al anular con devolución; no abre por Transbank/transferencia. | ________ |
+| E5 | Venta de prueba online y offline imprime comprobante cliente y comanda cocina después de persistirse; las notas aparecen solo en cocina y fallo de impresora no duplica ni pierde venta. | ________ |
+| E6 | Reimprimir comprobante/comanda desde impresiones recientes; se identifica reimpresión y conserva folio, sin crear una venta nueva ni abrir gaveta. | ________ |
+| E7 | Gaveta abre una vez en venta efectiva en efectivo y no abre en Transbank, transferencia ni reimpresión. La devolución de efectivo por anulación queda fuera del flujo actual y requiere definición/prueba separada. | ________ |
 
 **Estado inicial del plan:** A3, las pruebas de concurrencia, catálogo incremental y tema claro/oscuro tienen evidencia previa registrada en el plan. El usuario ya probó el modo offline, ventas, anulaciones, cierre automático y reconexión. Volver a recorrerlos en esta aceptación sirve para confirmar el flujo completo después de terminar impresión, no para repetir ahora cada prueba ya aceptada.
 
 **Hoja de conciliación de reportes:** período consultado ________; ventas de prueba completadas (#/monto) ________; anulaciones (#/monto) ________; efectivo (#/monto) ________; Transbank (#/monto) ________; transferencias (#/monto) ________; ticket promedio esperado ________; hora/día de mayor recaudación ________; diferencias encontradas ________. Adjuntar captura o referencia de la consulta usada para calcular los valores esperados.
 
-**Bloqueos conocidos:** E3 y E4 esperan acceso físico a la DINON. E5–E7 requieren además la integración de impresión de ventas y reimpresión. No marcar la aceptación integral como completa mientras haya casos bloqueados o fallidos.
+**Bloqueos conocidos:** E3–E7 esperan acceso físico a la DINON; E5–E7 ya tienen flujo implementado y falta validar el comportamiento de la unidad real. No marcar la aceptación integral como completa mientras haya casos bloqueados o fallidos.

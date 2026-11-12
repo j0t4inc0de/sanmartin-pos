@@ -1,6 +1,6 @@
 # Propuesta de impresión del POS
 
-- **Estado:** panel de diagnóstico USB implementado; impresión de ventas reales aún pendiente de validar físicamente.
+- **Estado:** flujo de ventas reales, comprobantes de cliente/cocina, reimpresión local y gaveta condicionada a efectivo implementados con ESC/POS USB; falta validación física en la DINON 9390.
 - **Base:** requisitos del proyecto, respuestas del usuario y video del POS antiguo recibido el 10 de noviembre de 2026.
 
 ## Hechos confirmados
@@ -60,10 +60,10 @@ La comanda prioriza el folio, la cantidad y la preparación. No muestra precios 
 
 ## Reglas de operación propuestas
 
-1. Guardar la venta en el servidor o en IndexedDB antes de preparar la impresión. Un error de impresión no anula ni duplica la venta.
-2. Enviar los dos documentos en una misma acción de impresión, diferenciados como cliente y cocina; la reimpresión debe quedar identificada y conservar el folio original.
-3. Guardar el estado de impresión por separado de la sincronización de la venta. El navegador no puede confirmar por sí solo que el papel salió correctamente; se debe mostrar el resultado como solicitado y permitir que el operador marque el papel como revisado o reimprima.
-4. En pagos en efectivo, solicitar la apertura de gaveta por el canal que admita la impresora. No abrirla para Transbank o transferencia. Una devolución en efectivo al anular también requiere abrirla, según el contrato del proyecto.
+1. Guardar la venta en el servidor o en IndexedDB antes de imprimir. Un error de impresión no anula ni duplica la venta.
+2. Enviar comprobante de cliente y comanda de cocina en una misma acción. La comanda incluye agregados, exclusiones y nota por producto; el papel de cliente omite notas de cocina.
+3. Guardar en IndexedDB los datos necesarios para reimprimir, junto al estado de envío. El navegador solo confirma que envió datos al USB, no que el papel salió; el operador debe revisar ambos papeles. La reimpresión conserva folio e indica que es una copia.
+4. En pagos en efectivo, enviar el pulso de gaveta después de los comprobantes. No hacerlo para Transbank o transferencia. La gaveta queda deshabilitada en reimpresiones para evitar aperturas inesperadas. La devolución en efectivo al anular aún debe validarse.
 5. Mantener el diseño configurable para el ancho real del papel y validarlo con el dispositivo antes de declarar compatibilidad.
 
 ## Datos pendientes para validar la conexión física
@@ -79,4 +79,18 @@ La comanda prioriza el folio, la cantidad y la preparación. No muestra precios 
 - Para validar: abrir `/pos` en Chrome o Edge desde el equipo conectado a la DINON; iniciar sesión; pulsar **Vincular impresora USB** y seleccionar solo la DINON; pulsar **Imprimir dos pruebas**; confirmar que salieron dos papeles legibles, completos, con acentos, buen ancho, corte adecuado y folio igual; comprobar que la cocina no muestra precios ni pagos. Revisar que la gaveta no se abrió por imprimir.
 - Luego, con gaveta compatible conectada al RJ11 y despejada, pulsar **Probar gaveta**, confirmar el diálogo y anotar si abrió. No se debe usar sobre una caja ocupada durante esta prueba.
 - Si WebUSB no aparece, no lista la DINON o falla al reclamar la interfaz, registrar navegador/versión y el texto de error; revisar en Windows el nombre/modelo de impresora y cómo aparece en Administrador de dispositivos. La impresión vía USB directo puede estar bloqueada si Windows tiene la interfaz ocupada por un controlador.
-- La compatibilidad física sigue pendiente hasta comprobar ancho útil, caracteres, corte, dos papeles y gaveta con la unidad real. Esta pantalla no integra todavía la impresión con ventas, reimpresiones ni la cola offline.
+- La compatibilidad física sigue pendiente hasta comprobar ancho útil, caracteres, corte, ambos comprobantes, comportamiento de reimpresión y gaveta con la unidad real. La integración usa el snapshot local en ventas offline y mantiene impresión separada de sincronización.
+
+## Prueba de venta real preparada
+
+Después de validar las muestras, hacer esta prueba con una venta de prueba y la gaveta inicialmente vacía:
+
+1. Vincular la DINON en Configuración del equipo y volver a Caja.
+2. Agregar un producto con un extra pagado, una exclusión y una nota de cocina fácil de reconocer (por ejemplo, `PRUEBA SIN TOMATE`). Completar una venta de prueba en efectivo.
+3. Confirmar que primero aparece la venta guardada y luego salen dos papeles: el vale del cliente contiene folio, productos, extras pagados, total y pago; la comanda contiene folio, productos, extras, exclusiones y la nota. La nota no debe aparecer en el vale del cliente.
+4. Confirmar que la gaveta recibió el pulso solo en efectivo. Hacer una venta seleccionando Transbank o transferencia y comprobar que no se activa.
+5. En **Impresiones recientes**, reimprimir la primera venta. Ambos papeles conservan el folio, dicen `REIMPRESION` y la gaveta no se activa.
+6. Desconectar la API, completar otra venta de prueba y confirmar que queda guardada localmente, se imprime con el mismo detalle y se sincroniza al restaurar la API sin duplicarse.
+7. Repetir la prueba de efectivo solo después de despejar la gaveta. Revisar el ancho, corte, legibilidad y acentos antes de aceptar.
+
+La impresión de venta no produce una boleta tributaria y no confirma el funcionamiento de una terminal Transbank; registra el medio de pago seleccionado en el POS.

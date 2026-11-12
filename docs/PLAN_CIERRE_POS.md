@@ -66,7 +66,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** se confirma qué interfaz funciona, el ancho real del papel y si la gaveta responde. Si algo falla, guardar el mensaje/error y ajustar el plan técnico antes de implementar impresión de ventas.
 
-**Estado:** pendiente de acceso a la máquina; prevista para hoy o mañana.
+**Estado:** pendiente de acceso a la máquina; prevista para hoy o mañana. La integración de software se preparó con el ancho documentado de 80 mm y queda por validar físicamente.
 
 ### 4. Integración de impresión con ventas
 
@@ -74,7 +74,9 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Aceptación:** probar venta online y offline; dos comprobantes legibles; el de cocina no muestra precios ni medio de pago; gaveta no se abre en Transbank/transferencia y sí en efectivo; desconectar o apagar la impresora no pierde ni duplica la venta; reimprimir no crea otra venta; estado de impresión comprensible y recuperable.
 
-**Dependencia:** resultado de la etapa 3.
+**Estado:** implementación preparada; aceptación física pendiente con la DINON. El navegador informa que el trabajo se envió, pero el operador debe revisar el papel. La reimpresión no vuelve a abrir la gaveta.
+
+**Dependencia para aceptación:** resultado físico de la etapa 3.
 
 ### 5. Verificación de datos y concurrencia con PostgreSQL
 
@@ -118,7 +120,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-La concurrencia PostgreSQL ya quedó validada. La guía operativa y la matriz integral se contrastaron con la interfaz y contratos actuales; falta recorrer la guía con una persona operadora y llenar la conciliación de reportes. El próximo hito físico es probar la DINON 9390; con esos resultados se cerrará la integración de impresión real, reimpresión y gaveta. El catálogo incremental y el dashboard Día/Mes ya fueron aceptados.
+La concurrencia PostgreSQL ya quedó validada. La integración de impresión está implementada con comprobante de cliente, comanda con notas, reimpresión local y pulso de gaveta solo para efectivo; su aceptación requiere la DINON física. La guía operativa y la matriz integral se contrastaron con la interfaz y contratos actuales; falta recorrer la guía con una persona operadora y llenar la conciliación de reportes. El catálogo incremental y el dashboard Día/Mes ya fueron aceptados.
 
 ## Registro de avance
 
@@ -129,7 +131,7 @@ La concurrencia PostgreSQL ya quedó validada. La guía operativa y la matriz in
 | Catálogo incremental | Aceptado | El usuario confirmó actualización incremental, continuidad del borrador, uso del último catálogo offline y reconexión automática. 31 pruebas backend y build aprobados. |
 | Gestión del catálogo desde `/pos` | Aceptada | El usuario aprobó los temas claro/oscuro y confirmó que el producto retirado se restauró. Búsqueda y retiro/restauración reversible; historial preservado. |
 | Prueba física DINON | Pendiente | El usuario espera realizarla hoy o mañana. |
-| Impresión real de ventas | Pendiente | Depende de la prueba física. |
+| Impresión real de ventas | Implementada; aceptación física pendiente | Comprobante cliente + comanda con notas, cola offline, registro de envío y reimpresión desde el historial del turno; gaveta solo para efectivo y nunca en reimpresión. Falta comprobar papel, corte, acentos y conexión USB con DINON. |
 | Suite de ventas en PostgreSQL | Completada | PostgreSQL 16.15; 29/29 pasaron; base temporal creada y eliminada; `CREATEDB` temporal de `sanmartin_dev` revocado. |
 | PostgreSQL concurrencia | Completada | 3/3 pruebas pasaron en PostgreSQL 16.15; base temporal eliminada y `CREATEDB` revocado/verificado. |
 | Dashboard día/mes | Aceptado | El usuario aprobó Día/Mes en tema claro; capturas del 10 nov muestran totales conciliados con pagos y anulaciones separadas; 29 pruebas `apps.sales` pasaron en PostgreSQL 16.15. |

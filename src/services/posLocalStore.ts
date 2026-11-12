@@ -147,6 +147,22 @@ export interface PosOfflineOrder {
   sync_error: string | null;
 }
 
+export interface PosPrintJob {
+  uuid: string;
+  shift_uuid: string;
+  shift_order_number: number;
+  created_at: string;
+  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
+  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
+  total_amount: number;
+  amount_paid: number | null;
+  change_given: number | null;
+  items: PosOfflineOrder['items'];
+  printed_at: string | null;
+  print_error: string | null;
+  saved_at: string;
+}
+
 export interface PosOfflineShiftEvent {
   key: string;
   user_id: number;
@@ -194,7 +210,7 @@ interface StoredOfflineOrder extends PosOfflineOrder {}
 interface StoredOfflineShiftEvent extends PosOfflineShiftEvent {}
 
 const DATABASE_NAME = 'san-martin-pos';
-const DATABASE_VERSION = 7;
+const DATABASE_VERSION = 8;
 const CATALOG_STORE = 'pos_catalog';
 const DRAFT_STORE = 'pos_sale_drafts';
 const PAYMENT_DRAFT_STORE = 'pos_pending_payments';
@@ -203,6 +219,7 @@ const SHIFT_CACHE_STORE = 'pos_shift_cache';
 const OFFLINE_ORDER_STORE = 'pos_offline_orders';
 const OFFLINE_SHIFT_EVENT_STORE = 'pos_offline_shift_events';
 const OFFLINE_CANCELLATION_STORE = 'pos_offline_cancellations';
+const PRINT_JOB_STORE = 'pos_print_jobs';
 
 let databasePromise: Promise<IDBDatabase> | null = null;
 
@@ -240,6 +257,9 @@ const openDatabase = (): Promise<IDBDatabase> => {
         }
         if (!database.objectStoreNames.contains(OFFLINE_CANCELLATION_STORE)) {
           database.createObjectStore(OFFLINE_CANCELLATION_STORE, { keyPath: 'order_uuid' });
+        }
+        if (!database.objectStoreNames.contains(PRINT_JOB_STORE)) {
+          database.createObjectStore(PRINT_JOB_STORE, { keyPath: 'uuid' });
         }
       };
       request.onsuccess = () => {
@@ -631,6 +651,52 @@ export const marcarErrorVentaOfflineEnColaPos = async (uuid: string, error: stri
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el error de sincronización.'));
     transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del error de sincronización.'));
+  });
+};
+
+export const guardarTrabajoImpresionPos = async (job: Omit<PosPrintJob, 'saved_at'>): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(PRINT_JOB_STORE, 'readwrite');
+    const store = transaction.objectStore(PRINT_JOB_STORE);
+    store.put({ ...job, saved_at: new Date().toISOString() } satisfies PosPrintJob);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const oldJobs = (request.result as PosPrintJob[])
+        .sort((left, right) => right.saved_at.localeCompare(left.saved_at))
+        .slice(100);
+      oldJobs.forEach(oldJob => store.delete(oldJob.uuid));
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo guardar el comprobante para reimpresión.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló el guardado del comprobante.'));
+  });
+};
+
+export const listarTrabajosImpresionPos = async (shiftUuid?: string): Promise<PosPrintJob[]> => {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PRINT_JOB_STORE, 'readonly');
+    const request = transaction.objectStore(PRINT_JOB_STORE).getAll();
+    request.onsuccess = () => resolve((request.result as PosPrintJob[])
+      .filter(job => !shiftUuid || job.shift_uuid === shiftUuid)
+      .sort((left, right) => right.saved_at.localeCompare(left.saved_at)));
+    request.onerror = () => reject(request.error ?? new Error('No se pudieron leer los comprobantes guardados.'));
+  });
+};
+
+export const actualizarEstadoImpresionPos = async (uuid: string, printedAt: string | null, error: string | null): Promise<void> => {
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(PRINT_JOB_STORE, 'readwrite');
+    const store = transaction.objectStore(PRINT_JOB_STORE);
+    const request = store.get(uuid);
+    request.onsuccess = () => {
+      if (request.result) store.put({ ...request.result, printed_at: printedAt, print_error: error?.slice(0, 255) ?? null });
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('No se pudo actualizar el estado de impresión.'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('Se canceló la actualización de impresión.'));
   });
 };
 
