@@ -1050,25 +1050,17 @@ export const PosPage = () => {
                   <button
                     type="button"
                     aria-current={activeWorkspace === 'sales' ? 'page' : undefined}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
-                      activeWorkspace === 'sales'
-                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
-                        : 'text-gray-300 hover:text-white hover:bg-white/5'
-                    }`}
+                    className="pos-workspace-tab"
                     onClick={() => setActiveWorkspace('sales')}
                   >
-                    <CircleDollarSign className={`w-4 h-4 ${activeWorkspace === 'sales' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <CircleDollarSign aria-hidden="true" />
                     <span>Caja</span>
                   </button>
 
                   <button
                     type="button"
                     aria-current={activeWorkspace === 'catalog' ? 'page' : undefined}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
-                      activeWorkspace === 'catalog'
-                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
-                        : 'text-gray-300 hover:text-white hover:bg-white/5'
-                    }`}
+                    className="pos-workspace-tab"
                     onClick={() => {
                       setActiveWorkspace('catalog');
                       if (offlineMode) {
@@ -1078,35 +1070,27 @@ export const PosPage = () => {
                       }
                     }}
                   >
-                    <Boxes className={`w-4 h-4 ${activeWorkspace === 'catalog' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <Boxes aria-hidden="true" />
                     <span>Catálogo</span>
                   </button>
 
                   <button
                     type="button"
                     aria-current={activeWorkspace === 'reports' ? 'page' : undefined}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
-                      activeWorkspace === 'reports'
-                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
-                        : 'text-gray-300 hover:text-white hover:bg-white/5'
-                    }`}
+                    className="pos-workspace-tab"
                     onClick={() => setActiveWorkspace('reports')}
                   >
-                    <BarChart3 className={`w-4 h-4 ${activeWorkspace === 'reports' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <BarChart3 aria-hidden="true" />
                     <span>Reportes</span>
                   </button>
 
                   <button
                     type="button"
                     aria-current={activeWorkspace === 'devices' ? 'page' : undefined}
-                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
-                      activeWorkspace === 'devices'
-                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
-                        : 'text-gray-300 hover:text-white hover:bg-white/5'
-                    }`}
+                    className="pos-workspace-tab"
                     onClick={() => setActiveWorkspace('devices')}
                   >
-                    <Printer className={`w-4 h-4 ${activeWorkspace === 'devices' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <Printer aria-hidden="true" />
                     <span>Impresora</span>
                   </button>
 
