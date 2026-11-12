@@ -6,7 +6,7 @@ import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
 import { PosReports } from './PosReports';
 import { usePosDialogs } from './PosDialogs';
-import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarAnulacionOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, guardarVentaOfflineEnColaPos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -245,6 +245,29 @@ export const PosPage = () => {
         await solicitarApi('/api/shifts/open/', { method: 'POST', body: { uuid: event.shift_uuid, ...event.payload } });
         await eliminarEventoTurnoOfflinePos(event);
       } catch (error) {
+        // Si el servidor responde 409 (ya existe un turno abierto):
+        if (error instanceof ApiError && (error.status === 409 || error.message.includes('Ya existe un turno abierto'))) {
+          try {
+            const currentShiftState = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
+            if (currentShiftState?.shift && !currentShiftState.another_shift_open) {
+              // El usuario actual ya tiene un turno abierto y válido en el servidor.
+              // Reasignamos cualquier venta/anulación offline al turno activo del servidor:
+              const queuedSales = await listarVentasOfflineEnColaPos(event.shift_uuid);
+              const queuedCancellations = await listarAnulacionesOfflinePos(event.shift_uuid);
+              for (const sale of queuedSales) {
+                await guardarVentaOfflineEnColaPos({ ...sale, shift_uuid: currentShiftState.shift.uuid });
+              }
+              for (const cancellation of queuedCancellations) {
+                await guardarAnulacionOfflinePos({ ...cancellation, shift_uuid: currentShiftState.shift.uuid });
+              }
+              // Descartamos la apertura duplicada que ya no es necesaria
+              await eliminarEventoTurnoOfflinePos(event);
+              continue;
+            }
+          } catch (innerError) {
+            console.warn('Error al conciliar apertura duplicada con turno de servidor:', innerError);
+          }
+        }
         await marcarErrorEventoTurnoOfflinePos(event, error instanceof Error ? error.message : 'No se pudo sincronizar la apertura del turno.');
         setErrorMessage(error instanceof Error ? error.message : 'La apertura offline sigue pendiente de sincronización.');
         allSynced = false;
@@ -272,6 +295,11 @@ export const PosPage = () => {
         setLastClosedShift(closedShift);
         setShift(null);
       } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          // El turno nunca existió en el backend (apertura y cierre puramente offline)
+          await eliminarEventoTurnoOfflinePos(event);
+          continue;
+        }
         await marcarErrorEventoTurnoOfflinePos(event, error instanceof Error ? error.message : 'No se pudo sincronizar el cierre del turno.');
         setErrorMessage(error instanceof Error ? error.message : 'El cierre offline sigue pendiente de sincronización.');
         allSynced = false;
@@ -312,8 +340,14 @@ export const PosPage = () => {
     if (closeEvents.length && !await syncPendingCloseEvents(userId)) {
       throw new Error('El cierre del turno sigue pendiente de conciliación.');
     }
-    const closedShift = await solicitarApi<CashShift>(`/api/shifts/${shiftUuid}/`);
-    setLastClosedShift(closedShift);
+    let closedShift: CashShift | null = null;
+    try {
+      closedShift = await solicitarApi<CashShift>(`/api/shifts/${shiftUuid}/`);
+      setLastClosedShift(closedShift);
+    } catch {
+      // El turno no existe en el servidor (fue un turno offline no registrado)
+      closedShift = null;
+    }
     setPendingShiftEvents(await listarEventosTurnoOfflinePos(userId));
     setHasQueuedOfflineSales(false);
     return closedShift;
@@ -845,16 +879,18 @@ export const PosPage = () => {
   return (
     <main className="pos-shell min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">
       <div className="mx-auto w-full max-w-[1600px]">
-        <header className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#FACC15]">
-              San Martín
-            </p>
-            <h1 className="mt-1 font-heading text-3xl font-bold uppercase text-white">
-              Punto de venta
-            </h1>
-          </div>
-        </header>
+        {!user && (
+          <header className="mb-6 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#FACC15]">
+                San Martín
+              </p>
+              <h1 className="mt-1 font-heading text-3xl font-bold uppercase text-white">
+                Punto de venta
+              </h1>
+            </div>
+          </header>
+        )}
 
         {errorMessage && (
           <div
@@ -917,116 +953,169 @@ export const PosPage = () => {
           </form>
         ) : (
           <section className="pos-authenticated space-y-5">
-            <div className="pos-session-card flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#16191F]/90 backdrop-blur-md p-3.5 sm:p-4 shadow-xl transition-all duration-200 lg:flex-row lg:items-center lg:justify-between">
-              {/* Bloque Izquierdo: Operador / Sesión activa */}
-              <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#FACC15]/30 bg-gradient-to-br from-[#FACC15]/15 to-transparent text-[#FACC15] shadow-[0_0_12px_rgba(250,204,21,0.15)]">
-                  <User className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-gray-400 leading-none">
-                    Sesión activa
-                  </span>
-                  <div className="mt-1 flex items-center gap-2">
-                    <p className="font-heading text-lg font-bold uppercase tracking-wide text-white leading-tight">
-                      {user.username}
-                    </p>
-                    <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold text-gray-300">
-                      Cajero
+            {/* Master Unified POS Command Navbar */}
+            <header className="pos-master-navbar pos-session-card flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#141820]/95 backdrop-blur-xl p-3 sm:px-5 sm:py-3.5 shadow-2xl transition-all xl:flex-row xl:items-center xl:justify-between">
+              {/* Bloque 1: Identidad Brand + Navegación Segmentada de Espacios (Caja, Catálogo, Reportes) */}
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                {/* Brand Emblem */}
+                <div className="flex items-center gap-2.5 pr-2 sm:pr-4 sm:border-r border-white/10 shrink-0">
+                  <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-[#FACC15]/40 shadow-[0_0_12px_rgba(250,204,21,0.25)] shrink-0 bg-[#0D0D0D]">
+                    <img
+                      src="/logo-sanmartin.png"
+                      alt="San Martín Food Truck"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/logo-sanmartin.jpg';
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <span className="block font-heading text-base font-extrabold uppercase tracking-wider text-white leading-none">
+                      San Martín
+                    </span>
+                    <span className="block text-[9px] font-bold uppercase tracking-[0.2em] text-[#FACC15] leading-none mt-0.5">
+                      Punto de Venta
                     </span>
                   </div>
                 </div>
+
+                {/* Segmented Workspace Navigation Tabs */}
+                <nav className="pos-workspace-nav flex items-center gap-1 border-0 p-0" aria-label="Secciones del punto de venta">
+                  <button
+                    type="button"
+                    aria-current={activeWorkspace === 'sales' ? 'page' : undefined}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                      activeWorkspace === 'sales'
+                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
+                        : 'text-gray-300 hover:text-white hover:bg-white/5'
+                    }`}
+                    onClick={() => setActiveWorkspace('sales')}
+                  >
+                    <CircleDollarSign className={`w-4 h-4 ${activeWorkspace === 'sales' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <span>Caja</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    aria-current={activeWorkspace === 'catalog' ? 'page' : undefined}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                      activeWorkspace === 'catalog'
+                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
+                        : 'text-gray-300 hover:text-white hover:bg-white/5'
+                    }`}
+                    onClick={() => {
+                      setActiveWorkspace('catalog');
+                      if (offlineMode) {
+                        void cargarCatalogoPos().catch(() => undefined);
+                      } else {
+                        void precargarCatalogoPos().catch(() => undefined);
+                      }
+                    }}
+                  >
+                    <Boxes className={`w-4 h-4 ${activeWorkspace === 'catalog' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <span>Catálogo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    aria-current={activeWorkspace === 'reports' ? 'page' : undefined}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+                      activeWorkspace === 'reports'
+                        ? 'bg-[#FACC15] text-[#0D0D0D] shadow-md shadow-[#FACC15]/25 scale-[1.02]'
+                        : 'text-gray-300 hover:text-white hover:bg-white/5'
+                    }`}
+                    onClick={() => setActiveWorkspace('reports')}
+                  >
+                    <BarChart3 className={`w-4 h-4 ${activeWorkspace === 'reports' ? 'text-[#0D0D0D]' : 'text-[#FACC15]'}`} />
+                    <span>Reportes</span>
+                  </button>
+
+                  {offlineMode && activeWorkspace === 'catalog' && (
+                    <span className="hidden md:inline-flex items-center gap-1 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+                      Solo lectura offline
+                    </span>
+                  )}
+                </nav>
               </div>
 
-              {/* Bloque Centro: Estado de Conectividad & Sincronización */}
-              <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+              {/* Bloque 2: Estado de Red, Reloj de Santiago y Control de Sesión */}
+              <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2.5 sm:gap-3">
+                {/* Conectividad & Sincronización */}
                 {offlineMode ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-200 shadow-sm">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400"></span>
-                      </span>
-                      <WifiOff className="h-4 w-4 text-amber-400 shrink-0" />
-                      <span>Modo offline · cambios guardados en este equipo</span>
-                    </div>
-
+                  <div className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-1 pr-2.5 shadow-sm">
                     <button
                       type="button"
                       onClick={() => void handleReconnect()}
                       disabled={isSubmitting}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/35 bg-gradient-to-r from-emerald-600/25 to-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200 shadow-sm transition-all hover:brightness-125 hover:border-emerald-400/50 active:scale-95 disabled:opacity-50 cursor-pointer"
-                      title="Reintentar conexión y sincronizar ventas offline"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-bold text-emerald-200 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                      title="Reconectar y sincronizar ventas offline con el servidor"
                     >
-                      <RefreshCw className={`h-3.5 w-3.5 ${isSubmitting ? 'animate-spin text-emerald-300' : 'text-emerald-400'}`} />
-                      <span>{isSubmitting ? 'Conectando…' : 'Reconectar y sincronizar'}</span>
+                      <RefreshCw className={`h-3 w-3 ${isSubmitting ? 'animate-spin text-emerald-300' : 'text-emerald-400'}`} />
+                      <span>{isSubmitting ? 'Conectando…' : 'Reconectar'}</span>
                     </button>
+                    <div className="flex items-center gap-1.5 pl-1 text-xs font-semibold text-amber-200">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
+                      </span>
+                      <WifiOff className="h-3 w-3 text-amber-400" />
+                      <span>Modo offline · cambios locales</span>
+                    </div>
                   </div>
                 ) : (
-                  <div className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 shadow-sm">
+                  <div className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 shadow-sm">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
                     </span>
-                    <Wifi className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span>En línea · Servidor sincronizado</span>
+                    <Wifi className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>En línea</span>
                   </div>
                 )}
-              </div>
 
-              {/* Bloque Derecho: Reloj Local (Santiago) & Cerrar Sesión */}
-              <div className="flex items-center justify-between sm:justify-end gap-2.5 sm:gap-3">
+                {/* Reloj local Santiago */}
                 <div
-                  className="inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 shadow-inner"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 shadow-inner"
                   aria-label={`Hora local: ${chileClock.date}, ${chileClock.time}`}
                 >
-                  <Clock3 className="h-4 w-4 text-[#FACC15] shrink-0" aria-hidden="true" />
-                  <span className="text-xs font-medium capitalize tracking-wide text-gray-300">
+                  <Clock3 className="h-3.5 w-3.5 text-[#FACC15] shrink-0" aria-hidden="true" />
+                  <span className="text-[11px] font-medium capitalize text-gray-300 hidden lg:inline">
                     {chileClock.date}
                   </span>
-                  <span className="h-4 w-px bg-white/15" aria-hidden="true" />
-                  <time
-                    className="font-heading text-base font-bold tracking-wider tabular-nums text-white"
-                    dateTime={new Date().toISOString()}
-                  >
+                  <span className="h-3.5 w-px bg-white/15 hidden lg:inline" aria-hidden="true" />
+                  <time className="font-heading text-sm font-bold tracking-wider tabular-nums text-white" dateTime={new Date().toISOString()}>
                     {chileClock.time}
                   </time>
                 </div>
 
+                {/* Operador / Sesión activa */}
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1">
+                  <div className="grid h-7 w-7 place-items-center rounded-lg border border-[#FACC15]/25 bg-[#FACC15]/10 text-[#FACC15]">
+                    <User className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="min-w-0 pr-1 text-left">
+                    <span className="block text-[8px] font-bold uppercase tracking-wider text-gray-400 leading-none">
+                      Sesión activa
+                    </span>
+                    <span className="block text-xs font-bold text-white capitalize leading-tight truncate">
+                      {user.username}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Botón Cerrar sesión */}
                 <button
                   type="button"
                   onClick={handleLogout}
                   disabled={isSubmitting}
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-xs sm:text-sm font-semibold text-gray-300 transition-all hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-200 active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-gray-300 transition-all hover:border-red-500/40 hover:bg-red-500/15 hover:text-red-200 active:scale-95 disabled:opacity-50 cursor-pointer"
                   title="Cerrar sesión actual"
                 >
-                  <LogOut className="h-4 w-4 text-gray-400 transition-colors" />
-                  <span>Cerrar sesión</span>
+                  <LogOut className="h-3.5 w-3.5 text-gray-400" />
+                  <span className="hidden sm:inline">Cerrar sesión</span>
                 </button>
               </div>
-            </div>
-
-            <nav className="pos-workspace-nav" aria-label="Secciones del punto de venta">
-              <button type="button" aria-current={activeWorkspace === 'sales' ? 'page' : undefined} className={activeWorkspace === 'sales' ? 'is-active' : ''} onClick={() => setActiveWorkspace('sales')}><CircleDollarSign aria-hidden="true" />Caja</button>
-              <button
-                type="button"
-                aria-current={activeWorkspace === 'catalog' ? 'page' : undefined}
-                className={activeWorkspace === 'catalog' ? 'is-active' : ''}
-                onClick={() => {
-                  setActiveWorkspace('catalog');
-                  if (offlineMode) {
-                    void cargarCatalogoPos().catch(() => undefined);
-                  } else {
-                    void precargarCatalogoPos().catch(() => undefined);
-                  }
-                }}
-              >
-                <Boxes aria-hidden="true" />
-                Catálogo
-              </button>
-              <button type="button" aria-current={activeWorkspace === 'reports' ? 'page' : undefined} className={activeWorkspace === 'reports' ? 'is-active' : ''} onClick={() => setActiveWorkspace('reports')}><BarChart3 aria-hidden="true" />Reportes</button>
-              {offlineMode && activeWorkspace === 'catalog' && <span>Solo lectura sin conexión</span>}
-            </nav>
+            </header>
 
             {activeWorkspace === 'catalog' ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} /> : activeWorkspace === 'reports' ? <PosReports offlineMode={offlineMode} /> : <>
             <PosPrinterDiagnostics />
