@@ -1,8 +1,7 @@
 export interface MenuItem {
   id: string;
   name: string;
-  // ponytail: align category union with real CSV catalog categories
-  category: 'sandwiches' | 'vianesas' | 'ases' | 'chorrillanas' | 'acompanamientos' | 'salsas' | 'bebestibles' | 'agregados';
+  category: string;
   size?: string;
   price: number;
   originalPrice?: number;

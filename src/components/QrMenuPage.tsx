@@ -7,7 +7,9 @@ import {
   Users, 
   Check
 } from 'lucide-react';
-import { MENU_CATEGORIES, MENU_ITEMS, COMBOS_DATA } from '../data/menuData';
+import { COMBOS_DATA } from '../data/menuData';
+import { CatalogStatus } from './CatalogStatus';
+import { useMenuCatalog } from '../hooks/useMenuCatalog';
 import { formatPriceCLP, useBusinessStatus } from '../utils/businessHours';
 
 interface QrMenuPageProps {
@@ -18,11 +20,19 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const status = useBusinessStatus();
+  const {
+    categories: menuCategories,
+    items,
+    isLoading,
+    hasError,
+    isOfflineFallback,
+    retry,
+  } = useMenuCatalog();
 
   // Filtered menu items
   const filteredItems = useMemo(() => {
     if (activeCategory === 'combos') return [];
-    return MENU_ITEMS.filter((item) => {
+    return items.filter((item) => {
       const matchesCategory =
         activeCategory === 'all' || item.category === activeCategory;
       const matchesSearch =
@@ -33,7 +43,7 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
         );
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, searchQuery]);
+  }, [activeCategory, items, searchQuery]);
 
   // Filtered combos
   const showCombos = activeCategory === 'all' || activeCategory === 'combos';
@@ -49,10 +59,10 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
 
   const categories = useMemo(() => {
     return [
-      ...MENU_CATEGORIES,
+      ...menuCategories,
       { id: 'combos', name: 'Promos' }
     ];
-  }, []);
+  }, [menuCategories]);
 
   const totalResults = filteredItems.length + (showCombos ? filteredCombos.length : 0);
 
@@ -154,9 +164,16 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-5 sm:py-6 space-y-6">
+
+        <CatalogStatus
+          isLoading={isLoading && items.length === 0}
+          hasError={hasError}
+          isOfflineFallback={isOfflineFallback}
+          onRetry={retry}
+        />
         
         {/* Empty Search State */}
-        {totalResults === 0 ? (
+        {(!isLoading || items.length > 0) && !hasError && totalResults === 0 ? (
           <div className="text-center py-16 bg-[#141414] rounded-2xl border border-white/10 p-6">
             <h3 className="font-heading text-lg text-white font-bold uppercase mb-1">
               No encontramos resultados para tu búsqueda

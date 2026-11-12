@@ -10,14 +10,20 @@ import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
 import { FloatingWhatsApp } from './components/FloatingWhatsApp';
 import { QrMenuPage } from './components/QrMenuPage';
+import { PosPage } from './components/PosPage';
+import { AppearanceControls } from './components/AppearanceControls';
+import { PosDialogProvider } from './components/PosDialogs';
 import { CartItem, ComboItem } from './types';
 
 // ponytail: removed UnderConstruction maintenance gate so full landing and QR menu are live
 
-function getInitialRoute(): 'home' | 'menu' {
+type AppRoute = 'home' | 'menu' | 'pos';
+
+function getRouteFromLocation(): AppRoute {
   if (typeof window === 'undefined') return 'home';
   const path = window.location.pathname.toLowerCase();
   const hash = window.location.hash.toLowerCase();
+  if (path === '/pos' || path.startsWith('/pos/')) return 'pos';
   if (path === '/menu' || path.startsWith('/menu/') || hash === '#/menu' || hash === '#menu') {
     return 'menu';
   }
@@ -25,19 +31,13 @@ function getInitialRoute(): 'home' | 'menu' {
 }
 
 export default function App() {
-  const [currentRoute, setCurrentRoute] = useState<'home' | 'menu'>(getInitialRoute);
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(getRouteFromLocation);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const handleLocationChange = () => {
-      const path = window.location.pathname.toLowerCase();
-      const hash = window.location.hash.toLowerCase();
-      if (path === '/menu' || path.startsWith('/menu/') || hash === '#/menu' || hash === '#menu') {
-        setCurrentRoute('menu');
-      } else {
-        setCurrentRoute('home');
-      }
+      setCurrentRoute(getRouteFromLocation());
     };
 
     window.addEventListener('popstate', handleLocationChange);
@@ -48,16 +48,15 @@ export default function App() {
     };
   }, []);
 
-  const navigateTo = (route: 'home' | 'menu') => {
-    if (route === 'menu') {
-      window.history.pushState(null, '', '/menu');
-      setCurrentRoute('menu');
-      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-    } else {
-      window.history.pushState(null, '', '/');
-      setCurrentRoute('home');
-      window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
-    }
+  const navigateTo = (route: AppRoute) => {
+    const paths: Record<AppRoute, string> = {
+      home: '/',
+      menu: '/menu',
+      pos: '/pos',
+    };
+    window.history.pushState(null, '', paths[route]);
+    setCurrentRoute(route);
+    window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   };
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -108,6 +107,10 @@ export default function App() {
 
   if (currentRoute === 'menu') {
     return <QrMenuPage onNavigateHome={() => navigateTo('home')} />;
+  }
+
+  if (currentRoute === 'pos') {
+    return <PosDialogProvider><PosPage /><AppearanceControls /></PosDialogProvider>;
   }
 
   return (

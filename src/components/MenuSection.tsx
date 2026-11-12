@@ -8,7 +8,8 @@ import {
   Info 
 } from 'lucide-react';
 import { MenuItem } from '../types';
-import { MENU_CATEGORIES, MENU_ITEMS } from '../data/menuData';
+import { CatalogStatus } from './CatalogStatus';
+import { useMenuCatalog } from '../hooks/useMenuCatalog';
 import { formatPriceCLP, RESTAURANT_INFO } from '../utils/businessHours';
 
 // Scalable Feature Flag for Phase 2:
@@ -23,9 +24,17 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [addedItemId, setAddedItemId] = useState<string | null>(null);
+  const {
+    categories,
+    items,
+    isLoading,
+    hasError,
+    isOfflineFallback,
+    retry,
+  } = useMenuCatalog();
 
   const filteredItems = useMemo(() => {
-    return MENU_ITEMS.filter((item) => {
+    return items.filter((item) => {
       const matchesCategory =
         activeCategory === 'all' || item.category === activeCategory;
       const matchesSearch =
@@ -36,7 +45,7 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
         );
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, searchQuery]);
+  }, [activeCategory, items, searchQuery]);
 
   const handleAdd = (item: MenuItem) => {
     if (onAddToCart) {
@@ -98,7 +107,7 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
 
           {/* Categories Animated Tabs */}
           <div className="flex items-center justify-start sm:justify-center gap-1.5 overflow-x-auto pb-1 scrollbar-none px-1">
-            {MENU_CATEGORIES.map((cat) => {
+            {categories.map((cat) => {
               const isActive = activeCategory === cat.id;
               return (
                 <button
@@ -128,7 +137,14 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
         </div>
 
         {/* Menu Grid - Compact & Responsive */}
-        {filteredItems.length === 0 ? (
+        <CatalogStatus
+          isLoading={isLoading && items.length === 0}
+          hasError={hasError}
+          isOfflineFallback={isOfflineFallback}
+          onRetry={retry}
+        />
+
+        {(!isLoading || items.length > 0) && !hasError && filteredItems.length === 0 ? (
           <div className="text-center py-12 bg-[#141414] rounded-2xl border border-white/10 max-w-md mx-auto p-6">
             <Info className="w-8 h-8 text-amber-400 mx-auto mb-2" />
             <h3 className="font-heading text-lg text-white font-bold uppercase mb-1">
@@ -147,7 +163,9 @@ export const MenuSection = ({ onAddToCart }: MenuSectionProps) => {
               Ver toda la carta
             </button>
           </div>
-        ) : (
+        ) : null}
+
+        {filteredItems.length > 0 && (
           <motion.div 
             layout
             className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"

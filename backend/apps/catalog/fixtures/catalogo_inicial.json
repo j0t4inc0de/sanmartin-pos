@@ -1,0 +1,1119 @@
+{
+  "categories": [
+    {
+      "slug": "sandwiches",
+      "name": "Sándwiches",
+      "sort_order": 1
+    },
+    {
+      "slug": "vianesas",
+      "name": "Vianesas",
+      "sort_order": 2
+    },
+    {
+      "slug": "ases",
+      "name": "Ases",
+      "sort_order": 3
+    },
+    {
+      "slug": "chorrillanas",
+      "name": "Chorrillanas",
+      "sort_order": 4
+    },
+    {
+      "slug": "acompanamientos",
+      "name": "Acompañamientos",
+      "sort_order": 5
+    },
+    {
+      "slug": "salsas",
+      "name": "Salsas",
+      "sort_order": 6
+    },
+    {
+      "slug": "bebestibles",
+      "name": "Bebestibles",
+      "sort_order": 7
+    },
+    {
+      "slug": "agregados",
+      "name": "Agregados",
+      "sort_order": 8
+    }
+  ],
+  "products": [
+    {
+      "slug": "sandwich-italiano",
+      "category": "sandwiches",
+      "name": "Sándwich Italiano",
+      "description": "Proteína a elección, tomate, palta, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Palta",
+        "Mayo"
+      ],
+      "price": 5200,
+      "original_price": null,
+      "image_url": "/productos/sandwich-italiano.jpg",
+      "badge": "Más Vendido ⭐",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-dinamico",
+      "category": "sandwiches",
+      "name": "Sándwich Dinámico",
+      "description": "Proteína a elección, tomate, americana, chucrut, palta, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Americana",
+        "Chucrut",
+        "Palta",
+        "Mayo"
+      ],
+      "price": 5900,
+      "original_price": null,
+      "image_url": "/productos/sandwich-dinamico.jpg",
+      "badge": "Contundente 🔥",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-chacarero",
+      "category": "sandwiches",
+      "name": "Sándwich Chacarero",
+      "description": "Proteína a elección, tomate, poroto verde, ají verde, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Poroto verde",
+        "Ají verde",
+        "Mayo"
+      ],
+      "price": 5700,
+      "original_price": null,
+      "image_url": "/productos/sandwich-chacarero.jpg",
+      "badge": "Tradicional 🇨🇱",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-completo",
+      "category": "sandwiches",
+      "name": "Sándwich Completo",
+      "description": "Proteína a elección, tomate, americana, chucrut, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Americana",
+        "Chucrut",
+        "Mayo"
+      ],
+      "price": 5200,
+      "original_price": null,
+      "image_url": "/productos/sandwich-completo.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-napolitano",
+      "category": "sandwiches",
+      "name": "Sándwich Napolitano",
+      "description": "Proteína a elección, tomate, queso mantecoso, orégano.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Queso mantecoso",
+        "Orégano"
+      ],
+      "price": 5500,
+      "original_price": null,
+      "image_url": "/productos/sandwich-napolitano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-a-lo-pobre",
+      "category": "sandwiches",
+      "name": "Sándwich A lo Pobre",
+      "description": "Proteína a elección, cebolla caramelizada, papas hilo, huevo frito.",
+      "ingredients": [
+        "Proteína a elección",
+        "Cebolla caramelizada",
+        "Papas hilo",
+        "Huevo frito"
+      ],
+      "price": 5900,
+      "original_price": null,
+      "image_url": "/productos/sandwich-alopobre.jpg",
+      "badge": "Clásico Chileno 🍳",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-luco",
+      "category": "sandwiches",
+      "name": "Sándwich Luco",
+      "description": "Proteína a elección, queso mantecoso.",
+      "ingredients": [
+        "Proteína a elección",
+        "Queso mantecoso"
+      ],
+      "price": 5300,
+      "original_price": null,
+      "image_url": "/productos/sandwich-luco.jpg",
+      "badge": "Favorito 🧀",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-vegetariano",
+      "category": "sandwiches",
+      "name": "Sándwich Vegetariano",
+      "description": "Champiñón, tomate, poroto verde, lechuga, palta.",
+      "ingredients": [
+        "Champiñón",
+        "Tomate",
+        "Poroto verde",
+        "Lechuga",
+        "Palta"
+      ],
+      "price": 5000,
+      "original_price": null,
+      "image_url": "/productos/sandwich-vegetariano.jpg",
+      "badge": "Veggie 🥑",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-de-la-casa",
+      "category": "sandwiches",
+      "name": "Sándwich De la Casa",
+      "description": "Proteína a elección, champiñón, queso mantecoso, bbq, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Champiñón",
+        "Queso mantecoso",
+        "BBQ",
+        "Mayo"
+      ],
+      "price": 6600,
+      "original_price": null,
+      "image_url": "/productos/sandwich-delacasa.jpg",
+      "badge": "Especialidad 👑",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-campesino",
+      "category": "sandwiches",
+      "name": "Sándwich Campesino",
+      "description": "Proteína a elección, cebolla caramelizada, champiñón, tomate, lechuga, pepinillo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Cebolla caramelizada",
+        "Champiñón",
+        "Tomate",
+        "Lechuga",
+        "Pepinillo"
+      ],
+      "price": 6900,
+      "original_price": null,
+      "image_url": "/productos/sandwich-campesino.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-granjero",
+      "category": "sandwiches",
+      "name": "Sándwich Granjero",
+      "description": "Proteína a elección, cebolla caramelizada, champiñón, cheddar, lechuga.",
+      "ingredients": [
+        "Proteína a elección",
+        "Cebolla caramelizada",
+        "Champiñón",
+        "Queso cheddar",
+        "Lechuga"
+      ],
+      "price": 6900,
+      "original_price": null,
+      "image_url": "/productos/sandwich-granjero.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "sandwich-york",
+      "category": "sandwiches",
+      "name": "Sándwich York",
+      "description": "Proteína a elección, cebolla caramelizada, queso mozzarella, queso cheddar, tomate, lechuga, tocino.",
+      "ingredients": [
+        "Proteína a elección",
+        "Cebolla caramelizada",
+        "Queso mozzarella",
+        "Queso cheddar",
+        "Tomate",
+        "Lechuga",
+        "Tocino"
+      ],
+      "price": 7500,
+      "original_price": null,
+      "image_url": "/productos/sandwich-york.jpg",
+      "badge": "Full Cargado 🥓",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-sola",
+      "category": "vianesas",
+      "name": "Vianesa Sola",
+      "description": "Vianesa, pan.",
+      "ingredients": [
+        "Vianesa",
+        "Pan"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/vianesa-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-mayo-casera",
+      "category": "vianesas",
+      "name": "Vianesa Mayo Casera",
+      "description": "Vianesa, mayo casera.",
+      "ingredients": [
+        "Vianesa",
+        "Mayo casera"
+      ],
+      "price": 1300,
+      "original_price": null,
+      "image_url": "/productos/vianesa-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-tomate-mayo",
+      "category": "vianesas",
+      "name": "Vianesa Tomate Mayo",
+      "description": "Vianesa, tomate, mayo casera.",
+      "ingredients": [
+        "Vianesa",
+        "Tomate",
+        "Mayo casera"
+      ],
+      "price": 1500,
+      "original_price": null,
+      "image_url": "/productos/vianesa-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-palta-mayo",
+      "category": "vianesas",
+      "name": "Vianesa Palta Mayo",
+      "description": "Vianesa, palta, mayo casera.",
+      "ingredients": [
+        "Vianesa",
+        "Palta",
+        "Mayo casera"
+      ],
+      "price": 1800,
+      "original_price": null,
+      "image_url": "/productos/vianesa-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-italiano",
+      "category": "vianesas",
+      "name": "Vianesa Italiano",
+      "description": "Vianesa, palta, tomate, mayo casera.",
+      "ingredients": [
+        "Vianesa",
+        "Palta",
+        "Tomate",
+        "Mayo casera"
+      ],
+      "price": 2000,
+      "original_price": null,
+      "image_url": "/productos/vianesa-italiano.jpg",
+      "badge": "Clásico 🌭",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-chacarero",
+      "category": "vianesas",
+      "name": "Vianesa Chacarero",
+      "description": "Vianesa, tomate, poroto verde, mayo casera, ají verde.",
+      "ingredients": [
+        "Vianesa",
+        "Tomate",
+        "Poroto verde",
+        "Mayo casera",
+        "Ají verde"
+      ],
+      "price": 2200,
+      "original_price": null,
+      "image_url": "/productos/vianesa-dinamico.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-completo",
+      "category": "vianesas",
+      "name": "Vianesa Completo",
+      "description": "Vianesa, tomate, americana, chucrut, mayo casera.",
+      "ingredients": [
+        "Vianesa",
+        "Tomate",
+        "Americana",
+        "Chucrut",
+        "Mayo casera"
+      ],
+      "price": 1800,
+      "original_price": null,
+      "image_url": "/productos/vianesa-dinamico.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-napolitano",
+      "category": "vianesas",
+      "name": "Vianesa Napolitano",
+      "description": "Vianesa, queso mantecoso, tomate, orégano.",
+      "ingredients": [
+        "Vianesa",
+        "Queso mantecoso",
+        "Tomate",
+        "Orégano"
+      ],
+      "price": 2200,
+      "original_price": null,
+      "image_url": "/productos/vianesa-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-a-lo-pobre",
+      "category": "vianesas",
+      "name": "Vianesa A lo Pobre",
+      "description": "Vianesa, cebolla caramelizada, papas hilo, huevo frito.",
+      "ingredients": [
+        "Vianesa",
+        "Cebolla caramelizada",
+        "Papas hilo",
+        "Huevo frito"
+      ],
+      "price": 2500,
+      "original_price": null,
+      "image_url": "/productos/vianesa-dinamico.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-luco",
+      "category": "vianesas",
+      "name": "Vianesa Luco",
+      "description": "Vianesa, queso mantecoso.",
+      "ingredients": [
+        "Vianesa",
+        "Queso mantecoso"
+      ],
+      "price": 2000,
+      "original_price": null,
+      "image_url": "/productos/vianesa-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "vianesa-dinamico",
+      "category": "vianesas",
+      "name": "Vianesa Dinámico",
+      "description": "Vianesa, palta, tomate, americana, chucrut, mayo casera.",
+      "ingredients": [
+        "Vianesa",
+        "Palta",
+        "Tomate",
+        "Americana",
+        "Chucrut",
+        "Mayo casera"
+      ],
+      "price": 2200,
+      "original_price": null,
+      "image_url": "/productos/vianesa-dinamico.jpg",
+      "badge": "Imperdible ⚡",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "as-italiano",
+      "category": "ases",
+      "name": "As Italiano",
+      "description": "Proteína a elección, tomate, palta, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Palta",
+        "Mayo"
+      ],
+      "price": 3500,
+      "original_price": null,
+      "image_url": "/productos/as-italiano.jpg",
+      "badge": "Favorito 🥖",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "as-chacarero",
+      "category": "ases",
+      "name": "As Chacarero",
+      "description": "Proteína a elección, tomate, poroto verde, ají verde, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Poroto verde",
+        "Ají verde",
+        "Mayo"
+      ],
+      "price": 3600,
+      "original_price": null,
+      "image_url": "/productos/as-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "as-completo",
+      "category": "ases",
+      "name": "As Completo",
+      "description": "Proteína a elección, tomate, americana, chucrut, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Americana",
+        "Chucrut",
+        "Mayo"
+      ],
+      "price": 3200,
+      "original_price": null,
+      "image_url": "/productos/as-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "as-napolitano",
+      "category": "ases",
+      "name": "As Napolitano",
+      "description": "Proteína a elección, tomate, queso mantecoso, orégano.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Queso mantecoso",
+        "Orégano"
+      ],
+      "price": 3500,
+      "original_price": null,
+      "image_url": "/productos/as-luco.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "as-a-lo-pobre",
+      "category": "ases",
+      "name": "As A lo Pobre",
+      "description": "Proteína a elección, cebolla caramelizada, papas hilo, huevo frito.",
+      "ingredients": [
+        "Proteína a elección",
+        "Cebolla caramelizada",
+        "Papas hilo",
+        "Huevo frito"
+      ],
+      "price": 3900,
+      "original_price": null,
+      "image_url": "/productos/as-luco.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "as-luco",
+      "category": "ases",
+      "name": "As Luco",
+      "description": "Proteína a elección, queso mantecoso.",
+      "ingredients": [
+        "Proteína a elección",
+        "Queso mantecoso"
+      ],
+      "price": 3200,
+      "original_price": null,
+      "image_url": "/productos/as-luco.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "as-dinamico",
+      "category": "ases",
+      "name": "As Dinámico",
+      "description": "Proteína a elección, tomate, americana, chucrut, palta, mayo.",
+      "ingredients": [
+        "Proteína a elección",
+        "Tomate",
+        "Americana",
+        "Chucrut",
+        "Palta",
+        "Mayo"
+      ],
+      "price": 3700,
+      "original_price": null,
+      "image_url": "/productos/as-italiano.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "chorrillana-chica",
+      "category": "chorrillanas",
+      "name": "Chorrillana Chica",
+      "description": "Papas fritas, 2 proteínas a elección, cebolla caramelizada, 2 huevos fritos, longaniza.",
+      "ingredients": [
+        "Papas fritas",
+        "2 proteínas a elección",
+        "Cebolla caramelizada",
+        "2 huevos fritos",
+        "Longaniza"
+      ],
+      "price": 12000,
+      "original_price": null,
+      "image_url": "/productos/chorrillana.jpg",
+      "badge": "Para Compartir 🍟",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "chorrillana-grande",
+      "category": "chorrillanas",
+      "name": "Chorrillana Grande",
+      "description": "Papas fritas, 2 proteínas a elección, cebolla caramelizada, 4 huevos fritos, longaniza.",
+      "ingredients": [
+        "Papas fritas",
+        "2 proteínas a elección",
+        "Cebolla caramelizada",
+        "4 huevos fritos",
+        "Longaniza"
+      ],
+      "price": 15000,
+      "original_price": null,
+      "image_url": "/productos/chorrillana.jpg",
+      "badge": "Familiar XL 🔥",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "papas-chicas",
+      "category": "acompanamientos",
+      "name": "Papas Chicas",
+      "description": "Porción chica de papas fritas crujientes recién hechas.",
+      "ingredients": [
+        "Papas fritas",
+        "Toque de sal"
+      ],
+      "price": 2800,
+      "original_price": null,
+      "image_url": "/productos/papas-fritas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "papas-medianas",
+      "category": "acompanamientos",
+      "name": "Papas Medianas",
+      "description": "Porción mediana de papas fritas doradas y crujientes.",
+      "ingredients": [
+        "Papas fritas",
+        "Toque de sal"
+      ],
+      "price": 3800,
+      "original_price": null,
+      "image_url": "/productos/papas-fritas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "papas-grandes",
+      "category": "acompanamientos",
+      "name": "Papas Grandes",
+      "description": "Porción grande de papas fritas crujientes ideal para compartir.",
+      "ingredients": [
+        "Papas fritas",
+        "Toque de sal"
+      ],
+      "price": 4800,
+      "original_price": null,
+      "image_url": "/productos/papas-fritas.jpg",
+      "badge": "Para Compartir 🍟",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "nuggets",
+      "category": "acompanamientos",
+      "name": "Nuggets (10 Unidades)",
+      "description": "10 unidades + salsa a elección.",
+      "ingredients": [
+        "10 nuggets de pollo",
+        "Salsa a elección"
+      ],
+      "price": 3500,
+      "original_price": null,
+      "image_url": "/productos/nuggets.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "salsa-mayo",
+      "category": "salsas",
+      "name": "Salsa Mayo Casera",
+      "description": "Pote grande de mayo casera.",
+      "ingredients": [
+        "Mayo casera"
+      ],
+      "price": 500,
+      "original_price": null,
+      "image_url": "/productos/salsas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "salsa-bbq",
+      "category": "salsas",
+      "name": "Salsa BBQ",
+      "description": "Pote grande de bbq.",
+      "ingredients": [
+        "Salsa BBQ"
+      ],
+      "price": 500,
+      "original_price": null,
+      "image_url": "/productos/salsas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "salsa-queso",
+      "category": "salsas",
+      "name": "Salsa de Queso",
+      "description": "Pote grande de salsa de queso.",
+      "ingredients": [
+        "Salsa de queso"
+      ],
+      "price": 500,
+      "original_price": null,
+      "image_url": "/productos/salsas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "salsa-rocoto",
+      "category": "salsas",
+      "name": "Salsa Rocoto",
+      "description": "Pote grande de rocoto.",
+      "ingredients": [
+        "Salsa de rocoto"
+      ],
+      "price": 500,
+      "original_price": null,
+      "image_url": "/productos/salsas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "salsa-ajo-cilantro",
+      "category": "salsas",
+      "name": "Salsa Ajo Cilantro",
+      "description": "Pote grande de ajo cilantro.",
+      "ingredients": [
+        "Ajo",
+        "Cilantro",
+        "Base cremosa"
+      ],
+      "price": 500,
+      "original_price": null,
+      "image_url": "/productos/salsas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "salsa-ciboulette",
+      "category": "salsas",
+      "name": "Salsa Ciboulette",
+      "description": "Pote grande de ciboulette.",
+      "ingredients": [
+        "Ciboulette",
+        "Base cremosa"
+      ],
+      "price": 500,
+      "original_price": null,
+      "image_url": "/productos/salsas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "salsa-cheddar",
+      "category": "salsas",
+      "name": "Salsa Queso Cheddar",
+      "description": "Pote grande de salsa de queso cheddar.",
+      "ingredients": [
+        "Queso cheddar fundido"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/salsas.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "bebestible-lata",
+      "category": "bebestibles",
+      "name": "Bebida en Lata 350ml",
+      "description": "Lata 350ml a elección.",
+      "ingredients": [
+        "Lata 350ml helada"
+      ],
+      "price": 1300,
+      "original_price": null,
+      "image_url": "/productos/bebida-lata.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "bebestible-agua",
+      "category": "bebestibles",
+      "name": "Agua 600ml",
+      "description": "Agua 600ml con o sin gas.",
+      "ingredients": [
+        "Agua mineral 600ml"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/jugo.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "bebestible-redbull",
+      "category": "bebestibles",
+      "name": "Red Bull 250ml",
+      "description": "Red Bull 250ml.",
+      "ingredients": [
+        "Energética Red Bull 250ml"
+      ],
+      "price": 2000,
+      "original_price": null,
+      "image_url": "/productos/bebida-lata.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "bebestible-monster",
+      "category": "bebestibles",
+      "name": "Monster 473ml",
+      "description": "Monster 473ml.",
+      "ingredients": [
+        "Energética Monster 473ml"
+      ],
+      "price": 2000,
+      "original_price": null,
+      "image_url": "/productos/bebida-lata.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "bebestible-boca-ancha",
+      "category": "bebestibles",
+      "name": "Boca Ancha 300ml",
+      "description": "Boca ancha 300ml a elección.",
+      "ingredients": [
+        "Jugo / bebida boca ancha 300ml"
+      ],
+      "price": 1300,
+      "original_price": null,
+      "image_url": "/productos/jugo.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "bebestible-bebida-15l",
+      "category": "bebestibles",
+      "name": "Bebida 1.5L",
+      "description": "Bebida 1.5L a elección.",
+      "ingredients": [
+        "Botella 1.5L helada"
+      ],
+      "price": 2500,
+      "original_price": null,
+      "image_url": "/productos/bebida-15l.jpg",
+      "badge": "Familiar ❄️",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "bebestible-jugo-15l",
+      "category": "bebestibles",
+      "name": "Jugo 1.5L",
+      "description": "Jugo 1.5L a elección.",
+      "ingredients": [
+        "Jugo 1.5L helado"
+      ],
+      "price": 2500,
+      "original_price": null,
+      "image_url": "/productos/jugo.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-tomate",
+      "category": "agregados",
+      "name": "Agregado Tomate",
+      "description": "Porción extra de 3 rodajas de tomate fresco.",
+      "ingredients": [
+        "Tomate (3 rodajas)"
+      ],
+      "price": 500,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-palta",
+      "category": "agregados",
+      "name": "Agregado Palta",
+      "description": "Porción extra de palta fresca molida.",
+      "ingredients": [
+        "Palta"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-americana",
+      "category": "agregados",
+      "name": "Agregado Americana",
+      "description": "Porción extra de salsa americana.",
+      "ingredients": [
+        "Salsa americana"
+      ],
+      "price": 700,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-chucrut",
+      "category": "agregados",
+      "name": "Agregado Chucrut",
+      "description": "Porción extra de chucrut.",
+      "ingredients": [
+        "Chucrut"
+      ],
+      "price": 700,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-lechuga",
+      "category": "agregados",
+      "name": "Agregado Lechuga",
+      "description": "Porción extra de lechuga fresca.",
+      "ingredients": [
+        "Lechuga"
+      ],
+      "price": 700,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-pepinillo",
+      "category": "agregados",
+      "name": "Agregado Pepinillo",
+      "description": "Porción extra de pepinillo en rodajas.",
+      "ingredients": [
+        "Pepinillo"
+      ],
+      "price": 700,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-queso-mantecoso",
+      "category": "agregados",
+      "name": "Agregado Queso Mantecoso",
+      "description": "1.5 láminas de queso mantecoso fundido.",
+      "ingredients": [
+        "Queso mantecoso (1.5 láminas)"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-queso-mozzarella",
+      "category": "agregados",
+      "name": "Agregado Queso Mozzarella",
+      "description": "3 láminas de queso mozzarella fundido.",
+      "ingredients": [
+        "Queso mozzarella (3 láminas)"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-queso-cheddar",
+      "category": "agregados",
+      "name": "Agregado Queso Cheddar",
+      "description": "3 láminas de queso cheddar fundido.",
+      "ingredients": [
+        "Queso cheddar (3 láminas)"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-cebolla-caramelizada",
+      "category": "agregados",
+      "name": "Agregado Cebolla Caramelizada",
+      "description": "Porción extra de cebolla caramelizada.",
+      "ingredients": [
+        "Cebolla caramelizada"
+      ],
+      "price": 700,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-tocino",
+      "category": "agregados",
+      "name": "Agregado Tocino",
+      "description": "Porción extra de tocino crocante.",
+      "ingredients": [
+        "Tocino"
+      ],
+      "price": 1000,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-papa-hilo",
+      "category": "agregados",
+      "name": "Agregado Papa Hilo",
+      "description": "Porción extra de papas hilo crujientes.",
+      "ingredients": [
+        "Papa hilo"
+      ],
+      "price": 700,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-poroto-verde",
+      "category": "agregados",
+      "name": "Agregado Poroto Verde",
+      "description": "Porción extra de poroto verde fresco.",
+      "ingredients": [
+        "Poroto verde"
+      ],
+      "price": 700,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "slug": "agregado-item-aji-verde",
+      "category": "agregados",
+      "name": "Agregado Ají Verde",
+      "description": "Toque de ají verde chileno sin costo adicional.",
+      "ingredients": [
+        "Ají verde"
+      ],
+      "price": 0,
+      "original_price": null,
+      "image_url": "/productos/agregados.jpg",
+      "badge": "",
+      "is_available": true,
+      "is_active": true
+    }
+  ]
+}
