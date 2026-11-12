@@ -39,7 +39,9 @@ html[data-theme="light"] body {
 
 html[data-theme="light"] [class*="bg-[#0D0D0D]"],
 html[data-theme="light"] [class*="bg-[#0A0A0A]"],
-html[data-theme="light"] [class*="bg-[#101010]"] {
+html[data-theme="light"] [class*="bg-[#101010]"],
+html[data-theme="light"] [class*="bg-[#090C10]"],
+html[data-theme="light"] [class*="bg-[#090c10]"] {
   background-color: #f3f5f8 !important;
 }
 
@@ -688,12 +690,44 @@ html[data-theme="light"] .pos-session-card {
 }
 html[data-theme="light"] .pos-master-navbar [aria-label*="Hora local"],
 html[data-theme="light"] .pos-session-card [aria-label*="Hora local"],
+html[data-theme="light"] .pos-navbar-clock,
 html[data-theme="light"] .pos-master-navbar .pos-navbar-clock,
+html[data-theme="light"] .pos-navbar-user-chip,
 html[data-theme="light"] .pos-master-navbar .pos-navbar-user-chip,
+html[data-theme="light"] .pos-navbar-logout,
 html[data-theme="light"] .pos-master-navbar .pos-navbar-logout,
+html[data-theme="light"] [class*="bg-[#090C10]"],
+html[data-theme="light"] [class*="bg-[#090c10]"],
 html[data-theme="light"] .pos-master-navbar [class*="bg-[#090C10]"] {
   border-color: #e2e8f0 !important;
   background-color: #f8fafc !important;
+  box-shadow: 0 1px 2px rgba(15, 23 42, 0.05) !important;
+}
+html[data-theme="light"] .pos-navbar-user-chip span:first-child,
+html[data-theme="light"] .pos-master-navbar .pos-navbar-user-chip span:first-child {
+  color: #64748b !important;
+}
+html[data-theme="light"] .pos-navbar-user-chip span:last-child,
+html[data-theme="light"] .pos-master-navbar .pos-navbar-user-chip span:last-child {
+  color: #0f172a !important;
+}
+html[data-theme="light"] .pos-navbar-logout,
+html[data-theme="light"] .pos-master-navbar .pos-navbar-logout {
+  color: #334155 !important;
+}
+html[data-theme="light"] .pos-navbar-logout svg,
+html[data-theme="light"] .pos-master-navbar .pos-navbar-logout svg {
+  color: #64748b !important;
+}
+html[data-theme="light"] .pos-navbar-logout:hover,
+html[data-theme="light"] .pos-master-navbar .pos-navbar-logout:hover {
+  background-color: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #991b1b !important;
+}
+html[data-theme="light"] .pos-navbar-logout:hover svg,
+html[data-theme="light"] .pos-master-navbar .pos-navbar-logout:hover svg {
+  color: #dc2626 !important;
 }
 html[data-theme="light"] .pos-master-navbar [aria-label*="Hora local"] time,
 html[data-theme="light"] .pos-session-card [aria-label*="Hora local"] time {
