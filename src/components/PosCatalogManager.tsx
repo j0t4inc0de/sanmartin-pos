@@ -3,6 +3,7 @@ import { Archive, ArrowLeft, Check, CirclePlus, Package, RefreshCw, RotateCcw, S
 import { solicitarApi } from '../services/apiClient';
 import { cargarCatalogoPos, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
 import { usePosDialogs } from './PosDialogs';
+import { PosSnackbarAlert } from './PosSnackbarAlert';
 
 type Section = 'products' | 'categories' | 'modifiers';
 interface Category { id: number; slug: string; name: string; sort_order: number; is_active: boolean; updated_at: string; }
@@ -299,21 +300,37 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   return (
     <section className="pos-catalog-workspace" aria-labelledby="pos-catalog-title">
       <div className="pos-catalog-surface">
-        <header className="pos-catalog-header">
+        <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 bg-[#14181e] border border-white/10 rounded-2xl shadow-xl mb-6">
           <div>
-            <p className="pos-catalog-eyebrow">Administración del POS</p>
-            <h2 id="pos-catalog-title">Catálogo y menú</h2>
-            <p>
-              {offlineMode
-                ? 'Modo consulta (sin conexión). Los cambios requieren conexión con el servidor.'
-                : 'Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.'}
+            <p className="pos-catalog-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Administración del POS</p>
+            <h2 id="pos-catalog-title" className="mt-1 font-heading text-2xl font-bold text-white tracking-tight">Catálogo y menú</h2>
+            <p className="mt-1.5 text-sm text-gray-400">
+              {offlineMode ? 'Modo consulta (sin conexión). Los cambios requieren conexión con el servidor.' : 'Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.'}
             </p>
           </div>
-          <button type="button" className="pos-back-to-caja" onClick={close} title="Volver a la vista de caja">
-            <ArrowLeft aria-hidden="true" />
+          <button
+            type="button"
+            className="pos-back-to-caja flex items-center justify-center gap-2.5 h-11 px-5 rounded-xl bg-[#FACC15] hover:bg-[#EAB308] active:scale-95 text-[#0D0D0D] font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-yellow-500/20 cursor-pointer transition-all border border-yellow-400"
+            onClick={close}
+            title="Volver a la vista de caja"
+          >
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
             <span>VOLVER A CAJA</span>
           </button>
         </header>
+
+        <PosSnackbarAlert
+          open={Boolean(message)}
+          severity="success"
+          message={message}
+          onClose={() => setMessage('')}
+        />
+        <PosSnackbarAlert
+          open={Boolean(error)}
+          severity="error"
+          message={error}
+          onClose={() => setError('')}
+        />
 
         {offlineMode && (
           <div className="pos-catalog-offline" role="status">
@@ -728,10 +745,6 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
         </div>
         <footer className="pos-catalog-footer">
           <span>Los registros se desactivan para conservar el historial de ventas.</span>
-          <button type="button" className="pos-back-to-caja" onClick={close} title="Volver a la vista de caja">
-            <ArrowLeft aria-hidden="true" />
-            <span>VOLVER A CAJA</span>
-          </button>
         </footer>
       </div>
     </section>

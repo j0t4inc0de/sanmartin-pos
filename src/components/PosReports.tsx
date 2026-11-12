@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, BarChart3, CalendarDays, Clock3, RefreshCw, TrendingUp } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { Alert } from './Alert';
+import { PosSnackbarAlert } from './PosSnackbarAlert';
 
 type Period = 'day' | 'month';
 interface ReportData {
@@ -98,23 +99,41 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
   const topProductMaximum = Math.max(1, ...(topProducts.map(item => item.quantity) ?? []));
 
   return <section className="pos-report-workspace" aria-labelledby="pos-report-title">
-    <header className="pos-report-header flex flex-wrap items-center justify-between gap-4">
-      <div><p className="pos-report-eyebrow">Control de gestión</p><h2 id="pos-report-title">Reportes de ventas</h2><p>Consulta las ventas y cierres registrados en la zona horaria de Chile.</p></div>
-      <div className="flex items-center gap-3">
+    <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 bg-[#14181e] border border-white/10 rounded-2xl shadow-xl mb-6">
+      <div>
+        <p className="pos-report-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Control de gestión</p>
+        <h2 id="pos-report-title" className="mt-1 font-heading text-2xl font-bold text-white tracking-tight">Reportes de ventas</h2>
+        <p className="mt-1.5 text-sm text-gray-400">Consulta las ventas y cierres registrados en la zona horaria de Chile.</p>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <button
+          type="button"
+          className="pos-report-refresh inline-flex items-center gap-2 rounded-xl border border-white/10 bg-[#090C10] hover:bg-white/10 text-gray-200 px-4 h-11 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-inner"
+          onClick={() => setReloadKey(value => value + 1)}
+          disabled={loading || offlineMode}
+        >
+          <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          <span>Actualizar</span>
+        </button>
         {onClose && (
           <button
             type="button"
-            className="pos-back-to-caja"
+            className="pos-back-to-caja flex items-center justify-center gap-2.5 h-11 px-5 rounded-xl bg-[#FACC15] hover:bg-[#EAB308] active:scale-95 text-[#0D0D0D] font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-yellow-500/20 cursor-pointer transition-all border border-yellow-400"
             onClick={onClose}
             title="Volver a la vista de caja"
           >
-            <ArrowLeft aria-hidden="true" />
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
             <span>VOLVER A CAJA</span>
           </button>
         )}
-        <button type="button" className="pos-report-refresh" onClick={() => setReloadKey(value => value + 1)} disabled={loading || offlineMode}><RefreshCw aria-hidden="true" />Actualizar</button>
       </div>
     </header>
+    <PosSnackbarAlert
+      open={Boolean(error)}
+      severity="error"
+      message={error}
+      onClose={() => setError('')}
+    />
     <div className="pos-report-toolbar">
       <div className="pos-report-control"><span className="pos-report-control-label">Consultar por</span><div className="pos-report-period-switch" role="group" aria-label="Período del reporte">
         <button type="button" aria-pressed={period === 'day'} className={period === 'day' ? 'is-active' : ''} onClick={() => setPeriod('day')}><CalendarDays aria-hidden="true" />Día</button>

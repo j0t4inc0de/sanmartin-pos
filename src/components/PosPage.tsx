@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowLeft, BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, Printer, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
 import { Alert } from './Alert';
+import { PosSnackbarAlert } from './PosSnackbarAlert';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
@@ -959,6 +960,13 @@ export const PosPage = () => {
           </header>
         )}
 
+        <PosSnackbarAlert
+          open={Boolean(errorMessage)}
+          severity="error"
+          message={errorMessage}
+          onClose={() => setErrorMessage('')}
+        />
+
         {errorMessage && (
           <Alert severity="error" className="mb-5">
             {errorMessage}
@@ -1168,16 +1176,16 @@ export const PosPage = () => {
               <PosReports offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
             ) : activeWorkspace === 'devices' ? (
               <div className="space-y-4">
-                <header className="pos-report-workspace flex flex-wrap items-center justify-between gap-4">
+                <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 bg-[#14181e] border border-white/10 rounded-2xl shadow-xl mb-6">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Configuración del equipo</p>
-                    <h2 className="mt-1 font-heading text-2xl font-bold text-white">Impresora y gaveta</h2>
-                    <p className="mt-2 text-sm text-gray-400">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p>
+                    <p className="text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Configuración del equipo</p>
+                    <h2 className="mt-1 font-heading text-2xl font-bold text-white tracking-tight">Impresora y gaveta</h2>
+                    <p className="mt-1.5 text-sm text-gray-400">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveWorkspace('sales')}
-                    className="pos-back-to-caja"
+                    className="pos-back-to-caja flex items-center justify-center gap-2.5 h-11 px-5 rounded-xl bg-[#FACC15] hover:bg-[#EAB308] active:scale-95 text-[#0D0D0D] font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-yellow-500/20 cursor-pointer transition-all border border-yellow-400"
                     title="Volver a la vista de caja"
                   >
                     <ArrowLeft aria-hidden="true" className="h-4 w-4" />

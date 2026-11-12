@@ -4,6 +4,7 @@ import { solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
 import { printPosSale } from '../services/posPrinter';
 import { Alert } from './Alert';
+import { PosSnackbarAlert } from './PosSnackbarAlert';
 import { playSaleSuccessSound } from '../utils/soundEffects';
 import {
   cargarBorradorVentaPos,
@@ -733,8 +734,25 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         No se pudo leer el borrador de venta en este equipo; el cobro está bloqueado.
       </Alert>
     )}
-    {error && <Alert severity="error">{error}</Alert>}
-    {message && <Alert severity="success">{message}</Alert>}
+    {/* Floating Material-UI Popup Alert (Toast) */}
+    <PosSnackbarAlert
+      open={Boolean(message)}
+      severity="success"
+      message={message}
+      onClose={() => setMessage('')}
+    />
+    <PosSnackbarAlert
+      open={Boolean(error)}
+      severity="error"
+      message={error}
+      onClose={() => setError('')}
+    />
+    <PosSnackbarAlert
+      open={Boolean(printNotice)}
+      severity="warning"
+      message={printNotice}
+      onClose={() => setPrintNotice('')}
+    />
     {paymentReceivedPending && (
       <Alert
         severity="warning"

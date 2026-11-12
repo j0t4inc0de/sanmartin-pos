@@ -1,5 +1,7 @@
 /**
  * Utilidad de síntesis sonora pura con Web Audio API para microinteracciones del POS.
+ * Genera un sonido "DING!" cristalino, brillante y adictivo (campana de bronce / caja registradora)
+ * con efecto dopamina al registrar exitosamente una venta.
  * No requiere archivos externos ni dependencias adicionales.
  */
 
@@ -20,7 +22,8 @@ function getAudioContext(): AudioContext | null {
 }
 
 /**
- * Emite un sonido bajo y satisfactorio estilo "pop / chime" (TikTok) al concretar una venta.
+ * Emite un sonido "DING!" cristalino, brillante y satisfactorio (campana de caja / TikTok chime)
+ * con alto impacto de dopamina al concretar una venta.
  */
 export async function playSaleSuccessSound(): Promise<void> {
   try {
@@ -33,50 +36,87 @@ export async function playSaleSuccessSound(): Promise<void> {
 
     const now = ctx.currentTime;
 
-    // 1. Tono grave fundamental (pop senoidal con barrido descendente)
-    const popOsc = ctx.createOscillator();
-    const popGain = ctx.createGain();
+    // Master gain para controlar el volumen sin distorsión
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.4, now);
+    masterGain.connect(ctx.destination);
 
-    popOsc.type = 'sine';
-    popOsc.frequency.setValueAtTime(520, now);
-    popOsc.frequency.exponentialRampToValueAtTime(210, now + 0.12);
+    // --- 1. Ataque mecánico inicial (el 'tick/ping' del percutor sobre el bronce) ---
+    const strikeOsc = ctx.createOscillator();
+    const strikeGain = ctx.createGain();
+    strikeOsc.type = 'triangle';
+    strikeOsc.frequency.setValueAtTime(1480, now);
+    strikeOsc.frequency.exponentialRampToValueAtTime(2093, now + 0.025); // barrido rápido al tono principal
+    strikeGain.gain.setValueAtTime(0.25, now);
+    strikeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+    strikeOsc.connect(strikeGain);
+    strikeGain.connect(masterGain);
+    strikeOsc.start(now);
+    strikeOsc.stop(now + 0.04);
 
-    popGain.gain.setValueAtTime(0.001, now);
-    popGain.gain.linearRampToValueAtTime(0.3, now + 0.012);
-    popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+    // --- 2. TONO FUNDAMENTAL DING! (Campana pura y brillante en C7 - 2093 Hz) ---
+    const bellTime = now + 0.015;
+    const bellOsc = ctx.createOscillator();
+    const bellGain = ctx.createGain();
+    bellOsc.type = 'sine';
+    bellOsc.frequency.setValueAtTime(2093.0, bellTime);
 
-    popOsc.connect(popGain);
-    popGain.connect(ctx.destination);
+    bellGain.gain.setValueAtTime(0.0001, now);
+    bellGain.gain.setValueAtTime(0.0001, bellTime);
+    bellGain.gain.linearRampToValueAtTime(0.7, bellTime + 0.004); // Ataque ultra-rápido y percusivo
+    bellGain.gain.exponentialRampToValueAtTime(0.22, bellTime + 0.2); // Resonancia del cuerpo
+    bellGain.gain.exponentialRampToValueAtTime(0.0001, bellTime + 1.25); // Desvanecimiento suave y sostenido
 
-    // 2. Armónico sutil tipo campana/chime (onda triangular para calidez)
-    const chimeOsc = ctx.createOscillator();
-    const chimeGain = ctx.createGain();
+    bellOsc.connect(bellGain);
+    bellGain.connect(masterGain);
+    bellOsc.start(bellTime);
+    bellOsc.stop(bellTime + 1.3);
 
-    chimeOsc.type = 'triangle';
-    chimeOsc.frequency.setValueAtTime(880, now);
-    chimeOsc.frequency.exponentialRampToValueAtTime(440, now + 0.14);
+    // --- 3. Armónico de brillo cristalino (C8 - 4186 Hz / brillo plateado) ---
+    const sparkleOsc = ctx.createOscillator();
+    const sparkleGain = ctx.createGain();
+    sparkleOsc.type = 'sine';
+    sparkleOsc.frequency.setValueAtTime(4186.0, bellTime);
 
-    chimeGain.gain.setValueAtTime(0.001, now);
-    chimeGain.gain.linearRampToValueAtTime(0.08, now + 0.01);
-    chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    sparkleGain.gain.setValueAtTime(0.0001, bellTime);
+    sparkleGain.gain.linearRampToValueAtTime(0.35, bellTime + 0.003);
+    sparkleGain.gain.exponentialRampToValueAtTime(0.0001, bellTime + 0.65); // Brillo que acompaña el tañido
 
-    chimeOsc.connect(chimeGain);
-    chimeGain.connect(ctx.destination);
+    sparkleOsc.connect(sparkleGain);
+    sparkleGain.connect(masterGain);
+    sparkleOsc.start(bellTime);
+    sparkleOsc.stop(bellTime + 0.7);
 
-    popOsc.start(now);
-    chimeOsc.start(now);
+    // --- 4. Armónico metálico de campana (5776 Hz - vibración de borde de bronce) ---
+    const shimmerOsc = ctx.createOscillator();
+    const shimmerGain = ctx.createGain();
+    shimmerOsc.type = 'sine';
+    shimmerOsc.frequency.setValueAtTime(5776.0, bellTime);
 
-    popOsc.stop(now + 0.18);
-    chimeOsc.stop(now + 0.18);
+    shimmerGain.gain.setValueAtTime(0.0001, bellTime);
+    shimmerGain.gain.linearRampToValueAtTime(0.2, bellTime + 0.002);
+    shimmerGain.gain.exponentialRampToValueAtTime(0.0001, bellTime + 0.25);
 
-    popOsc.onended = () => {
-      popOsc.disconnect();
-      popGain.disconnect();
-      chimeOsc.disconnect();
-      chimeGain.disconnect();
+    shimmerOsc.connect(shimmerGain);
+    shimmerGain.connect(masterGain);
+    shimmerOsc.start(bellTime);
+    shimmerOsc.stop(bellTime + 0.3);
+
+    // Desconexión limpia
+    bellOsc.onended = () => {
+      try {
+        strikeOsc.disconnect();
+        strikeGain.disconnect();
+        bellOsc.disconnect();
+        bellGain.disconnect();
+        sparkleOsc.disconnect();
+        sparkleGain.disconnect();
+        shimmerOsc.disconnect();
+        shimmerGain.disconnect();
+        masterGain.disconnect();
+      } catch {}
     };
   } catch (error) {
-    // La síntesis de audio nunca debe interrumpir el flujo transaccional de caja
     console.warn('No se pudo reproducir el sonido de confirmación de venta:', error);
   }
 }

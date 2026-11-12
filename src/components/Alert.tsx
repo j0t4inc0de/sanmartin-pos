@@ -39,6 +39,9 @@ const severityConfig = {
   },
 };
 
+export { PosSnackbarAlert } from './PosSnackbarAlert';
+export type { PosSnackbarAlertProps, PopupAlertSeverity } from './PosSnackbarAlert';
+
 export function Alert({ severity, children, title, onClose, action, className = '' }: AlertProps) {
   const config = severityConfig[severity];
   const Icon = config.icon;
