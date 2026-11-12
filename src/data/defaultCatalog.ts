@@ -1,7 +1,7 @@
 import type { PosCatalog } from '../services/posLocalStore';
 
 export const BASE_POS_CATALOG: PosCatalog = {
-  "generated_at": "2026-01-01T00:00:00.000Z",
+  "generated_at": "offline-fallback",
   "categories": [
     {
       "id": 1,

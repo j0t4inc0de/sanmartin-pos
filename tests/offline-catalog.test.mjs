@@ -98,4 +98,65 @@ describe('Offline Catalog & Persistence (Problema 2)', async () => {
     const categoryProducts = filterBy('chorrillana');
     assert.ok(categoryProducts.length >= 1, 'Should find products by category name');
   });
+
+  it('base catalog uses offline-fallback cursor and marks server_synced false', async () => {
+    const base = defaultCatalogModule.BASE_POS_CATALOG;
+    assert.equal(base.generated_at, 'offline-fallback', 'Base catalog must have generated_at="offline-fallback"');
+
+    const stored = await posLocalStore.cargarCatalogoPos();
+    assert.equal(stored.server_synced, false, 'Unsynced base catalog must have server_synced=false');
+  });
+
+  it('cart line reconciliation correctly remaps offline product IDs to server primary keys', () => {
+    const serverCatalog = {
+      generated_at: new Date().toISOString(),
+      products: [
+        { id: 42, name: 'Sándwich Italiano', price: 5200, updated_at: '2026-11-12T00:00:00Z' },
+        { id: 43, name: 'Barros Luco', price: 5400, updated_at: '2026-11-12T00:00:00Z' },
+      ],
+      modifiers: [
+        { id: 101, name: 'Extra Queso', price: 600, updated_at: '2026-11-12T00:00:00Z' },
+      ]
+    };
+
+    // Client had lines created with old fallback IDs (e.g. id: 1 for Barros Luco, mod_id: 2)
+    const prevLines = [
+      {
+        key: 'cart-1',
+        product_id: 1, // Fallback ID
+        product_name: 'Barros Luco',
+        unit_price: 5400,
+        quantity: 2,
+        notes: 'Sin sal',
+        modifiers: [{ modifier_id: 2, modifier_name: 'Extra Queso', price_at_sale: 600, quantity_per_unit: 1 }]
+      }
+    ];
+
+    const remappedLines = prevLines.map(line => {
+      const match = serverCatalog.products.find(p =>
+        p.id === line.product_id ||
+        p.name.trim().toLowerCase() === line.product_name.trim().toLowerCase()
+      );
+      if (!match) return line;
+      const remappedModifiers = line.modifiers.map(mod => {
+        const modMatch = serverCatalog.modifiers.find(m =>
+          m.id === mod.modifier_id ||
+          m.name.trim().toLowerCase() === mod.modifier_name.trim().toLowerCase()
+        );
+        return modMatch
+          ? { ...mod, modifier_id: modMatch.id, modifier_name: modMatch.name, price_at_sale: modMatch.price }
+          : mod;
+      });
+      return {
+        ...line,
+        product_id: match.id,
+        product_name: match.name,
+        unit_price: match.price,
+        modifiers: remappedModifiers,
+      };
+    });
+
+    assert.equal(remappedLines[0].product_id, 43, 'Product ID should be remapped to server PK 43');
+    assert.equal(remappedLines[0].modifiers[0].modifier_id, 101, 'Modifier ID should be remapped to server PK 101');
+  });
 });

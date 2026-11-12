@@ -48,6 +48,7 @@ export interface StoredCatalog {
   key: 'current';
   catalog: PosCatalog;
   saved_at: string;
+  server_synced?: boolean;
 }
 
 export interface PosSaleDraft {
@@ -282,11 +283,12 @@ export const obtenerCatalogoBasePos = (): PosCatalog => {
   return JSON.parse(JSON.stringify(BASE_POS_CATALOG)) as PosCatalog;
 };
 
-export const guardarCatalogoPos = async (catalog: PosCatalog): Promise<void> => {
+export const guardarCatalogoPos = async (catalog: PosCatalog, serverSynced = true): Promise<void> => {
   const record: StoredCatalog = {
     key: 'current',
     catalog,
     saved_at: new Date().toISOString(),
+    server_synced: serverSynced,
   };
 
   try {
@@ -336,9 +338,10 @@ export const cargarCatalogoPos = async (): Promise<StoredCatalog> => {
       key: 'current',
       catalog: base,
       saved_at: new Date().toISOString(),
+      server_synced: false,
     };
     try {
-      await guardarCatalogoPos(base);
+      await guardarCatalogoPos(base, false);
     } catch {}
     return initialStored;
   }
@@ -382,14 +385,24 @@ export const cargarCatalogoPos = async (): Promise<StoredCatalog> => {
     modifiers,
   };
 
+  const genAt = stored.catalog.generated_at;
+  const isServerSynced = Boolean(
+    stored.server_synced &&
+    genAt &&
+    genAt !== 'offline-fallback' &&
+    genAt !== '2026-01-01T00:00:00.000Z' &&
+    !genAt.startsWith('2026-01-01')
+  );
+
   if (needsSave) {
-    void guardarCatalogoPos(fullCatalog).catch(() => undefined);
+    void guardarCatalogoPos(fullCatalog, isServerSynced).catch(() => undefined);
   }
 
   return {
     key: 'current',
     catalog: fullCatalog,
     saved_at: stored.saved_at ?? new Date().toISOString(),
+    server_synced: isServerSynced,
   };
 };
 

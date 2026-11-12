@@ -331,21 +331,58 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
       try {
         const cursor = savedCatalog?.catalog.generated_at;
-        const canRequestDelta = !!cursor && !Number.isNaN(Date.parse(cursor));
-        const endpoint = canRequestDelta
+        const isRealServerCatalog = Boolean(
+          savedCatalog?.server_synced &&
+          cursor &&
+          cursor !== 'offline-fallback' &&
+          cursor !== '2026-01-01T00:00:00.000Z' &&
+          !cursor.startsWith('2026-01-01') &&
+          !Number.isNaN(Date.parse(cursor))
+        );
+        const endpoint = isRealServerCatalog
           ? `/api/pos/catalog/?updated_after=${encodeURIComponent(cursor!)}`
           : '/api/pos/catalog/';
         const response = await solicitarApi<CatalogDelta>(endpoint);
-        const freshCatalog = canRequestDelta && savedCatalog
+        const freshCatalog = isRealServerCatalog && savedCatalog
           ? applyCatalogDelta(savedCatalog.catalog, response)
           : response;
         setCatalog(freshCatalog);
+
+        // Reconcile and re-map any existing cart lines or selected items
+        // to guarantee they use real PostgreSQL primary keys
+        setLines(prevLines => {
+          if (!prevLines.length) return prevLines;
+          return prevLines.map(line => {
+            const match = freshCatalog.products.find(p =>
+              p.id === line.product_id ||
+              p.name.trim().toLowerCase() === line.product_name.trim().toLowerCase()
+            );
+            if (!match) return line;
+            const remappedModifiers = line.modifiers.map(mod => {
+              const modMatch = freshCatalog.modifiers.find(m =>
+                m.id === mod.modifier_id ||
+                m.name.trim().toLowerCase() === mod.modifier_name.trim().toLowerCase()
+              );
+              return modMatch
+                ? { ...mod, modifier_id: modMatch.id, modifier_name: modMatch.name, price_at_sale: modMatch.price }
+                : mod;
+            });
+            return {
+              ...line,
+              product_id: match.id,
+              product_name: match.name,
+              unit_price: match.price,
+              modifiers: remappedModifiers,
+            };
+          });
+        });
+
         try {
-          await guardarCatalogoPos(freshCatalog);
+          await guardarCatalogoPos(freshCatalog, true);
           const syncedAt = new Intl.DateTimeFormat('es-CL', { timeStyle: 'short' }).format(new Date(freshCatalog.generated_at));
           const changeCount = response.categories.length + response.products.length + response.modifiers.length
             + (response.removed?.categories.length ?? 0) + (response.removed?.products.length ?? 0) + (response.removed?.modifiers.length ?? 0);
-          setCatalogNotice(changeCount
+          setCatalogNotice(changeCount && isRealServerCatalog
             ? `Catálogo actualizado (${changeCount} cambios) a las ${syncedAt}.`
             : `Catálogo sincronizado a las ${syncedAt}.`);
         } catch {
@@ -462,7 +499,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const requestQuote = async () => {
     if (!lines.length || quote || paymentReceivedPending) return;
     if (!await onBeforeCreateSale()) return;
-    if (!catalog || lines.some(line => !catalog.products.some(product => product.id === line.product_id) || line.modifiers.some(entry => !catalog.modifiers.some(modifier => modifier.id === entry.modifier_id)))) {
+    if (!catalog || lines.some(line => {
+      const prodFound = catalog.products.some(product => product.id === line.product_id || product.name.trim().toLowerCase() === line.product_name.trim().toLowerCase());
+      const modFound = line.modifiers.every(entry => catalog.modifiers.some(modifier => modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase()));
+      return !prodFound || !modFound;
+    })) {
       setError('El catálogo ya no contiene un producto o modificador del borrador. Revisa y quita las opciones marcadas antes de cotizar.');
       return;
     }
@@ -477,9 +518,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       let response: QuoteResponse;
       if (offlineMode) {
         const items = lines.map(line => {
-          const product = catalog.products.find(item => item.id === line.product_id)!;
+          const product = catalog.products.find(item => item.id === line.product_id)
+            || catalog.products.find(item => item.name.trim().toLowerCase() === line.product_name.trim().toLowerCase())!;
           const modifiers = line.modifiers.map(entry => {
-            const modifier = catalog.modifiers.find(item => item.id === entry.modifier_id)!;
+            const modifier = catalog.modifiers.find(item => item.id === entry.modifier_id)
+              || catalog.modifiers.find(item => item.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase())!;
             return { modifier_id: modifier.id, modifier_name: modifier.name, price_at_sale: modifier.price, quantity_per_unit: entry.quantity_per_unit };
           });
           const extrasPerUnit = modifiers.reduce((sum, modifier) => sum + modifier.price_at_sale * modifier.quantity_per_unit, 0);
@@ -489,11 +532,33 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         response = { quote_token: '', valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), requires_confirmation: false, items, subtotal, total_amount: subtotal };
       } else {
         response = await solicitarApi<QuoteResponse>('/api/orders/quote/', { method: 'POST', body: {
-        uuid, shift_order_number: nextOrderNumber, created_at: createdAt, consumption_type: consumptionType,
-        items: lines.map(line => { const product = catalog!.products.find(p => p.id === line.product_id)!; return {
-          product_id: product.id, expected_name: product.name, expected_unit_price: product.price, expected_updated_at: product.updated_at,
-          quantity: line.quantity, notes: line.notes, modifiers: line.modifiers.map(entry => { const modifier = catalog!.modifiers.find(m => m.id === entry.modifier_id)!; return { modifier_id: modifier.id, expected_name: modifier.name, expected_price: modifier.price, expected_updated_at: modifier.updated_at, quantity_per_unit: entry.quantity_per_unit }; }),
-        }; }),
+        uuid,
+        shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
+        created_at: createdAt,
+        consumption_type: consumptionType,
+        items: lines.map(line => {
+          const product = catalog!.products.find(p => p.id === line.product_id)
+            || catalog!.products.find(p => p.name.trim().toLowerCase() === line.product_name.trim().toLowerCase())!;
+          return {
+            product_id: Number(product.id),
+            expected_name: product.name,
+            expected_unit_price: product.price,
+            expected_updated_at: product.updated_at,
+            quantity: Math.max(1, Number(line.quantity) || 1),
+            notes: line.notes || '',
+            modifiers: line.modifiers.map(entry => {
+              const modifier = catalog!.modifiers.find(m => m.id === entry.modifier_id)
+                || catalog!.modifiers.find(m => m.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase())!;
+              return {
+                modifier_id: Number(modifier.id),
+                expected_name: modifier.name,
+                expected_price: modifier.price,
+                expected_updated_at: modifier.updated_at,
+                quantity_per_unit: Math.max(1, Number(entry.quantity_per_unit) || 1),
+              };
+            }),
+          };
+        }),
         } });
       }
       if (response.requires_confirmation && !await confirm({ title: 'Precio actualizado', message: `El catálogo cambió. Revisa el nuevo total de ${formatPrice(response.total_amount)} y confirma antes de continuar al pago.`, confirmLabel: 'Aceptar precio', tone: 'warning' })) {
@@ -504,7 +569,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         ...response,
         items: response.items.map((item, index) => ({ ...item, notes: lines[index]?.notes ?? '' })),
         uuid,
-        shift_order_number: nextOrderNumber,
+        shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
         created_at: createdAt,
         consumption_type: consumptionType,
         price_confirmation_accepted: true,
