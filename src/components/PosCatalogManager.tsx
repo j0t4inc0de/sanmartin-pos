@@ -9,11 +9,11 @@ type Section = 'products' | 'categories' | 'modifiers';
 interface Category { id: number; slug: string; name: string; sort_order: number; is_active: boolean; updated_at: string; }
 interface Product { id: number; slug: string; category_id: number; category_name: string; name: string; description: string; ingredients: string[]; price: number; original_price: number | null; image_url: string; badge: string; is_available: boolean; is_active: boolean; updated_at: string; }
 interface Modifier { id: number; name: string; price: number; modifier_type: 'EXTRA_PAGO' | 'EXCLUSION_COCINA'; is_available: boolean; is_active: boolean; updated_at: string; }
-type ProductForm = Omit<Product, 'id' | 'slug' | 'category_name' | 'updated_at' | 'ingredients'> & { id?: number; ingredients_text: string };
+type ProductForm = Omit<Product, 'id' | 'slug' | 'category_name' | 'updated_at' | 'ingredients' | 'price'> & { id?: number; ingredients_text: string; price: number | '' };
 type CategoryForm = { id?: number; name: string; sort_order: number; is_active: boolean };
 type ModifierForm = { id?: number; name: string; price: number; modifier_type: Modifier['modifier_type']; is_available: boolean; is_active: boolean };
 
-const blankProduct = (categoryId = 0): ProductForm => ({ category_id: categoryId, name: '', description: '', ingredients_text: '', price: 0, original_price: null, image_url: '', badge: '', is_available: true, is_active: true });
+const blankProduct = (categoryId = 0): ProductForm => ({ category_id: categoryId, name: '', description: '', ingredients_text: '', price: '', original_price: null, image_url: '', badge: '', is_available: true, is_active: true });
 const blankCategory = (): CategoryForm => ({ name: '', sort_order: 0, is_active: true });
 const blankModifier = (): ModifierForm => ({ name: '', price: 0, modifier_type: 'EXTRA_PAGO', is_available: true, is_active: true });
 const money = (value: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
@@ -206,6 +206,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       setError('Modo solo lectura sin conexión. Para modificar precios o agregar productos, debes reconectar con el servidor.');
       return;
     }
+    if (section === 'products' && (productForm.price === '' || !Number.isSafeInteger(productForm.price) || productForm.price < 0)) {
+      setError('Ingresa un precio válido en pesos chilenos.');
+      return;
+    }
     setSaving(true);
     setError('');
     setMessage('');
@@ -216,7 +220,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       if (section === 'products') {
         id = productForm.id;
         path = '/api/pos/catalog/manage/products/';
-        body = { ...productForm, ingredients: productForm.ingredients_text.split('\n').map(value => value.trim()).filter(Boolean) };
+        body = { ...productForm, price: Number(productForm.price), ingredients: productForm.ingredients_text.split('\n').map(value => value.trim()).filter(Boolean) };
         delete body.id;
         delete body.ingredients_text;
       } else if (section === 'categories') {
@@ -553,7 +557,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                       step="1"
                       disabled={offlineMode}
                       value={productForm.price}
-                      onChange={event => setProductForm({ ...productForm, price: Number(event.target.value) })}
+                      onChange={event => setProductForm({ ...productForm, price: event.target.value === '' ? '' : Number(event.target.value) })}
                     />
                   </label>
                 </div>
