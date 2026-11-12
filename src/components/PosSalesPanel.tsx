@@ -448,7 +448,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       }
       const quotedOrder: Quote = {
         ...response,
-        items: response.items.map((item, index) => ({ ...item, notes: lines[index].notes })),
+        items: response.items.map((item, index) => ({ ...item, notes: lines[index]?.notes ?? '' })),
         uuid,
         shift_order_number: nextOrderNumber,
         created_at: createdAt,
@@ -461,7 +461,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         return;
       }
       setQuote(quotedOrder);
-    } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cotizar el carrito.'); }
+    } catch (e) {
+      console.error('Error al cotizar carrito:', e);
+      setError(e instanceof Error ? e.message : 'No se pudo cotizar el carrito.');
+    }
     finally { setBusy(false); }
   };
 

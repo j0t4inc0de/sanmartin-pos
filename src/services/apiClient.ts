@@ -89,14 +89,36 @@ export const solicitarApi = async <T>(
 
   if (response.status === 204) return undefined as T;
 
-  const payload = (await response.json().catch(() => ({}))) as {
-    detail?: string;
-  };
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
-    throw new ApiError(
-      payload.detail ?? 'La solicitud no pudo completarse.',
-      response.status,
-    );
+    let errorMessage = '';
+    if (typeof payload.detail === 'string') {
+      errorMessage = payload.detail;
+    } else if (typeof payload.error === 'string') {
+      errorMessage = payload.error;
+    } else {
+      const errorParts: string[] = [];
+      const extractErrors = (obj: unknown, prefix = '') => {
+        if (!obj || typeof obj !== 'object') {
+          if (obj !== undefined) errorParts.push(`${prefix}${String(obj)}`);
+          return;
+        }
+        if (Array.isArray(obj)) {
+          obj.forEach(item => extractErrors(item, prefix));
+          return;
+        }
+        for (const [key, val] of Object.entries(obj)) {
+          const nextPrefix = prefix ? `${prefix}.${key}: ` : `${key}: `;
+          extractErrors(val, nextPrefix);
+        }
+      };
+      extractErrors(payload);
+      errorMessage = errorParts.length > 0
+        ? errorParts.join(' | ')
+        : 'La solicitud no pudo completarse.';
+    }
+    console.error(`[API Error ${response.status}] ${method} ${path}:`, payload);
+    throw new ApiError(errorMessage, response.status);
   }
 
   return payload as T;
