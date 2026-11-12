@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Check, Minus, Moon, Plus, SlidersHorizontal, Sun } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, Minus, Moon, Plus, Settings2, Sun, X } from 'lucide-react';
 
 type Theme = 'dark' | 'light';
 type Preferences = { theme: Theme; scale: number };
@@ -33,19 +33,39 @@ export function initializeAppearance() {
 export function AppearanceControls() {
   const [preferences, setPreferences] = useState<Preferences>(loadPreferences);
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     applyPreferences(preferences);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences)); } catch { /* The visual preference still applies for this visit. */ }
   }, [preferences]);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [open]);
+
   const adjustScale = (delta: number) => setPreferences(current => ({
     ...current,
     scale: Math.min(1.2, Math.max(0.9, Math.round((current.scale + delta) * 100) / 100)),
   }));
 
-  return <aside aria-label="Preferencias de visualización" className="appearance-controls fixed bottom-4 right-4 z-[100] sm:bottom-6 sm:right-6">
-    {open && <section className="appearance-popover mb-3 w-[min(21rem,calc(100vw-2rem))] rounded-2xl p-4" aria-label="Ajustes de apariencia">
+  return <aside ref={containerRef} aria-label="Preferencias de visualización" className="appearance-controls fixed bottom-4 right-4 z-[100] sm:bottom-6 sm:right-6">
+    {open && <section id="appearance-popover" role="dialog" className="appearance-popover mb-3 w-[min(21rem,calc(100vw-2rem))] rounded-2xl p-4" aria-label="Ajustes de apariencia">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div><h2 className="text-sm font-bold">Apariencia</h2><p className="mt-0.5 text-xs">Personaliza cómo ves esta página</p></div>
       </div>
@@ -63,8 +83,8 @@ export function AppearanceControls() {
         </div>
       </div>
     </section>}
-    <button type="button" aria-expanded={open} aria-label={open ? 'Cerrar preferencias de visualización' : 'Abrir preferencias de visualización'} onClick={() => setOpen(value => !value)} className="appearance-trigger inline-flex min-h-11 items-center gap-2.5 rounded-xl px-4 text-sm font-semibold">
-      <SlidersHorizontal className="h-4 w-4" /><span>Visualización</span><span className="appearance-trigger-divider h-4 w-px" aria-hidden="true" />{preferences.theme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+    <button ref={triggerRef} type="button" aria-expanded={open} aria-haspopup="dialog" aria-controls="appearance-popover" aria-label={open ? 'Cerrar ajustes de apariencia' : 'Abrir ajustes de apariencia'} title={open ? 'Cerrar ajustes' : 'Ajustes de apariencia'} onClick={() => setOpen(value => !value)} className="appearance-trigger inline-flex h-12 w-12 items-center justify-center rounded-xl p-0 transition-transform duration-200 active:scale-95">
+      {open ? <X aria-hidden="true" className="h-5 w-5" /> : <Settings2 aria-hidden="true" className="h-5 w-5" />}
     </button>
   </aside>;
 }

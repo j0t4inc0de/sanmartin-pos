@@ -106,7 +106,7 @@ export default function App() {
   };
 
   if (currentRoute === 'menu') {
-    return <><QrMenuPage onNavigateHome={() => navigateTo('home')} /><AppearanceControls /></>;
+    return <QrMenuPage onNavigateHome={() => navigateTo('home')} />;
   }
 
   if (currentRoute === 'pos') {
@@ -152,7 +152,6 @@ export default function App() {
 
       {/* Persistent Floating WhatsApp with Status */}
       <FloatingWhatsApp />
-      <AppearanceControls />
     </div>
   );
 }
