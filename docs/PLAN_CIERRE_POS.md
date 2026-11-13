@@ -94,15 +94,27 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Ampliación solicitada:** incorporar filtro semanal comercial de martes a domingo; reemplazar la tarjeta de turnos por rankings de tres productos más vendidos y tres menos vendidos, excluyendo Salsas; excluir cero ventas del ranking inferior y mostrar en un indicador desplegable el conteo y nombres de productos activos/disponibles sin ventas en el período. La vista semanal también mostrará horas punta. Las agregaciones se calculan en Django con hora de Chile y los montos permanecen en enteros CLP.
 
-**Secuencia técnica:** filtros Día/Mes y agregados existentes están aceptados. La ampliación semanal y los rankings se están implementando localmente; la prueba API nueva aún requiere acceso a la base PostgreSQL temporal de pruebas.
+**Secuencia técnica:** filtros Día/Mes y agregados existentes están aceptados. La ampliación semanal y los rankings quedaron implementados localmente; las cinco pruebas de `apps.sales.test_reports_api` pasaron en PostgreSQL temporal y el permiso `CREATEDB` se revocó al terminar.
 
 **Aceptación:** comparar día/semana/mes contra ventas conocidas; verificar que la semana incluya martes a domingo y excluya lunes; comprobar tres resultados por ranking, exclusión de Salsas y conteo/nombres sin ventas; revisar el gráfico por hora/día y horas punta; confirmar ventas offline según su hora original, anulaciones separadas, límites horarios de Chile, temas claro/oscuro, pantalla angosta y permisos.
 
-**Estado:** el usuario aceptó los reportes **Día** y **Mes** en tema claro el 10 de noviembre de 2026. En las capturas, los pagos suman el total mostrado: día $24.000 en 6 ventas y mes $88.500 en 16 ventas; las anulaciones aparecen por separado. Las 29 pruebas funcionales de `apps.sales` y las tres pruebas de concurrencia pasaron en PostgreSQL 16.15. La implementación de reportes queda aceptada; la conciliación de datos conocidos se revisará en la aceptación integral. El contrato está en `docs/CONTRATO_API_REPORTES.md`.
+**Estado:** el usuario aceptó los reportes **Día** y **Mes** en tema claro el 10 de noviembre de 2026. En las capturas, los pagos suman el total mostrado: día $24.000 en 6 ventas y mes $88.500 en 16 ventas; las anulaciones aparecen por separado. La ampliación semanal y los rankings quedaron implementados; el contrato está en `docs/CONTRATO_API_REPORTES.md`. Falta revisar con el cliente los nuevos rankings y conciliar datos conocidos durante la aceptación integral.
+
+### 6.1 Normalización de montos CLP
+
+**Trabajo:** aceptar montos con o sin punto de miles en venta en efectivo, apertura/cierre de caja y edición de precios de productos y modificadores; enviar y guardar siempre el entero en pesos.
+
+**Estado:** implementada en `src/components/ClpInput.tsx`. `5.900` y `5900` se normalizan a `5900`; el usuario reportó que no podía escribir el punto y se corrigió conservando los separadores durante la edición. `npm run build` pasó. Pendiente confirmar manualmente en POS efectivo, apertura/cierre y catálogo.
+
+### 6.2 Detalle de ventas recientes
+
+**Trabajo:** abrir desde la caja un modal tipo comprobante con líneas, modificadores, notas, tipo de pedido, medio de pago, total, efectivo recibido/vuelto y motivo de anulación cuando corresponda.
+
+**Estado:** implementado en `src/components/PosSalesPanel.tsx`. La prueba API `test_historial_incluye_detalle_de_comprobante_para_ventas_recientes` pasó en PostgreSQL temporal; `npm run build` pasó. Pendiente revisión visual por el usuario en modo claro y oscuro.
 
 ### 7. Aceptación integral del POS
 
-**Trabajo:** recorrer desde inicio de sesión hasta cierre con operaciones online, offline y reconexión; cubrir venta, anulación, pagos, modificaciones de catálogo, impresora, gaveta, reportes, tema/escala y confirmación al cerrar sesión. Probar recuperación de recarga y errores recuperables. La matriz de ejecución está en `docs/PRUEBAS_ACEPTACION_INTEGRAL_POS.md`.
+**Trabajo:** recorrer desde inicio de sesión hasta cierre con operaciones online, offline y reconexión; cubrir venta, anulación, pagos, detalle de ventas recientes, montos CLP, modificaciones de catálogo, impresora, gaveta, reportes, tema/escala y confirmación al cerrar sesión. Probar recuperación de recarga y errores recuperables. La matriz de ejecución está en `docs/PRUEBAS_ACEPTACION_INTEGRAL_POS.md`.
 
 **Aceptación:** lista de casos con resultado aprobado y evidencia; sin pérdida ni duplicación de ventas; impresión y reportes conciliados con base de pruebas; defectos bloqueantes resueltos. Mantener las pruebas manuales de usuario separadas de las pruebas automatizadas.
 
@@ -122,7 +134,7 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 ## Próximo paso concreto
 
-La concurrencia PostgreSQL ya quedó validada. La integración de impresión está implementada con comprobante de cliente, comanda con notas, reimpresión local y pulso de gaveta solo para efectivo; su aceptación requiere la DINON física. La guía operativa y la matriz integral se contrastaron con la interfaz y contratos actuales; falta recorrer la guía con una persona operadora y llenar la conciliación de reportes. El catálogo incremental y el dashboard Día/Mes ya fueron aceptados.
+El siguiente paso es la validación manual de los montos CLP y del modal de ventas recientes en tema claro y oscuro. Luego se ejecuta la matriz de aceptación integral y se recorre la guía con una persona operadora. La impresión y gaveta están implementadas, pero su aceptación física todavía requiere la DINON; ese bloque permanece pendiente y se completa cuando el cliente tenga la máquina disponible.
 
 ## Registro de avance
 
@@ -136,6 +148,8 @@ La concurrencia PostgreSQL ya quedó validada. La integración de impresión est
 | Impresión real de ventas | Implementada; aceptación física pendiente | Comprobante cliente + comanda con notas, cola offline, registro de envío y reimpresión desde el historial del turno; gaveta solo para efectivo y nunca en reimpresión. Falta comprobar papel, corte, acentos y conexión USB con DINON. |
 | Suite de ventas en PostgreSQL | Completada | PostgreSQL 16.15; 29/29 pasaron; base temporal creada y eliminada; `CREATEDB` temporal de `sanmartin_dev` revocado. |
 | PostgreSQL concurrencia | Completada | 3/3 pruebas pasaron en PostgreSQL 16.15; base temporal eliminada y `CREATEDB` revocado/verificado. |
-| Dashboard día/mes | Aceptado; ampliación semanal en curso | Día/Mes siguen aceptados. Se está agregando semana comercial y rankings de tres productos sin Salsas; las pruebas nuevas están pendientes de acceso a la base temporal. |
-| Aceptación integral | Preparada; ejecución pendiente | Matriz creada en `docs/PRUEBAS_ACEPTACION_INTEGRAL_POS.md`; los casos de impresión esperan DINON e integración. |
+| Dashboard día/semana/mes | Implementado; aceptación de ampliación pendiente | Día/Mes aceptados. Semana comercial de martes a domingo y rankings de tres productos más/menos vendidos excluyendo Salsas implementados; cinco pruebas API pasaron en PostgreSQL. |
+| Montos CLP en inputs | Implementado; aceptación manual pendiente | Campos de pago, caja y catálogo aceptan miles con punto y sin punto; ambos formatos se convierten al entero CLP. |
+| Detalle de ventas recientes | Implementado; revisión visual pendiente | Modal tipo comprobante y prueba API de detalle aprobada. |
+| Aceptación integral | Preparada; ejecución pendiente | Matriz creada en `docs/PRUEBAS_ACEPTACION_INTEGRAL_POS.md`; los casos físicos de impresión/gaveta esperan la DINON. |
 | Guía operativa | Borrador | `docs/GUIA_OPERACION_POS.md`; pendiente validar con operador y completar impresión tras la prueba DINON. |
