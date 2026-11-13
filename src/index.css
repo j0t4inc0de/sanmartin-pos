@@ -635,6 +635,17 @@ html[data-theme="light"] .pos-modifier-options > div:hover { background: #f1f5f9
 .pos-report-products ol > li > b small, .pos-report-hours ol > li > b small { color: #8996a8; font-size: .6rem; font-weight: 500; }
 .pos-report-product-entry { display: grid; min-width: 0; flex: 1; gap: .38rem; }
 .pos-report-product-entry strong { overflow: hidden; font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
+.pos-report-unsold-products { position: relative; margin-top: .65rem; border-top: 1px solid rgb(148 163 184 / 10%); padding-top: .6rem; }
+.pos-report-unsold-products > summary { display: flex; align-items: center; justify-content: space-between; gap: .5rem; color: #aeb9c8; cursor: help; font-size: .65rem; list-style: none; }
+.pos-report-unsold-products > summary::-webkit-details-marker { display: none; }
+.pos-report-unsold-products > summary > svg { width: .85rem; height: .85rem; flex: none; color: #d6b64f; transition: transform 140ms; }
+.pos-report-unsold-products[open] > summary > svg { transform: rotate(180deg); }
+.pos-report-unsold-list { position: absolute; right: 0; bottom: calc(100% + .55rem); z-index: 30; display: none; width: min(22rem, 100%); max-height: 12rem; overflow: auto; border: 1px solid rgb(148 163 184 / 24%); border-radius: .7rem; padding: .7rem .8rem; color: #e2e8f0; background: #171b22; box-shadow: 0 12px 28px rgb(0 0 0 / 30%); font-size: .68rem; }
+.pos-report-unsold-products[open] .pos-report-unsold-list, .pos-report-unsold-products:hover .pos-report-unsold-list, .pos-report-unsold-products:focus-within .pos-report-unsold-list { display: block; }
+.pos-report-unsold-list > strong { display: block; margin-bottom: .35rem; color: #f1d77c; font-size: .67rem; }
+.pos-report-unsold-list > ul { display: grid; gap: .2rem; }
+.pos-report-unsold-list > ul li { display: block; border: 0; padding: .1rem 0; }
+.pos-report-unsold-list > p { color: #aeb9c8; }
 .pos-report-chart-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .55rem; margin: -.15rem 0 .85rem; }
 .pos-report-chart-toolbar > span { color: #9aa7b7; font-size: .65rem; }
 .pos-report-chart-toolbar > span strong { color: #dce4ed; font-weight: 650; }
@@ -1021,6 +1032,12 @@ html[data-theme="light"] .pos-report-chart-toolbar button.is-active { color: #68
 html[data-theme="light"] .pos-report-card-title > svg { color: #9a6700; }
 html[data-theme="light"] .pos-report-card ul li, html[data-theme="light"] .pos-report-products ol li, html[data-theme="light"] .pos-report-shift-list details { border-color: #e2e8f0; }
 html[data-theme="light"] .pos-report-products ol i { color: #684800; background: #fff2cc; }
+html[data-theme="light"] .pos-report-unsold-products { border-color: #e2e8f0; }
+html[data-theme="light"] .pos-report-unsold-products > summary { color: #526174; }
+html[data-theme="light"] .pos-report-unsold-products > summary > svg { color: #9a6700; }
+html[data-theme="light"] .pos-report-unsold-list { border-color: #d5dde7; color: #334155; background: #ffffff; box-shadow: 0 12px 28px rgb(15 23 42 / 15%); }
+html[data-theme="light"] .pos-report-unsold-list > strong { color: #795600; }
+html[data-theme="light"] .pos-report-unsold-list > p { color: #526174; }
 html[data-theme="light"] .pos-report-products ol > li > b, html[data-theme="light"] .pos-report-hours ol > li > b, html[data-theme="light"] .pos-report-hours ol > li > i { color: #334155; }
 html[data-theme="light"] .pos-report-track { background: #e2e8f0; }
 html[data-theme="light"] .pos-report-track > span, html[data-theme="light"] .pos-report-track > i { background: linear-gradient(90deg, #b98a1c, #e6be47); }

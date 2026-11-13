@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, BarChart3, CalendarDays, Clock3, RefreshCw, TrendingUp } from 'lucide-react';
+import { ArrowLeft, BarChart3, CalendarDays, ChevronDown, Clock3, RefreshCw, TrendingUp } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { Alert } from './Alert';
 import { PosSnackbarAlert } from './PosSnackbarAlert';
 
-type Period = 'day' | 'month';
+type Period = 'day' | 'week' | 'month';
 interface ReportData {
   period: Period;
   selected: string;
@@ -12,10 +12,11 @@ interface ReportData {
   sales: { total_amount: number; order_count: number; average_ticket: number };
   payments: { payment_method: string; label: string; total_amount: number; order_count: number }[];
   cancellations: { order_count: number; total_amount: number };
-  top_products: { product_name: string; quantity: number }[];
+  top_products: { product_id: number; product_name: string; quantity: number }[];
+  least_products: { product_id: number; product_name: string; quantity: number }[];
+  unsold_products: { count: number; product_names: string[] };
   rush_hours: { hour: number; order_count: number; total_amount: number }[];
   time_series: { key: string; total_amount: number; order_count: number }[];
-  shifts: { uuid: string; opened_at: string; closed_at: string | null; initial_cash: number; final_cash: number | null; counted_cash: number | null; cash_difference: number | null; closed_automatically: boolean }[];
 }
 
 const chileDateParts = (date: Date) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
@@ -25,16 +26,24 @@ const currentChileDay = () => {
   const parts = chileDateParts(new Date());
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
+const businessWeekStart = (day: string) => {
+  const date = new Date(`${day}T00:00:00Z`);
+  const daysSinceTuesday = (date.getUTCDay() - 2 + 7) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceTuesday);
+  return date.toISOString().slice(0, 10);
+};
+const addIsoDays = (day: string, amount: number) => {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+};
 const money = (amount: number) => new Intl.NumberFormat('es-CL', {
   style: 'currency', currency: 'CLP', maximumFractionDigits: 0,
 }).format(amount);
-const localDateTime = (value: string | null) => value ? new Intl.DateTimeFormat('es-CL', {
-  timeZone: 'America/Santiago', dateStyle: 'medium', timeStyle: 'short',
-}).format(new Date(value)) : 'Turno abierto';
-
 export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onClose?: () => void }) {
   const [period, setPeriod] = useState<Period>('day');
   const [day, setDay] = useState(currentChileDay);
+  const [weekStart, setWeekStart] = useState(() => businessWeekStart(currentChileDay()));
   const [month, setMonth] = useState(() => currentChileDay().slice(0, 7));
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,9 +62,9 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
     const load = async () => {
       setLoading(true);
       setError('');
-      const query = period === 'day'
-        ? `period=day&date=${encodeURIComponent(day)}`
-        : `period=month&month=${encodeURIComponent(month)}`;
+      const query = period === 'month'
+        ? `period=month&month=${encodeURIComponent(month)}`
+        : `period=${period}&date=${encodeURIComponent(period === 'day' ? day : weekStart)}`;
       try {
         const data = await solicitarApi<ReportData>(`/api/reports/sales/?${query}`);
         if (!cancelled) setReport(data);
@@ -70,7 +79,7 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
     };
     void load();
     return () => { cancelled = true; };
-  }, [offlineMode, period, day, month, reloadKey]);
+  }, [offlineMode, period, day, weekStart, month, reloadKey]);
 
   const chartPoints = report
     ? period === 'day'
@@ -78,7 +87,17 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
         const key = String(hour).padStart(2, '0');
         return { key, label: hour % 4 === 0 ? `${key}:00` : '', value: report.time_series.find(item => item.key === key) };
       })
-      : (() => {
+      : period === 'week'
+        ? (() => {
+          const weekStartDate = report.selected.split('..')[0];
+          return Array.from({ length: 6 }, (_, index) => {
+            const key = addIsoDays(weekStartDate, index);
+            const date = new Date(`${key}T00:00:00Z`);
+            const weekday = new Intl.DateTimeFormat('es-CL', { weekday: 'short', timeZone: 'UTC' }).format(date).replace('.', '');
+            return { key, label: `${weekday} ${Number(key.slice(-2))}`, value: report.time_series.find(item => item.key === key) };
+          });
+        })()
+        : (() => {
         const [year, monthNumber] = report.selected.split('-').map(Number);
         const daysInMonth = new Date(year, monthNumber, 0).getDate();
         return Array.from({ length: daysInMonth }, (_, index) => {
@@ -92,11 +111,21 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
   const chartMaximum = Math.max(1, ...chartPoints.map(chartValue));
   const peakPoint = chartPoints.reduce<(typeof chartPoints)[number] | null>((peak, point) =>
     chartValue(point) > (peak ? chartValue(peak) : 0) ? point : peak, null);
-  const monthlyPeakHours = (report?.rush_hours ?? []).filter(item => item.order_count > 0)
+  const peakBucketLabel = peakPoint
+    ? period === 'day'
+      ? `${peakPoint.key}:00 h`
+      : period === 'week'
+        ? new Intl.DateTimeFormat('es-CL', { weekday: 'long', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${peakPoint.key}T00:00:00Z`))
+        : `día ${Number(peakPoint.key)}`
+    : '';
+  const peakHours = (report?.rush_hours ?? []).filter(item => item.order_count > 0)
     .toSorted((left, right) => right.total_amount - left.total_amount || right.order_count - left.order_count).slice(0, 5);
-  const monthlyPeakMaximum = Math.max(1, ...monthlyPeakHours.map(item => item.total_amount));
+  const peakHoursMaximum = Math.max(1, ...peakHours.map(item => item.total_amount));
   const topProducts = (report?.top_products ?? []).slice(0, 3);
   const topProductMaximum = Math.max(1, ...(topProducts.map(item => item.quantity) ?? []));
+  const leastProducts = (report?.least_products ?? []).slice(0, 3);
+  const leastProductMaximum = Math.max(1, ...(leastProducts.map(item => item.quantity) ?? []));
+  const zeroSalesPeriod = period === 'day' ? 'este día' : period === 'week' ? 'esta semana' : 'este mes';
 
   return <section className="pos-report-workspace" aria-labelledby="pos-report-title">
     <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
@@ -137,11 +166,12 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
     <div className="pos-report-toolbar">
       <div className="pos-report-control"><span className="pos-report-control-label">Consultar por</span><div className="pos-report-period-switch" role="group" aria-label="Período del reporte">
         <button type="button" aria-pressed={period === 'day'} className={period === 'day' ? 'is-active' : ''} onClick={() => setPeriod('day')}><CalendarDays aria-hidden="true" />Día</button>
+        <button type="button" aria-pressed={period === 'week'} className={period === 'week' ? 'is-active' : ''} onClick={() => setPeriod('week')}><CalendarDays aria-hidden="true" />Semana</button>
         <button type="button" aria-pressed={period === 'month'} className={period === 'month' ? 'is-active' : ''} onClick={() => setPeriod('month')}><BarChart3 aria-hidden="true" />Mes</button>
       </div>
       </div>
-      <label className="pos-report-date">{period === 'day' ? 'Día de ventas' : 'Mes de ventas'}<input type={period === 'day' ? 'date' : 'month'} value={period === 'day' ? day : month} onChange={event => { if (event.target.value) period === 'day' ? setDay(event.target.value) : setMonth(event.target.value); }} /></label>
-      {report && <span className="pos-report-period-label">Período: {report.selected} · America/Santiago</span>}
+      <label className="pos-report-date">{period === 'day' ? 'Día de ventas' : period === 'week' ? 'Semana comercial' : 'Mes de ventas'}<input type={period === 'month' ? 'month' : 'date'} value={period === 'day' ? day : period === 'week' ? weekStart : month} onChange={event => { if (event.target.value) period === 'day' ? setDay(event.target.value) : period === 'week' ? setWeekStart(businessWeekStart(event.target.value)) : setMonth(event.target.value); }} /></label>
+      {report && <span className="pos-report-period-label">Período: {period === 'week' ? report.selected.replace('..', ' – ') : report.selected} · America/Santiago</span>}
     </div>
 
     {offlineMode && <Alert severity="warning" className="my-3">Los reportes necesitan conexión al servidor. Las ventas locales se incluirán automáticamente al sincronizar.</Alert>}
@@ -162,11 +192,11 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
         <article className="pos-report-kpi"><span>Anulaciones</span><strong>{report.cancellations.order_count}</strong><small>{money(report.cancellations.total_amount)} en ventas anuladas</small></article>
       </div>
       <div className="pos-report-grid">
-        <article className="pos-report-card pos-report-timeline"><div className="pos-report-card-title"><div><span>{period === 'day' ? 'Actividad del día' : 'Tendencia mensual'}</span><h3>{period === 'day' ? 'Ventas por hora' : 'Ventas por día'}</h3></div><Clock3 aria-hidden="true" /></div>
-          <div className="pos-report-chart-toolbar"><span>{chartMetric === 'amount' ? 'Recaudación en CLP' : 'Cantidad de ventas'}{peakPoint && <strong> · Mayor {period === 'day' ? peakPoint.key + ':00 h' : 'día ' + Number(peakPoint.key)} ({chartMetric === 'amount' ? money(chartValue(peakPoint)) : chartValue(peakPoint) + ' ventas'})</strong>}</span><div role="group" aria-label="Medida del gráfico"><button type="button" aria-pressed={chartMetric === 'amount'} className={chartMetric === 'amount' ? 'is-active' : ''} onClick={() => setChartMetric('amount')}>Monto</button><button type="button" aria-pressed={chartMetric === 'orders'} className={chartMetric === 'orders' ? 'is-active' : ''} onClick={() => setChartMetric('orders')}>Ventas</button></div></div>
+        <article className="pos-report-card pos-report-timeline"><div className="pos-report-card-title"><div><span>{period === 'day' ? 'Actividad del día' : period === 'week' ? 'Actividad de la semana' : 'Tendencia mensual'}</span><h3>{period === 'day' ? 'Ventas por hora' : 'Ventas por día'}</h3></div><Clock3 aria-hidden="true" /></div>
+          <div className="pos-report-chart-toolbar"><span>{chartMetric === 'amount' ? 'Recaudación en CLP' : 'Cantidad de ventas'}{peakPoint && <strong> · Mayor {peakBucketLabel} ({chartMetric === 'amount' ? money(chartValue(peakPoint)) : chartValue(peakPoint) + ' ventas'})</strong>}</span><div role="group" aria-label="Medida del gráfico"><button type="button" aria-pressed={chartMetric === 'amount'} className={chartMetric === 'amount' ? 'is-active' : ''} onClick={() => setChartMetric('amount')}>Monto</button><button type="button" aria-pressed={chartMetric === 'orders'} className={chartMetric === 'orders' ? 'is-active' : ''} onClick={() => setChartMetric('orders')}>Ventas</button></div></div>
           {report.sales.order_count ? <div className="pos-report-chart-detail" role="img" aria-label={`${period === 'day' ? 'Ventas por hora' : 'Ventas por día'} para ${report.selected}, en hora de Chile`}>
             <div className="pos-report-chart-axis" aria-hidden="true"><span>{chartMetric === 'amount' ? money(chartMaximum) : chartMaximum}</span><span>{chartMetric === 'amount' ? money(Math.ceil(chartMaximum / 2)) : Math.ceil(chartMaximum / 2)}</span><span>0</span></div>
-            <div className="pos-report-chart-plot" style={{ gridTemplateColumns: `repeat(${chartPoints.length}, minmax(0, 1fr))` }}><div className="pos-report-chart-gridlines" aria-hidden="true"><i /><i /><i /></div>{chartPoints.map(point => { const value = chartValue(point); const amount = point.value?.total_amount ?? 0; const orders = point.value?.order_count ?? 0; return <div className={`pos-report-chart-column ${value ? 'has-value' : ''} ${peakPoint?.key === point.key && value ? 'is-peak' : ''}`} key={point.key} title={`${period === 'day' ? `${point.key}:00 h` : `Día ${Number(point.key)}`} · ${money(amount)} · ${orders} ${orders === 1 ? 'venta' : 'ventas'}`}><span style={{ height: `${value ? Math.max(2, value / chartMaximum * 100) : 0}%` }} /><small>{point.label}</small></div>; })}</div>
+            <div className="pos-report-chart-plot" style={{ gridTemplateColumns: `repeat(${chartPoints.length}, minmax(0, 1fr))` }}><div className="pos-report-chart-gridlines" aria-hidden="true"><i /><i /><i /></div>{chartPoints.map(point => { const value = chartValue(point); const amount = point.value?.total_amount ?? 0; const orders = point.value?.order_count ?? 0; const bucketLabel = period === 'day' ? `${point.key}:00 h` : period === 'week' ? new Intl.DateTimeFormat('es-CL', { weekday: 'long', day: 'numeric', timeZone: 'UTC' }).format(new Date(`${point.key}T00:00:00Z`)) : `Día ${Number(point.key)}`; return <div className={`pos-report-chart-column ${value ? 'has-value' : ''} ${peakPoint?.key === point.key && value ? 'is-peak' : ''}`} key={point.key} title={`${bucketLabel} · ${money(amount)} · ${orders} ${orders === 1 ? 'venta' : 'ventas'}`}><span style={{ height: `${value ? Math.max(2, value / chartMaximum * 100) : 0}%` }} /><small>{point.label}</small></div>; })}</div>
           </div> : <p className="pos-report-empty">No hay ventas completadas en este período.</p>}
           <div className="pos-report-chart-legend"><span><i />{chartMetric === 'amount' ? 'Recaudación' : 'Cantidad de ventas'}</span><span>Datos según la hora original de la venta · Chile</span></div>
         </article>
@@ -176,12 +206,13 @@ export function PosReports({ offlineMode, onClose }: { offlineMode: boolean; onC
         <article className="pos-report-card pos-report-products"><div className="pos-report-card-title"><div><span>Preferencias de clientes</span><h3>Productos más vendidos</h3></div><BarChart3 aria-hidden="true" /></div>
           {topProducts.length ? <ol>{topProducts.map((item, index) => <li key={`${item.product_name}-${index}`}><i>{index + 1}</i><div className="pos-report-product-entry"><strong>{item.product_name}</strong><div className="pos-report-track"><span style={{ width: `${item.quantity / topProductMaximum * 100}%` }} /></div></div><b>{item.quantity} <small>un.</small></b></li>)}</ol> : <p className="pos-report-empty">No hay productos vendidos en este período.</p>}
         </article>
-        {period === 'month' && <article className="pos-report-card pos-report-hours"><div className="pos-report-card-title"><div><span>Patrón de demanda</span><h3>Horas punta del mes</h3></div><Clock3 aria-hidden="true" /></div>
-          {monthlyPeakHours.length ? <ol>{monthlyPeakHours.map(item => <li key={item.hour}><i>{String(item.hour).padStart(2, '0')} h</i><div className="pos-report-product-entry"><strong>{money(item.total_amount)}</strong><div className="pos-report-track"><span style={{ width: `${item.total_amount / monthlyPeakMaximum * 100}%` }} /></div></div><b>{item.order_count} <small>{item.order_count === 1 ? 'venta' : 'ventas'}</small></b></li>)}</ol> : <p className="pos-report-empty">No hay ventas completadas en este período.</p>}
-        </article>}
-        <article className="pos-report-card pos-report-shifts"><div className="pos-report-card-title"><div><span>Arqueo</span><h3>Turnos del período</h3></div><CalendarDays aria-hidden="true" /></div>
-          {report.shifts.length ? <div className="pos-report-shift-list">{report.shifts.map(shift => <details key={shift.uuid}><summary><span>{localDateTime(shift.opened_at)} <small>{shift.closed_automatically ? 'Cierre automático' : shift.closed_at ? 'Cerrado' : 'Abierto'}</small></span><b>{shift.final_cash === null ? 'En curso' : money(shift.final_cash)}</b></summary><dl><div><dt>Fondo inicial</dt><dd>{money(shift.initial_cash)}</dd></div><div><dt>Efectivo esperado</dt><dd>{shift.final_cash === null ? 'Pendiente' : money(shift.final_cash)}</dd></div><div><dt>Efectivo contado</dt><dd>{shift.counted_cash === null ? 'Sin conteo' : money(shift.counted_cash)}</dd></div><div><dt>Diferencia</dt><dd>{shift.cash_difference === null ? '—' : money(shift.cash_difference)}</dd></div><div className="is-full"><dt>Cierre</dt><dd>{localDateTime(shift.closed_at)}</dd></div></dl></details>)}</div> : <p className="pos-report-empty">No se abrieron turnos en este período.</p>}
+        <article className="pos-report-card pos-report-products pos-report-least-products"><div className="pos-report-card-title"><div><span>Rotación de la carta</span><h3>Productos menos vendidos</h3></div><BarChart3 aria-hidden="true" /></div>
+          {leastProducts.length ? <ol>{leastProducts.map((item, index) => <li key={item.product_id}><i>{index + 1}</i><div className="pos-report-product-entry"><strong>{item.product_name}</strong><div className="pos-report-track"><span style={{ width: `${item.quantity / leastProductMaximum * 100}%` }} /></div></div><b>{item.quantity} <small>un.</small></b></li>)}</ol> : <p className="pos-report-empty">No hay productos con ventas en este período.</p>}
+          <details className="pos-report-unsold-products"><summary><span>{report.unsold_products.count} {report.unsold_products.count === 1 ? 'producto sin ventas' : 'productos sin ventas'} {zeroSalesPeriod}</span><ChevronDown aria-hidden="true" /></summary><div className="pos-report-unsold-list"><strong>Productos sin ventas {zeroSalesPeriod}</strong>{report.unsold_products.product_names.length ? <ul>{report.unsold_products.product_names.map(name => <li key={name}>{name}</li>)}</ul> : <p>Todos los productos de la carta tuvieron ventas.</p>}</div></details>
         </article>
+        {(period === 'week' || period === 'month') && <article className="pos-report-card pos-report-hours"><div className="pos-report-card-title"><div><span>Patrón de demanda</span><h3>Horas punta {period === 'week' ? 'de la semana' : 'del mes'}</h3></div><Clock3 aria-hidden="true" /></div>
+          {peakHours.length ? <ol>{peakHours.map(item => <li key={item.hour}><i>{String(item.hour).padStart(2, '0')} h</i><div className="pos-report-product-entry"><strong>{money(item.total_amount)}</strong><div className="pos-report-track"><span style={{ width: `${item.total_amount / peakHoursMaximum * 100}%` }} /></div></div><b>{item.order_count} <small>{item.order_count === 1 ? 'venta' : 'ventas'}</small></b></li>)}</ol> : <p className="pos-report-empty">No hay ventas completadas en este período.</p>}
+        </article>}
       </div>
     </>}
   </section>;
