@@ -16,6 +16,7 @@ type ClpInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'input
 /** Input for whole-peso CLP values; grouping dots never change the stored integer. */
 export function ClpInput({ value, onValueChange, onFocus, onBlur, ...props }: ClpInputProps) {
   const [focused, setFocused] = useState(false);
+  const [editingValue, setEditingValue] = useState('');
   const digits = normalizeClpDigits(String(value ?? ''));
 
   return (
@@ -24,16 +25,22 @@ export function ClpInput({ value, onValueChange, onFocus, onBlur, ...props }: Cl
       type="text"
       inputMode="decimal"
       autoComplete="off"
-      value={focused ? digits : formatClpDigits(digits)}
+      value={focused ? editingValue : formatClpDigits(digits)}
       onFocus={event => {
+        setEditingValue(formatClpDigits(digits));
         setFocused(true);
         onFocus?.(event);
       }}
       onBlur={event => {
+        onValueChange(normalizeClpDigits(event.currentTarget.value));
         setFocused(false);
         onBlur?.(event);
       }}
-      onChange={event => onValueChange(normalizeClpDigits(event.currentTarget.value))}
+      onChange={event => {
+        const nextValue = event.currentTarget.value.replace(/[^\d.,]/g, '').replace(/,/g, '.');
+        setEditingValue(nextValue);
+        onValueChange(normalizeClpDigits(nextValue));
+      }}
     />
   );
 }
