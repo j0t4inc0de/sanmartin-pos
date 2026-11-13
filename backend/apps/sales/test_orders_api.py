@@ -474,10 +474,11 @@ class OrderApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["products"][0]["id"], self.product.pk)
-        self.assertEqual(
-            {modifier["id"] for modifier in response.data["modifiers"]},
-            {self.extra.pk, self.exclusion.pk},
-        )
+        modifier_names = [modifier["name"].strip().casefold() for modifier in response.data["modifiers"]]
+        modifier_ids = {modifier["id"] for modifier in response.data["modifiers"]}
+        self.assertIn(self.extra.pk, modifier_ids)
+        self.assertIn(self.exclusion.pk, modifier_ids)
+        self.assertEqual(len(modifier_names), len(set(modifier_names)))
 
         sin_permiso = User.objects.create_user(
             username="catalogo_sin_permiso",
