@@ -114,7 +114,84 @@ export const requestPosPrinter = async () => {
   return api.requestDevice({ filters: [{}] });
 };
 
-const send = async (data: Uint8Array) => {
+export const LOCAL_BRIDGE_URL = 'http://127.0.0.1:9191';
+
+export interface BridgeStatusResponse {
+  status: string;
+  service: string;
+  version: string;
+  is_windows?: boolean;
+  selected_printer?: string;
+  selection_reason?: string;
+  default_printer?: string;
+  printers?: string[];
+}
+
+const toBase64 = (bytes: Uint8Array): string => {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
+export const checkLocalBridge = async (): Promise<BridgeStatusResponse | null> => {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(`${LOCAL_BRIDGE_URL}/status`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    return (await res.json()) as BridgeStatusResponse;
+  } catch {
+    return null;
+  }
+};
+
+export const printViaLocalBridge = async (
+  data: Uint8Array,
+  options: { printerName?: string; openDrawer?: boolean } = {},
+): Promise<{ status: string; printer: string }> => {
+  const payload = {
+    data_base64: toBase64(data),
+    printer_name: options.printerName,
+    open_drawer: Boolean(options.openDrawer),
+  };
+  const res = await fetch(`${LOCAL_BRIDGE_URL}/print`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.status === 'error') {
+    throw new Error(json.message || `Error del puente local (${res.status})`);
+  }
+  return json;
+};
+
+export const openDrawerViaLocalBridge = async (
+  options: { printerName?: string } = {},
+): Promise<{ status: string; printer: string }> => {
+  const payload = {
+    printer_name: options.printerName,
+  };
+  const res = await fetch(`${LOCAL_BRIDGE_URL}/open-drawer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.status === 'error') {
+    throw new Error(json.message || `Error del puente al abrir gaveta (${res.status})`);
+  }
+  return json;
+};
+
+const sendViaUsb = async (data: Uint8Array) => {
   const api = usbApi();
   if (!api) throw new Error('WebUSB no está disponible. Usa Chrome o Edge en el equipo conectado a la impresora.');
   const devices = await api.getDevices();
@@ -147,9 +224,47 @@ const send = async (data: Uint8Array) => {
   }
 };
 
-export const printPosSale = async (job: PosPrintJob, options: { reprint?: boolean; openDrawer?: boolean } = {}) => {
-  const data = append(customerReceipt(job, Boolean(options.reprint)), kitchenChit(job, Boolean(options.reprint)), ...(options.openDrawer ? [esc(27, 112, 0, 25, 250)] : []));
-  await send(data);
+const send = async (data: Uint8Array, options: { openDrawer?: boolean; printerName?: string } = {}) => {
+  // 1. Prioridad: Puente local de Windows (utiliza el controlador oficial de la DINON)
+  try {
+    const bridge = await checkLocalBridge();
+    if (bridge && bridge.status === 'ok') {
+      await printViaLocalBridge(data, options);
+      return;
+    }
+  } catch {
+    // Si falla la consulta al puente, intentar WebUSB como alternativa
+  }
+
+  // 2. Alternativa: Conexión WebUSB directa
+  const api = usbApi();
+  if (api) {
+    const devices = await api.getDevices().catch(() => []);
+    if (devices.length > 0) {
+      await sendViaUsb(data);
+      return;
+    }
+  }
+
+  throw new Error(
+    'No se detectó el puente local de impresión en http://127.0.0.1:9191 ni una impresora USB autorizada. Ve a la pestaña Impresora para descargar e iniciar el puente.',
+  );
 };
 
-export const openPosCashDrawer = async () => send(esc(27, 112, 0, 25, 250));
+export const printPosSale = async (job: PosPrintJob, options: { reprint?: boolean; openDrawer?: boolean } = {}) => {
+  const data = append(customerReceipt(job, Boolean(options.reprint)), kitchenChit(job, Boolean(options.reprint)), ...(options.openDrawer ? [esc(27, 112, 0, 25, 250)] : []));
+  await send(data, { openDrawer: options.openDrawer });
+};
+
+export const openPosCashDrawer = async () => {
+  try {
+    const bridge = await checkLocalBridge();
+    if (bridge && bridge.status === 'ok') {
+      await openDrawerViaLocalBridge();
+      return;
+    }
+  } catch {
+    // fallback a send
+  }
+  await send(esc(27, 112, 0, 25, 250), { openDrawer: true });
+};
