@@ -194,9 +194,14 @@ export const Footer = () => {
             <span>Desarrollado con</span>
             <Heart className="w-3.5 h-3.5 text-red-500 fill-red-500" />
             <span>por</span>
-            <span className="text-gray-300 font-bold hover:text-[#FACC15] transition-colors">
+            <a
+              href="https://www.wearesamod.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-300 font-bold hover:text-[#FACC15] transition-colors inline-flex items-center"
+            >
               We Are Samod
-            </span>
+            </a>
           </p>
         </div>
 
