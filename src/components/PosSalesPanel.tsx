@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Filter, Image as ImageIcon, Minus, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
+import { ChevronDown, Filter, Image as ImageIcon, Minus, Plus, ReceiptText, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
 import { ClpInput, normalizeClpDigits } from './ClpInput';
@@ -45,7 +45,9 @@ interface CartLine { key: string; product_id: number; product_name: string; unit
 interface Quote { uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; total_amount: number; }
 type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confirmation' | 'items' | 'subtotal' | 'total_amount'>;
 interface Sale { uuid: string; shift_order_number: number; total_amount: number; payment_method: PaymentMethod; amount_paid: number | null; change_given: number | null; }
-interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; payment_method: PaymentMethod; total_amount: number; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; }
+interface OrderHistoryModifier { modifier_name: string; price_at_sale: number; }
+interface OrderHistoryLine { product_name: string; quantity: number; unit_price: number; notes: string; modifiers: OrderHistoryModifier[]; line_total: number; }
+interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; payment_method: PaymentMethod; subtotal: number; delivery_fee: number; total_amount: number; amount_paid: number | null; change_given: number | null; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; offline_created: boolean; requires_review: boolean; review_reason: string; items: OrderHistoryLine[]; }
 interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | null; }
 interface CatalogDelta extends Catalog {
   removed?: { categories: number[]; products: number[]; modifiers: number[] };
@@ -87,6 +89,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const { confirm, prompt } = usePosDialogs();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
+  const [orderDetail, setOrderDetail] = useState<OrderHistoryItem | null>(null);
   const [offlineOrders, setOfflineOrders] = useState<PosOfflineOrder[]>([]);
   const [offlineCancellations, setOfflineCancellations] = useState<Awaited<ReturnType<typeof listarAnulacionesOfflinePos>>>([]);
   const [printJobs, setPrintJobs] = useState<PosPrintJob[]>([]);
@@ -117,6 +120,15 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [message, setMessage] = useState('');
   const draftWriteVersion = useRef(0);
   const paymentWriteVersion = useRef(0);
+
+  useEffect(() => {
+    if (!orderDetail) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOrderDetail(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [orderDetail]);
 
   useEffect(() => {
     onPendingPaymentChange(!draftLoaded || draftLoadError || quote !== null);
@@ -973,12 +985,28 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     </fieldset>
     {!offlineMode && <details className="pos-info-disclosure border-t border-white/10 pt-3">
       <summary>Ventas recientes <span className="pos-disclosure-meta">{orders.length} registros</span></summary>
-      {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method.replace('_', ' ')}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
+      {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method.replace('_', ' ')}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span><button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:border-[#FACC15]/60 hover:text-[#FACC15]" onClick={() => setOrderDetail(order)}><ReceiptText aria-hidden="true" className="h-4 w-4"/>Ver detalle</button>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
     </details>}
     {!!printJobs.length && <details className="pos-info-disclosure border-t border-white/10 pt-3">
       <summary>Impresiones recientes <span className="pos-disclosure-meta">{printJobs.length} comprobantes · este equipo</span></summary>
       <div className="mt-3 space-y-2">{printJobs.map(job => <div key={job.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">Venta #{String(job.shift_order_number).padStart(3, '0')} · {formatPrice(job.total_amount)}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle: 'short', timeStyle: 'short'}).format(new Date(job.created_at))} · {job.print_error ? 'Impresión pendiente' : job.printed_at ? 'Enviada a impresora' : 'Pendiente de imprimir'}</p>{job.print_error && <p className="mt-1 text-xs text-amber-200">{job.print_error}</p>}</div><button type="button" disabled={printingJobUuid !== null} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white hover:border-[#FACC15]/50 hover:text-[#FACC15] disabled:opacity-50" onClick={() => void printStoredJob(job, true)}>{printingJobUuid === job.uuid ? 'Enviando…' : 'Reimprimir'}</button></div>)}</div>
     </details>}
     {printNotice && <p role="status" className="rounded-lg border border-amber-400/20 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">{printNotice}</p>}
+    {orderDetail && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget) setOrderDetail(null); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="pos-sale-detail-title" className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/15 bg-[#171717] text-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
+          <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#FACC15]">Comprobante de venta</p><h2 id="pos-sale-detail-title" className="mt-1 font-heading text-xl font-bold">Venta #{String(orderDetail.shift_order_number).padStart(3, '0')}</h2><p className="mt-1 text-xs text-gray-400">{new Intl.DateTimeFormat('es-CL', {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(orderDetail.created_at))}</p></div>
+          <button type="button" aria-label="Cerrar detalle" className="rounded-lg border border-white/15 p-2 text-gray-300 transition hover:border-white/30 hover:text-white" onClick={() => setOrderDetail(null)}><X aria-hidden="true" className="h-4 w-4"/></button>
+        </header>
+        <div className="max-h-[min(70vh,620px)] space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+          <div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Tipo de pedido</p><p className="mt-1 font-semibold">{orderDetail.consumption_type === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}</p></div><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Medio de pago</p><p className="mt-1 font-semibold">{orderDetail.payment_method.replace('_', ' ')}</p></div></div>
+          <div><h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Productos</h3><div className="divide-y divide-white/10 rounded-xl border border-white/10 px-4">{orderDetail.items.map((item, index) => <article key={`${item.product_name}-${index}`} className="py-3"><div className="flex justify-between gap-4"><div><p className="text-sm font-semibold">{item.quantity} × {item.product_name}</p><p className="mt-0.5 text-xs text-gray-400">{formatPrice(item.unit_price)} c/u</p></div><p className="text-sm font-semibold">{formatPrice(item.line_total)}</p></div>{item.modifiers.length > 0 && <ul className="mt-2 space-y-1 pl-3 text-xs text-gray-400">{item.modifiers.map((modifier, modifierIndex) => <li key={`${modifier.modifier_name}-${modifierIndex}`}>• {modifier.modifier_name}{modifier.price_at_sale > 0 ? ` · ${formatPrice(modifier.price_at_sale)}` : ''}</li>)}</ul>}{item.notes && <p className="mt-2 rounded-md bg-white/[0.04] px-2.5 py-2 text-xs text-gray-300"><span className="font-semibold">Nota cocina:</span> {item.notes}</p>}</article>)}</div></div>
+          <dl className="space-y-2 text-sm"><div className="flex justify-between text-gray-300"><dt>Subtotal</dt><dd>{formatPrice(orderDetail.subtotal)}</dd></div>{orderDetail.delivery_fee > 0 && <div className="flex justify-between text-gray-300"><dt>Despacho</dt><dd>{formatPrice(orderDetail.delivery_fee)}</dd></div>}<div className="flex justify-between border-t border-white/15 pt-3 text-base font-bold"><dt>Total</dt><dd>{formatPrice(orderDetail.total_amount)}</dd></div>{orderDetail.amount_paid !== null && <div className="flex justify-between text-gray-300"><dt>Recibido</dt><dd>{formatPrice(orderDetail.amount_paid)}</dd></div>}{orderDetail.change_given !== null && <div className="flex justify-between text-gray-300"><dt>Vuelto</dt><dd>{formatPrice(orderDetail.change_given)}</dd></div>}</dl>
+          {orderDetail.status === 'ANULADA' && <p className="rounded-lg border border-red-500/25 bg-red-950/20 p-3 text-sm text-red-200"><span className="font-semibold">Anulada.</span> Motivo: {orderDetail.cancellation_reason || 'Sin motivo informado.'}</p>}
+          {orderDetail.requires_review && <p className="rounded-lg border border-amber-400/25 bg-amber-950/20 p-3 text-xs text-amber-100">Venta offline sincronizada. Requiere revisión{orderDetail.review_reason ? `: ${orderDetail.review_reason}` : '.'}</p>}
+        </div>
+        <footer className="border-t border-white/10 px-5 py-3 text-right sm:px-6"><button type="button" className="rounded-lg bg-[#FACC15] px-4 py-2 text-sm font-bold text-black transition hover:brightness-105" onClick={() => setOrderDetail(null)}>Cerrar</button></footer>
+      </section>
+    </div>}
   </section>;
 };
