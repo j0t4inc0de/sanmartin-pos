@@ -85,11 +85,11 @@ Las listas de gestión muestran registros activos e inactivos. La interfaz ofrec
 .\.venv\Scripts\python.exe manage.py cargar_catalogo_inicial
 ```
 
-El comando agrega categorías y productos faltantes mediante sus slugs y no sobrescribe ni elimina registros existentes. Las promociones actuales siguen fuera de la API de gestión: los combos promocionales de la carta QR son contenido fijo del frontend; `original_price` y `badge` solo son campos de presentación y no programan una promoción ni alteran el precio que cobra el POS.
+El comando agrega categorías y productos faltantes mediante sus slugs y no sobrescribe ni elimina registros existentes. Las promociones visibles se mantienen como productos normales del catálogo bajo la categoría de promociones; por eso llegan a la carta QR y al catálogo del POS mediante las mismas rutas, y usan los campos habituales de nombre, descripción, ingredientes, precio, precio de referencia, imagen e insignia. El modelo actual asigna cada producto a una sola categoría. `original_price` y `badge` son de presentación: no programan una promoción ni reemplazan el precio `price` que se cobra.
 
 ## Promociones programadas — fuera de alcance actual
 
-El usuario decidió mantener las promociones y combos actuales de la carta como están y no agregar una opción de programación por fecha ni descuentos en la caja. Los combos actuales siguen definidos como contenido fijo del frontend; `original_price` y `badge` conservan su función actual de presentación. Cualquier cambio futuro requiere revisar el contrato de ventas para mantener el mismo precio en QR, POS y cobros offline.
+No existe programación por fecha para promociones. Los productos de la categoría de promociones usan el precio regular `price` en el POS y en ventas offline; `original_price` solo se muestra como referencia. Agregar reglas de vigencia, selección estructurada de componentes o precios distintos por canal requiere cambios explícitos al modelo y al contrato de ventas.
 
 ## Evolución del contrato
 

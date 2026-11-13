@@ -16,18 +16,6 @@ export interface MenuItem {
   is_active?: boolean;
 }
 
-export interface ComboItem {
-  id: string;
-  name: string;
-  price: number;
-  originalPrice: number;
-  description: string;
-  includes: string[];
-  badge?: string;
-  image: string;
-  serves: string;
-}
-
 export interface ExtraItem {
   id: string;
   name: string;

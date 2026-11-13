@@ -1,4 +1,4 @@
-import { ComboItem, ExtraItem, GoogleReviewItem } from '../types';
+import { ExtraItem, GoogleReviewItem } from '../types';
 
 // real product catalog categories and prices directly from productos_y_precios_foodtrucksanmartin(Productos).csv
 export const MENU_CATEGORIES = [
@@ -28,66 +28,6 @@ export const CHILEAN_EXTRAS: ExtraItem[] = [
   { id: 'agregado-papa-hilo', name: 'Papa hilo', price: 700 },
   { id: 'agregado-poroto-verde', name: 'Poroto verde', price: 700 },
   { id: 'agregado-aji-verde', name: 'Ají verde', price: 0 },
-];
-
-// ponytail: exact 4 promotions from CSV (Promocion rows)
-export const COMBOS_DATA: ComboItem[] = [
-  {
-    id: 'promo-2-sandwich-papas',
-    name: '2 Sándwich + Papas',
-    price: 7000,
-    originalPrice: 13200,
-    description: '2 sándwich tradicionales a elección + papas fritas para acompañar.',
-    includes: [
-      '2 Sándwich tradicionales a elección',
-      'Papas fritas para acompañar',
-    ],
-    badge: 'Promo Estrella 🔥',
-    serves: 'Para 2 personas',
-    image: '/productos/sandwich-italiano.jpg',
-  },
-  {
-    id: 'promo-2-sandwich-casa-papas',
-    name: '2 Sándwich de la Casa + Papas',
-    price: 7500,
-    originalPrice: 16000,
-    description: '2 sándwich de la casa + papas fritas para acompañar.',
-    includes: [
-      '2 Sándwich De la Casa (Proteína a elección, champiñón, queso mantecoso, bbq, mayo)',
-      'Papas fritas para acompañar',
-    ],
-    badge: 'Especialidad 👑',
-    serves: 'Para 2 personas',
-    image: '/productos/sandwich-delacasa.jpg',
-  },
-  {
-    id: 'promo-chorrillana-chica-bebida',
-    name: 'Chorrillana Chica + Bebida/Jugo 1.5L',
-    price: 15000,
-    originalPrice: 16500,
-    description: 'Chorrillana chica + bebida o jugo 1.5L a elección.',
-    includes: [
-      '1 Chorrillana Chica (Papas fritas, 2 proteínas a elección, cebolla caramelizada, 2 huevos fritos, longaniza)',
-      '1 Bebida o Jugo 1.5L a elección',
-    ],
-    badge: 'Ideal para Compartir 🍟',
-    serves: 'Tamaño Chico',
-    image: '/productos/chorrillana.jpg',
-  },
-  {
-    id: 'promo-chorrillana-grande-bebida',
-    name: 'Chorrillana Grande + Bebida/Jugo 1.5L',
-    price: 17000,
-    originalPrice: 19500,
-    description: 'Chorrillana grande + bebida o jugo 1.5L a elección.',
-    includes: [
-      '1 Chorrillana Grande (Papas fritas, 2 proteínas a elección, cebolla caramelizada, 4 huevos fritos, longaniza)',
-      '1 Bebida o Jugo 1.5L a elección',
-    ],
-    badge: 'Familiar XL ⭐',
-    serves: 'Tamaño Grande',
-    image: '/productos/chorrillana.jpg',
-  },
 ];
 
 export const GOOGLE_MAPS_SUMMARY = {

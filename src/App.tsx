@@ -13,7 +13,7 @@ import { QrMenuPage } from './components/QrMenuPage';
 import { PosPage } from './components/PosPage';
 import { AppearanceControls } from './components/AppearanceControls';
 import { PosDialogProvider } from './components/PosDialogs';
-import { CartItem, ComboItem } from './types';
+import { CartItem } from './types';
 
 // ponytail: removed UnderConstruction maintenance gate so full landing and QR menu are live
 
@@ -61,28 +61,6 @@ export default function App() {
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
-  const handleAddComboToCart = (combo: ComboItem) => {
-    setCartItems((prev) => {
-      const existing = prev.find((i) => i.id === combo.id);
-      if (existing) {
-        return prev.map((i) =>
-          i.id === combo.id ? { ...i, quantity: i.quantity + 1 } : i
-        );
-      }
-      return [
-        ...prev,
-        {
-          id: combo.id,
-          name: combo.name,
-          price: combo.price,
-          quantity: 1,
-          image: combo.image,
-          type: 'combo',
-        },
-      ];
-    });
-  };
-
   const handleUpdateQuantity = (id: string, delta: number) => {
     setCartItems((prev) =>
       prev
@@ -129,10 +107,7 @@ export default function App() {
       <main className="flex-1">
         <Hero onNavigateToMenu={() => navigateTo('menu')} />
         <AboutFeatures />
-        <CombosSection
-          onAddComboToCart={handleAddComboToCart}
-          onNavigateToMenu={() => navigateTo('menu')}
-        />
+        <CombosSection onNavigateToMenu={() => navigateTo('menu')} />
         <LocationHours />
         <Testimonials />
       </main>

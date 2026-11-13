@@ -52,13 +52,13 @@ Las etapas de desarrollo se pueden avanzar mientras se coordina la prueba físic
 
 **Estado:** aceptada manualmente por el usuario el 10 de noviembre de 2026 en tema claro y oscuro; confirmó que el producto se restauró correctamente. La función incluye búsqueda por nombre/categoría y acción reversible para retirar/restaurar. La versión inicial pasó 9 pruebas de `apps.catalog`; la interfaz pasó la compilación.
 
-### 2.2 Promociones programadas para la carta QR
+### 2.2 Promociones del catálogo; programación diferida
 
-**Hallazgo documental:** el contrato actual deja los combos promocionales fuera del POS; cuatro combos siguen como contenido fijo en el frontend. El MER contempla `original_price` como precio tachado para promociones web futuras, pero no agrega fechas ni reglas de precio. El campo `badge` también es solo presentación. El contrato de ventas prohíbe descuentos en esta versión y el backend cotiza al precio regular. Por lo tanto, hoy el POS no permite programar promociones por día y editar solo el precio tachado produciría una carta que puede cobrar otro importe.
+**Hallazgo:** las promociones anteriores eran cuatro objetos fijos del frontend, separados del catálogo API. El catálogo ya maneja productos con nombre, descripción, ingredientes, precio, precio de referencia, imagen e insignia. El modelo asigna cada producto a una sola categoría; el catálogo público y el del POS incluyen categorías activas con productos disponibles.
 
-**Decisión del usuario:** mantener las promociones y combos actuales tal como aparecen, sin una opción nueva para programarlos por día. No cambiar precios ni reglas de venta. Si se retoma más adelante, primero se debe acordar el flujo para que QR, POS y cobros offline usen el mismo precio.
+**Decisión del usuario (13 de noviembre de 2026):** retirar las promociones ficticias de la portada y del menú QR, y mostrar los productos reales de la categoría de promociones (en producción aparece como **Promos Definitiva**). No agregar programación por fecha. Esos productos se venden como productos normales al precio `price`; `original_price` sigue siendo solo una referencia visual.
 
-**Estado:** diferido por decisión del usuario; no bloquea la gestión del catálogo.
+**Estado:** conexión de la portada y el QR al catálogo dinámico implementada localmente; `npm run build` pasó. Pendiente comprobar visualmente los registros actuales de `promos` en el entorno con API y base de datos accesibles. La asignación de múltiples categorías a un mismo producto no forma parte de este cambio y sigue sin estar soportada por el modelo actual.
 
 ### 3. Prueba física de la DINON 9390
 

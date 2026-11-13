@@ -3,11 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, 
   MapPin, 
-  Clock, 
-  Users, 
-  Check
+  Clock
 } from 'lucide-react';
-import { COMBOS_DATA } from '../data/menuData';
 import { CatalogStatus } from './CatalogStatus';
 import { useMenuCatalog } from '../hooks/useMenuCatalog';
 import { formatPriceCLP, useBusinessStatus } from '../utils/businessHours';
@@ -31,7 +28,6 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
 
   // Filtered menu items
   const filteredItems = useMemo(() => {
-    if (activeCategory === 'combos') return [];
     return items.filter((item) => {
       const matchesCategory =
         activeCategory === 'all' || item.category === activeCategory;
@@ -45,26 +41,8 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
     });
   }, [activeCategory, items, searchQuery]);
 
-  // Filtered combos
-  const showCombos = activeCategory === 'all' || activeCategory === 'combos';
-  const filteredCombos = useMemo(() => {
-    if (!showCombos) return [];
-    if (!searchQuery) return COMBOS_DATA;
-    return COMBOS_DATA.filter((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.includes.some((inc) => inc.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
-  }, [showCombos, searchQuery]);
-
-  const categories = useMemo(() => {
-    return [
-      ...menuCategories,
-      { id: 'combos', name: 'Promos' }
-    ];
-  }, [menuCategories]);
-
-  const totalResults = filteredItems.length + (showCombos ? filteredCombos.length : 0);
+  const categories = menuCategories;
+  const totalResults = filteredItems.length;
 
   return (
     <div className="min-h-screen bg-[#0D0D0D] text-gray-100 flex flex-col selection:bg-[#DC2626] selection:text-white">
@@ -253,9 +231,20 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#161616] via-transparent to-black/30" />
+
+                        {item.badge && (
+                          <span className="absolute top-2.5 left-2.5 max-w-[70%] truncate rounded-full border border-red-400/30 bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-2.5 py-1 text-[10px] font-bold text-white shadow-lg">
+                            {item.badge}
+                          </span>
+                        )}
                         
                         {/* Price Tag in Gold */}
                         <div className="absolute bottom-2 right-2 bg-[#0D0D0D]/95 backdrop-blur-md px-3 py-1 rounded-xl border border-white/15 shadow-md">
+                          {item.originalPrice != null && item.originalPrice > item.price && (
+                            <span className="block text-right text-[10px] leading-none text-gray-400 line-through">
+                              {formatPriceCLP(item.originalPrice)}
+                            </span>
+                          )}
                           <span className="font-heading text-base sm:text-lg font-extrabold text-[#FACC15]">
                             {formatPriceCLP(item.price)}
                           </span>
@@ -288,118 +277,6 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
                               </span>
                             ))}
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </motion.div>
-          </div>
-        )}
-
-        {/* Combos & Sharing Promotions Section */}
-        {showCombos && filteredCombos.length > 0 && (
-          <div className="space-y-4 pt-4 border-t border-white/10">
-            <motion.div 
-              key={`header_combos_${activeCategory}`}
-              initial={{ opacity: 0, x: -6 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.2 }}
-              className="flex items-center justify-between pb-1 border-b border-white/5"
-            >
-              <h2 className="font-heading text-lg sm:text-xl font-bold uppercase tracking-wider text-[#FACC15]">
-                Combos & Promociones Para Compartir
-              </h2>
-              <span className="text-xs text-gray-400 font-medium">
-                {filteredCombos.length} promociones
-              </span>
-            </motion.div>
-
-            <motion.div 
-              layout
-              className="grid grid-cols-1 sm:grid-cols-2 gap-4"
-            >
-              <AnimatePresence mode="popLayout">
-                {filteredCombos.map((combo, index) => (
-                  <motion.div
-                    layout
-                    initial={{ opacity: 0, y: 22, scale: 0.94 }}
-                    animate={{ 
-                      opacity: 1, 
-                      y: 0, 
-                      scale: 1,
-                      transition: {
-                        type: "spring",
-                        stiffness: 340,
-                        damping: 24,
-                        mass: 0.8,
-                        delay: Math.min(index * 0.05, 0.25)
-                      }
-                    }}
-                    exit={{ 
-                      opacity: 0, 
-                      scale: 0.92, 
-                      transition: { duration: 0.15, ease: "easeOut" } 
-                    }}
-                    transition={{
-                      layout: { type: "spring", stiffness: 350, damping: 28 }
-                    }}
-                    key={`${activeCategory}_${combo.id}`}
-                    className="bg-[#161616] hover:bg-[#1B1B1B] rounded-2xl border border-white/10 hover:border-[#FACC15]/30 overflow-hidden shadow-lg flex flex-col justify-between transition-colors duration-300"
-                  >
-                    <div>
-                      {/* Image & Price */}
-                      <div className="relative h-40 w-full overflow-hidden bg-black/40">
-                        <img
-                          src={combo.image}
-                          alt={combo.name}
-                          loading="lazy"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-[#161616] via-transparent to-black/30" />
-                        
-                        {/* Serves pill */}
-                        <div className="absolute top-2.5 right-2.5 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-full text-[11px] font-bold text-amber-300 border border-white/15 flex items-center gap-1">
-                          <Users className="w-3 h-3" />
-                          <span>{combo.serves}</span>
-                        </div>
-
-                        {/* Price box */}
-                        <div className="absolute bottom-2.5 right-2.5 bg-[#0D0D0D]/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/15 text-right">
-                          <span className="text-[11px] text-gray-400 line-through block leading-none">
-                            {formatPriceCLP(combo.originalPrice)}
-                          </span>
-                          <span className="font-heading text-lg font-black text-[#FACC15] leading-tight block mt-0.5">
-                            {formatPriceCLP(combo.price)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-4 space-y-3">
-                        <div>
-                          <h3 className="font-heading text-lg font-bold text-white uppercase">
-                            {combo.name}
-                          </h3>
-                          <p className="text-gray-400 text-xs mt-1 leading-relaxed">
-                            {combo.description}
-                          </p>
-                        </div>
-
-                        {/* Includes list */}
-                        <div className="pt-2 border-t border-white/5 space-y-1.5">
-                          <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">
-                            Incluye:
-                          </span>
-                          <ul className="space-y-1 text-xs text-gray-300">
-                            {combo.includes.map((inc, i) => (
-                              <li key={i} className="flex items-start gap-1.5">
-                                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                                <span>{inc}</span>
-                              </li>
-                            ))}
-                          </ul>
                         </div>
                       </div>
                     </div>
