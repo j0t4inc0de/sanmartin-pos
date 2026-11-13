@@ -7,6 +7,7 @@ import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
 import { PosReports } from './PosReports';
+import { ErrorBoundary } from './ErrorBoundary';
 import { ClpInput } from './ClpInput';
 import { usePosDialogs } from './PosDialogs';
 import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarAnulacionOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, guardarVentaOfflineEnColaPos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
@@ -1179,7 +1180,9 @@ export const PosPage = () => {
             {activeWorkspace === 'catalog' ? (
               <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
             ) : activeWorkspace === 'reports' ? (
-              <PosReports offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
+              <ErrorBoundary fallbackTitle="Error al cargar la vista de reportes" onReset={() => setActiveWorkspace('sales')}>
+                <PosReports offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
+              </ErrorBoundary>
             ) : activeWorkspace === 'devices' ? (
               <div className="space-y-4">
                 <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
