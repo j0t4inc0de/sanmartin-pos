@@ -42,12 +42,12 @@ type PaymentMethod = 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
 type Product = Catalog['products'][number];
 interface CartModifier { modifier_id: number; modifier_name: string; price_at_sale: number; quantity_per_unit: number; }
 interface CartLine { key: string; product_id: number; product_name: string; unit_price: number; quantity: number; notes: string; modifiers: CartModifier[]; }
-interface Quote { uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; total_amount: number; }
+interface Quote { uuid: string; shift_order_number: number; created_at: string; customer_name: string; consumption_type: ConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; total_amount: number; }
 type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confirmation' | 'items' | 'subtotal' | 'total_amount'>;
 interface Sale { uuid: string; shift_order_number: number; total_amount: number; payment_method: PaymentMethod; amount_paid: number | null; change_given: number | null; }
 interface OrderHistoryModifier { modifier_name: string; price_at_sale: number; }
 interface OrderHistoryLine { product_name: string; quantity: number; unit_price: number; notes: string; modifiers: OrderHistoryModifier[]; line_total: number; }
-interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; payment_method: PaymentMethod; subtotal: number; delivery_fee: number; total_amount: number; amount_paid: number | null; change_given: number | null; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; offline_created: boolean; requires_review: boolean; review_reason: string; items: OrderHistoryLine[]; }
+interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; customer_name: string; consumption_type: ConsumptionType; payment_method: PaymentMethod; subtotal: number; delivery_fee: number; total_amount: number; amount_paid: number | null; change_given: number | null; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; offline_created: boolean; requires_review: boolean; review_reason: string; items: OrderHistoryLine[]; }
 interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | null; }
 interface CatalogDelta extends Catalog {
   removed?: { categories: number[]; products: number[]; modifiers: number[] };
@@ -98,6 +98,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [syncingOfflineOrders, setSyncingOfflineOrders] = useState(false);
   const syncInProgress = useRef(false);
   const [lines, setLines] = useState<CartLine[]>([]);
+  const [customerName, setCustomerName] = useState('');
   const [consumptionType, setConsumptionType] = useState<ConsumptionType>('PARA_LLEVAR');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [pendingPaymentStatus, setPendingPaymentStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -144,6 +145,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const currentDraft = (): Omit<PosSaleDraft, 'saved_at'> => ({
     shift_uuid: shiftUuid,
+    customer_name: customerName,
     lines,
     consumption_type: consumptionType,
     payment_method: paymentMethod,
@@ -164,6 +166,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         if (!active) return;
         if (draft) {
           setLines(draft.lines);
+          setCustomerName(draft.customer_name ?? '');
           setConsumptionType(draft.consumption_type);
           setPaymentMethod(draft.payment_method);
           setAmountReceived(normalizeCashInput(draft.amount_received));
@@ -175,6 +178,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
             shift_order_number: pendingPayment.shift_order_number,
             created_at: pendingPayment.created_at,
             consumption_type: pendingPayment.consumption_type,
+            customer_name: pendingPayment.customer_name ?? '',
             price_confirmation_accepted: pendingPayment.price_confirmation_accepted,
           offline_created: pendingPayment.offline_created,
           });
@@ -209,7 +213,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       .then(() => { if (active && writeVersion === draftWriteVersion.current) setDraftSaveStatus('saved'); })
       .catch(() => { if (active && writeVersion === draftWriteVersion.current) setDraftSaveStatus('error'); });
     return () => { active = false; };
-  }, [draftLoaded, shiftUuid, lines, consumptionType, paymentMethod, amountReceived]);
+  }, [draftLoaded, shiftUuid, lines, customerName, consumptionType, paymentMethod, amountReceived]);
 
   const persistCurrentDraft = async (): Promise<boolean> => {
     const writeVersion = ++draftWriteVersion.current;
@@ -233,7 +237,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   ): Promise<boolean> => {
     const writeVersion = ++paymentWriteVersion.current;
     setPendingPaymentStatus('saving');
-    const { uuid, shift_order_number, created_at, consumption_type, price_confirmation_accepted, ...quoteSnapshot } = targetQuote;
+    const { uuid, shift_order_number, created_at, customer_name, consumption_type, price_confirmation_accepted, ...quoteSnapshot } = targetQuote;
     try {
       await guardarCobroPendientePos({
         status,
@@ -242,6 +246,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         uuid,
         shift_order_number,
         created_at,
+        customer_name,
         consumption_type,
         quote: quoteSnapshot,
         price_confirmation_accepted,
@@ -262,6 +267,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     return {
       uuid: targetQuote.uuid, shift_uuid: shiftUuid, shift_order_number: targetQuote.shift_order_number,
       created_at: targetQuote.created_at, consumption_type: targetQuote.consumption_type, payment_method: method,
+      customer_name: targetQuote.customer_name,
       total_amount: totalAmount, amount_paid: effectivePaid,
       change_given: method === 'EFECTIVO' ? changeGiven ?? Math.max(0, (effectivePaid ?? 0) - totalAmount) : null,
       items: targetQuote.items.map((item, index) => ({
@@ -309,6 +315,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         shift_uuid: shiftUuid,
         created_at: targetQuote.created_at,
         offline_created: true,
+        customer_name: targetQuote.customer_name,
         consumption_type: targetQuote.consumption_type,
         payment_method: paymentMethod,
         ...(paymentMethod === 'EFECTIVO' && received !== null ? { amount_received: received } : {}),
@@ -328,7 +335,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setPaymentRecordWriteFailed(false);
       setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
       setMessage(`Venta #${targetQuote.shift_order_number} guardada en este equipo y pendiente de sincronización.`);
-      setLines([]); setQuote(null); setAmountReceived('');
+      setLines([]); setQuote(null); setAmountReceived(''); setCustomerName('');
       await onSale(targetQuote.shift_order_number + 1);
       if (!offlineMode && navigator.onLine) void syncOfflineOrders();
       return true;
@@ -536,6 +543,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const requestQuote = async () => {
     if (!lines.length || quote || paymentReceivedPending) return;
+    const normalizedCustomerName = customerName.trim();
+    if (!normalizedCustomerName) {
+      setError('Ingresa el nombre del cliente antes de cotizar.');
+      return;
+    }
     if (!await onBeforeCreateSale()) return;
     if (!catalog) {
       setError('El catálogo no está disponible.');
@@ -588,6 +600,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
         created_at: createdAt,
         consumption_type: consumptionType,
+        customer_name: normalizedCustomerName,
         items: lines.map(line => {
           const product = catalog!.products.find(p => p.id === line.product_id)
             || catalog!.products.find(p => p.name.trim().toLowerCase() === line.product_name.trim().toLowerCase())!;
@@ -623,6 +636,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         uuid,
         shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
         created_at: createdAt,
+        customer_name: normalizedCustomerName,
         consumption_type: consumptionType,
         price_confirmation_accepted: true,
         offline_created: offlineMode,
@@ -664,7 +678,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setPaymentReceivedPending(false);
       setPaymentRecordWriteFailed(false);
       setMessage(`Venta #${sale.shift_order_number} guardada. Total ${formatPrice(sale.total_amount)}${sale.change_given !== null ? ` · Vuelto ${formatPrice(sale.change_given)}` : ''}.`);
-      setLines([]); setQuote(null); setAmountReceived('');
+      setLines([]); setQuote(null); setAmountReceived(''); setCustomerName('');
       await printStoredJob({ ...printJob, saved_at: new Date().toISOString() });
       await loadOrders();
       try { await onSale(); }
@@ -974,6 +988,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           </details>}
           <input className="mt-3 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-xs text-white" maxLength={150} placeholder="Nota para cocina (opcional)" value={line.notes} onChange={e => updateLine(line.key, l => ({...l, notes: e.target.value}))}/>
         </article>;})}</div>}
+        <label className="block text-xs font-bold uppercase tracking-wider text-gray-300">Nombre del cliente <span className="text-red-300">*</span><input required maxLength={100} autoComplete="name" className="mt-2 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-sm font-normal normal-case tracking-normal text-white placeholder:text-gray-500" placeholder="Nombre para identificar el pedido" value={customerName} disabled={!!quote || paymentReceivedPending} onChange={event => { setCustomerName(event.target.value); invalidateQuote(); }} /></label>
         <fieldset className="space-y-2 border-0 p-0"><legend className="text-xs font-bold uppercase tracking-wider text-gray-300">Tipo de pedido</legend><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={consumptionType === 'PARA_SERVIR'} className={`pos-type-choice ${consumptionType === 'PARA_SERVIR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_SERVIR'); invalidateQuote();}}><Utensils className="h-5 w-5"/><span><strong>Para servir</strong><small>Consumo en el local</small></span></button><button type="button" aria-pressed={consumptionType === 'PARA_LLEVAR'} className={`pos-type-choice ${consumptionType === 'PARA_LLEVAR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_LLEVAR'); invalidateQuote();}}><ShoppingBag className="h-5 w-5"/><span><strong>Para llevar</strong><small>Pedido para llevar</small></span></button></div></fieldset>
         <div className={`pos-quote-sticky ${quote ? 'is-quoted' : ''}`}><span>{lines.length ? `${lines.reduce((count, line) => count + line.quantity, 0)} productos · ${consumptionType === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}` : 'Agrega productos para cotizar'}</span><button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()}>{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar venta'}</button></div>
         {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>{quote.offline_created ? 'Total calculado con catálogo local' : 'Total validado'}</span><span>{formatPrice(quote.total_amount)}</span></div><p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · {quote.offline_created ? 'Venta y folio guardados localmente antes del cobro.' : `Válida hasta ${new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización respaldada en este equipo.`}</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de cobrar.</p>}
@@ -1000,6 +1015,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         </header>
         <div className="max-h-[min(70vh,620px)] space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
           <div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Tipo de pedido</p><p className="mt-1 font-semibold">{orderDetail.consumption_type === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}</p></div><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Medio de pago</p><p className="mt-1 font-semibold">{orderDetail.payment_method.replace('_', ' ')}</p></div></div>
+          <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><span className="text-xs text-gray-400">Cliente</span><br/><strong>{orderDetail.customer_name || 'Sin nombre'}</strong></p>
           <div><h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Productos</h3><div className="divide-y divide-white/10 rounded-xl border border-white/10 px-4">{orderDetail.items.map((item, index) => <article key={`${item.product_name}-${index}`} className="py-3"><div className="flex justify-between gap-4"><div><p className="text-sm font-semibold">{item.quantity} × {item.product_name}</p><p className="mt-0.5 text-xs text-gray-400">{formatPrice(item.unit_price)} c/u</p></div><p className="text-sm font-semibold">{formatPrice(item.line_total)}</p></div>{item.modifiers.length > 0 && <ul className="mt-2 space-y-1 pl-3 text-xs text-gray-400">{item.modifiers.map((modifier, modifierIndex) => <li key={`${modifier.modifier_name}-${modifierIndex}`}>• {modifier.modifier_name}{modifier.price_at_sale > 0 ? ` · ${formatPrice(modifier.price_at_sale)}` : ''}</li>)}</ul>}{item.notes && <p className="mt-2 rounded-md bg-white/[0.04] px-2.5 py-2 text-xs text-gray-300"><span className="font-semibold">Nota cocina:</span> {item.notes}</p>}</article>)}</div></div>
           <dl className="space-y-2 text-sm"><div className="flex justify-between text-gray-300"><dt>Subtotal</dt><dd>{formatPrice(orderDetail.subtotal)}</dd></div>{orderDetail.delivery_fee > 0 && <div className="flex justify-between text-gray-300"><dt>Despacho</dt><dd>{formatPrice(orderDetail.delivery_fee)}</dd></div>}<div className="flex justify-between border-t border-white/15 pt-3 text-base font-bold"><dt>Total</dt><dd>{formatPrice(orderDetail.total_amount)}</dd></div>{orderDetail.amount_paid !== null && <div className="flex justify-between text-gray-300"><dt>Recibido</dt><dd>{formatPrice(orderDetail.amount_paid)}</dd></div>}{orderDetail.change_given !== null && <div className="flex justify-between text-gray-300"><dt>Vuelto</dt><dd>{formatPrice(orderDetail.change_given)}</dd></div>}</dl>
           {orderDetail.status === 'ANULADA' && <p className="rounded-lg border border-red-500/25 bg-red-950/20 p-3 text-sm text-red-200"><span className="font-semibold">Anulada.</span> Motivo: {orderDetail.cancellation_reason || 'Sin motivo informado.'}</p>}

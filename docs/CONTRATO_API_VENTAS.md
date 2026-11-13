@@ -34,9 +34,9 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 ## 2. Reglas de integridad
 
 1. Se requiere sesión autenticada, permiso `sales.can_operate_pos` y un turno abierto del operador.
-2. La venta queda vinculada al turno abierto y al usuario autenticado; el cliente no puede elegir un turno ajeno.
+2. La venta queda vinculada al turno abierto y al usuario autenticado; el cliente no puede elegir un turno ajeno. `customer_name` es obligatorio (1–100 caracteres), se captura al cotizar y se conserva en la venta e historial.
 3. Se aceptan solo productos y modificadores activos y disponibles en el catálogo de la venta en línea.
-4. La solicitud no puede imponer el subtotal, total, nombre o precio online. El servidor toma los valores vigentes del catálogo y calcula el precio de cada línea, los modificadores, subtotal, vuelto y total.
+4. La solicitud online no puede imponer precios, subtotal ni total. El nombre obligatorio del cliente se recibe al cotizar, queda firmado en la cotización y se copia a la venta. El servidor toma los valores vigentes del catálogo y calcula el precio de cada línea, los modificadores, subtotal, vuelto y total.
 5. La cantidad de cada producto debe ser un entero mayor que cero. Los montos son enteros no negativos. No se permiten descuentos ni recargos de despacho en esta versión.
 6. `total_amount` debe coincidir con la suma de líneas y extras. El POS asigna `shift_order_number` de forma secuencial en su almacenamiento local persistente, compartido por ventas en línea y offline. El servidor verifica la unicidad por turno dentro de la transacción y responde `409 Conflict` si el folio ya está asociado a otra venta.
 7. Si se repite una solicitud con el mismo UUID y el mismo contenido, se devuelve la venta existente. Si el UUID ya existe con otro contenido, se responde `409 Conflict` y no se crea otra venta.
@@ -77,6 +77,7 @@ Todas las rutas requieren sesión autenticada, CSRF y permiso POS.
   "uuid": "6ad2c871-6c9e-43a9-8ca2-fd2302f35fd2",
   "shift_order_number": 15,
   "created_at": "2026-11-02T20:12:00-03:00",
+  "customer_name": "Nombre del cliente",
   "consumption_type": "PARA_LLEVAR",
   "items": [
     {
@@ -146,6 +147,7 @@ La sincronización offline usa otro formato y nunca cambia los snapshots cobrado
   "shift_uuid": "1fb305de-2b6e-4a72-8811-63ae8b35fdec",
   "created_at": "2026-11-02T20:12:00-03:00",
   "offline_created": true,
+  "customer_name": "Nombre del cliente",
   "consumption_type": "PARA_LLEVAR",
   "payment_method": "EFECTIVO",
   "amount_received": 20000,

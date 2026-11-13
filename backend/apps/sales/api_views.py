@@ -253,6 +253,7 @@ def _venta_idempotente_coincide(order, quote, payment_method, amount_received):
         and order.shift_order_number == quote["shift_order_number"]
         and order.created_at == created_at
         and order.consumption_type == quote["consumption_type"]
+        and order.customer_name == quote.get("customer_name", "")
         and order.payment_method == payment_method
         and order.subtotal == quote["subtotal"]
         and order.delivery_fee == 0
@@ -292,6 +293,10 @@ def _venta_offline_idempotente_coincide(order, shift, values, subtotal, amount_p
         and order.offline_created
         and order.status == Order.Status.COMPLETADA
         and order.consumption_type == values["consumption_type"]
+        and (
+            order.customer_name == values["customer_name"]
+            or (values["customer_name"] == "Sin nombre" and not order.customer_name)
+        )
         and order.payment_method == values["payment_method"]
         and order.subtotal == subtotal
         and order.delivery_fee == 0
@@ -571,6 +576,7 @@ class OrderQuoteView(APIView):
             "shift_uuid": str(shift.uuid),
             "user_id": request.user.pk,
             "consumption_type": values["consumption_type"],
+            "customer_name": values["customer_name"],
             "items": quote_items,
             "subtotal": subtotal,
             "total_amount": subtotal,
@@ -709,6 +715,7 @@ class CreateOrderView(APIView):
                     created_at=created_at,
                     offline_created=False,
                     consumption_type=quote["consumption_type"],
+                    customer_name=quote.get("customer_name", ""),
                     payment_method=values["payment_method"],
                     subtotal=quote["subtotal"],
                     delivery_fee=0,
@@ -830,6 +837,7 @@ class SyncOfflineOrderView(APIView):
                     created_at=values["created_at"],
                     offline_created=True,
                     consumption_type=values["consumption_type"],
+                    customer_name=values["customer_name"],
                     payment_method=values["payment_method"],
                     subtotal=subtotal,
                     delivery_fee=0,

@@ -53,6 +53,7 @@ export interface StoredCatalog {
 
 export interface PosSaleDraft {
   shift_uuid: string;
+  customer_name: string;
   lines: {
     key: string;
     product_id: number;
@@ -80,6 +81,7 @@ export interface PosPendingPaymentDraft {
   uuid: string;
   shift_order_number: number;
   created_at: string;
+  customer_name: string;
   consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
   quote: {
     quote_token: string;
@@ -133,6 +135,7 @@ export interface PosOfflineOrder {
   shift_uuid: string;
   created_at: string;
   offline_created: true;
+  customer_name: string;
   consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
   payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
   amount_received?: number;
@@ -153,6 +156,7 @@ export interface PosPrintJob {
   shift_uuid: string;
   shift_order_number: number;
   created_at: string;
+  customer_name: string;
   consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
   payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
   total_amount: number;
@@ -618,6 +622,7 @@ export const cargarCobroPendientePos = async (
         uuid: stored.uuid,
         shift_order_number: stored.shift_order_number,
         created_at: stored.created_at,
+        customer_name: stored.customer_name ?? '',
         consumption_type: stored.consumption_type,
         quote: stored.quote,
         price_confirmation_accepted: stored.price_confirmation_accepted,

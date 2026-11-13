@@ -75,6 +75,7 @@ class Order(models.Model):
         choices=ConsumptionType.choices,
         default=ConsumptionType.PARA_LLEVAR,
     )
+    customer_name = models.CharField(max_length=100, blank=True, default="")
     payment_method = models.CharField(max_length=30, choices=PaymentMethod.choices)
     subtotal = models.PositiveIntegerField()
     delivery_fee = models.PositiveIntegerField(default=0)
