@@ -26,8 +26,20 @@ function applyPreferences(preferences: Preferences) {
   root.style.setProperty('--ui-scale', String(preferences.scale));
 }
 
+function clearPreferences() {
+  const root = document.documentElement;
+  delete root.dataset.theme;
+  delete root.dataset.uiScale;
+  root.style.removeProperty('--ui-scale');
+}
+
 export function initializeAppearance() {
-  applyPreferences(loadPreferences());
+  const path = window.location.pathname.toLowerCase();
+  if (path === '/pos' || path.startsWith('/pos/')) {
+    applyPreferences(loadPreferences());
+  } else {
+    clearPreferences();
+  }
 }
 
 export function AppearanceControls() {
@@ -40,6 +52,8 @@ export function AppearanceControls() {
     applyPreferences(preferences);
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences)); } catch { /* The visual preference still applies for this visit. */ }
   }, [preferences]);
+
+  useEffect(() => () => clearPreferences(), []);
 
   useEffect(() => {
     if (!open) return;

@@ -5,7 +5,8 @@ import {
   MapPin, 
   Clock, 
   Users, 
-  Check
+  Check,
+  Heart
 } from 'lucide-react';
 import { COMBOS_DATA } from '../data/menuData';
 import { CatalogStatus } from './CatalogStatus';
@@ -60,7 +61,7 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
   const categories = useMemo(() => {
     return [
       ...menuCategories,
-      { id: 'combos', name: 'Combos & Promos' }
+      { id: 'combos', name: 'Promos' }
     ];
   }, [menuCategories]);
 
@@ -410,11 +411,29 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
           </div>
         )}
 
+        {/* End of Menu Agency Credit */}
+        <div className="mt-12 mb-6 pt-6 border-t border-white/5 text-center text-xs text-gray-500 space-y-1">
+          <p>© {new Date().getFullYear()} Sanguchería San Martín · Carta Digital</p>
+          <p className="flex items-center justify-center gap-1 text-[11px] text-gray-400">
+            <span>Desarrollado con</span>
+            <Heart className="w-3 h-3 text-red-500 fill-red-500" />
+            <span>por</span>
+            <a
+              href="https://www.wearesamod.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-200 font-bold hover:text-[#FACC15] transition-colors underline decoration-white/20 underline-offset-2 hover:decoration-[#FACC15]"
+            >
+              We Are Samod
+            </a>
+          </p>
+        </div>
+
       </main>
 
-      {/* Sticky Bottom Bar with Schedule & Live Status */}
-      <footer className="sticky bottom-0 z-30 bg-[#121212]/95 backdrop-blur-md border-t border-white/10 px-4 py-2.5 shadow-2xl">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2 text-[11px] sm:text-xs">
+      {/* Sticky Bottom Bar with Schedule, Live Status & We Are Samod */}
+      <footer className="sticky bottom-0 z-30 bg-[#121212]/95 backdrop-blur-md border-t border-white/10 px-4 py-2 shadow-2xl">
+        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] sm:text-xs">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${
@@ -422,13 +441,25 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
               }`}
             />
             <span className="font-semibold text-white">
-              {status.isOpen ? '¡Plancha Caliente! Abierto ahora' : 'Abre a las 18:30 hrs'}
+              {status.isOpen ? '¡Plancha Caliente!' : 'Abre 18:30 hrs'}
+            </span>
+            <span className="text-gray-600 hidden xs:inline">·</span>
+            <span className="flex items-center gap-1 text-gray-400">
+              <Clock className="w-3 h-3 text-[#FACC15] shrink-0" />
+              Mar a Dom: 18:30 - 23:30
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-gray-300">
-            <Clock className="w-3.5 h-3.5 text-[#FACC15] shrink-0" />
-            <span className="font-medium text-gray-300">Mar a Dom: 18:30 - 23:30</span>
+          <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-gray-400 ml-auto">
+            <span>Por</span>
+            <a
+              href="https://www.wearesamod.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-200 font-bold hover:text-[#FACC15] transition-colors inline-flex items-center gap-0.5 underline decoration-white/20 underline-offset-2 hover:decoration-[#FACC15]"
+            >
+              We Are Samod
+            </a>
           </div>
         </div>
       </footer>

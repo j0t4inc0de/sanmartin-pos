@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, Printer, RefreshCw, User, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, BarChart3, Boxes, CircleDollarSign, Clock3, LogOut, Printer, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { ApiError, cargarTokenCsrf, solicitarApi } from '../services/apiClient';
+import { Alert } from './Alert';
+import { PosSnackbarAlert } from './PosSnackbarAlert';
 import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
 import { PosReports } from './PosReports';
+import { ErrorBoundary } from './ErrorBoundary';
+import { ClpInput } from './ClpInput';
 import { usePosDialogs } from './PosDialogs';
 import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarAnulacionOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, guardarVentaOfflineEnColaPos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
@@ -958,13 +962,17 @@ export const PosPage = () => {
           </header>
         )}
 
+        <PosSnackbarAlert
+          open={Boolean(errorMessage)}
+          severity="error"
+          message={errorMessage}
+          onClose={() => setErrorMessage('')}
+        />
+
         {errorMessage && (
-          <div
-            role="alert"
-            className="mb-5 rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-200"
-          >
+          <Alert severity="error" className="mb-5">
             {errorMessage}
-          </div>
+          </Alert>
         )}
 
         {isLoading ? (
@@ -1106,32 +1114,37 @@ export const PosPage = () => {
               <div className="flex flex-wrap items-center justify-between xl:justify-end gap-2.5">
                 {/* Conectividad & Sincronización */}
                 {offlineMode ? (
-                  <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 shadow-sm">
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
-                    </span>
-                    <WifiOff className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    <span className="hidden sm:inline">Modo offline</span>
-                    <button
-                      type="button"
-                      onClick={() => void handleReconnect()}
-                      disabled={isSubmitting}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-400/40 px-2.5 text-[11px] font-bold text-white transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm ml-1"
-                      title="Reconectar y sincronizar ventas offline con el servidor"
-                    >
-                      <RefreshCw className={`h-3 w-3 ${isSubmitting ? 'animate-spin text-white' : 'text-emerald-100'}`} />
-                      <span>{isSubmitting ? 'Conectando…' : 'Reconectar'}</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleReconnect()}
+                    disabled={isSubmitting}
+                    className="pos-wifi-indicator pos-wifi-offline inline-flex h-10 w-10 items-center justify-center transition-transform active:scale-90 hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer disabled:opacity-50"
+                    title={isSubmitting ? 'Reconectando con el servidor…' : 'Sin conexión (modo offline) — Toca para reconectar'}
+                    aria-label={isSubmitting ? 'Reconectando con el servidor' : 'Sin conexión a internet. Toca para reconectar'}
+                  >
+                    {isSubmitting ? (
+                      <RefreshCw className="h-6 w-6 animate-spin" strokeWidth={2.5} aria-hidden="true" />
+                    ) : (
+                      <div className="relative inline-flex items-center justify-center">
+                        <WifiOff className="h-6 w-6 animate-pulse" strokeWidth={2.5} aria-hidden="true" />
+                        <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
+                      </div>
+                    )}
+                  </button>
                 ) : (
-                  <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 text-xs font-semibold text-emerald-300 shadow-sm">
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                    </span>
-                    <Wifi className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                    <span>En línea</span>
+                  <div
+                    className="pos-wifi-indicator pos-wifi-online inline-flex h-10 w-10 items-center justify-center select-none"
+                    title="En línea (servidor conectado)"
+                    aria-label="En línea"
+                  >
+                    <Wifi
+                      className="h-6 w-6 animate-pulse"
+                      strokeWidth={2.5}
+                      aria-hidden="true"
+                    />
                   </div>
                 )}
 
@@ -1150,21 +1163,6 @@ export const PosPage = () => {
                   </time>
                 </div>
 
-                {/* Operador / Sesión activa */}
-                <div className="pos-navbar-user-chip inline-flex h-10 items-center gap-2.5 rounded-xl border border-white/10 bg-[#090C10] px-3 shadow-inner">
-                  <div className="pos-navbar-user-avatar grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-[#FACC15]/30 bg-[#FACC15]/15 text-[#FACC15]">
-                    <User className="h-3.5 w-3.5" />
-                  </div>
-                  <div className="min-w-0 pr-1 text-left leading-none">
-                    <span className="block text-[8px] font-bold uppercase tracking-wider text-gray-400 leading-none">
-                      Sesión activa
-                    </span>
-                    <span className="block text-xs font-bold text-white capitalize leading-tight truncate mt-0.5">
-                      {user.username}
-                    </span>
-                  </div>
-                </div>
-
                 {/* Botón Cerrar sesión */}
                 <button
                   type="button"
@@ -1179,7 +1177,33 @@ export const PosPage = () => {
               </div>
             </header>
 
-            {activeWorkspace === 'catalog' ? <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} /> : activeWorkspace === 'reports' ? <PosReports offlineMode={offlineMode} /> : activeWorkspace === 'devices' ? <div className="space-y-4"><header className="pos-report-workspace"><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">Configuración del equipo</p><h2 className="mt-1 font-heading text-2xl font-bold">Impresora y gaveta</h2><p className="mt-2 text-sm text-gray-400">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p></header><PosPrinterDiagnostics /></div> : <>
+            {activeWorkspace === 'catalog' ? (
+              <PosCatalogManager offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
+            ) : activeWorkspace === 'reports' ? (
+              <ErrorBoundary fallbackTitle="Error al cargar la vista de reportes" onReset={() => setActiveWorkspace('sales')}>
+                <PosReports offlineMode={offlineMode} onClose={() => setActiveWorkspace('sales')} />
+              </ErrorBoundary>
+            ) : activeWorkspace === 'devices' ? (
+              <div className="space-y-4">
+                <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
+                  <div>
+                    <p className="pos-device-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Configuración del equipo</p>
+                    <h2 className="mt-1 font-heading text-2xl font-bold tracking-tight">Impresora y gaveta</h2>
+                    <p className="pos-workspace-desc mt-1.5 text-sm">Pruebas técnicas de conexión y salida. No registran ventas ni sustituyen la impresión integrada con la caja.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveWorkspace('sales')}
+                    className="pos-back-to-caja flex items-center justify-center gap-2.5 h-11 px-5 rounded-xl bg-[#FACC15] hover:bg-[#EAB308] active:scale-95 text-[#0D0D0D] font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-yellow-500/20 cursor-pointer transition-all border border-yellow-400"
+                    title="Volver a la vista de caja"
+                  >
+                    <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+                    <span>VOLVER A CAJA</span>
+                  </button>
+                </header>
+                <PosPrinterDiagnostics />
+              </div>
+            ) : <>
 
             {(!shift || !shift.is_open) && lastClosedShift && (
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5">
@@ -1303,15 +1327,11 @@ export const PosPage = () => {
 
                 <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
                   Efectivo contado físicamente (CLP)
-                  <input
+                  <ClpInput
                     id="pos-counted-cash"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
                     required
                     value={closingCashCount}
-                    onChange={(event) => setClosingCashCount(event.target.value)}
+                    onValueChange={setClosingCashCount}
                     className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none transition focus:border-[#FACC15]"
                   />
                   <span className="block text-xs text-gray-500">
@@ -1407,15 +1427,11 @@ export const PosPage = () => {
 
                 <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-initial-cash">
                   Fondo inicial (CLP)
-                  <input
+                  <ClpInput
                     id="pos-initial-cash"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
                     required
                     value={initialCash}
-                    onChange={(event) => setInitialCash(event.target.value)}
+                    onValueChange={setInitialCash}
                     className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none transition focus:border-[#FACC15]"
                   />
                 </label>

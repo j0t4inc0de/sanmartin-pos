@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Filter, Minus, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
+import { ChevronDown, Filter, Image as ImageIcon, Minus, Plus, ReceiptText, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
+import { ClpInput, normalizeClpDigits } from './ClpInput';
 import { printPosSale } from '../services/posPrinter';
+import { Alert } from './Alert';
+import { PosSnackbarAlert } from './PosSnackbarAlert';
+import { playSaleSuccessSound } from '../utils/soundEffects';
 import {
+  asegurarModificadoresEnServidor,
   cargarBorradorVentaPos,
   cargarCobroPendientePos,
   cargarCatalogoPos,
+  deduplicarModificadores,
+  obtenerCatalogoBasePos,
   type StoredCatalog,
   guardarBorradorVentaPos,
   guardarCobroPendientePos,
@@ -38,7 +45,9 @@ interface CartLine { key: string; product_id: number; product_name: string; unit
 interface Quote { uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; total_amount: number; }
 type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confirmation' | 'items' | 'subtotal' | 'total_amount'>;
 interface Sale { uuid: string; shift_order_number: number; total_amount: number; payment_method: PaymentMethod; amount_paid: number | null; change_given: number | null; }
-interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; payment_method: PaymentMethod; total_amount: number; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; }
+interface OrderHistoryModifier { modifier_name: string; price_at_sale: number; }
+interface OrderHistoryLine { product_name: string; quantity: number; unit_price: number; notes: string; modifiers: OrderHistoryModifier[]; line_total: number; }
+interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; consumption_type: ConsumptionType; payment_method: PaymentMethod; subtotal: number; delivery_fee: number; total_amount: number; amount_paid: number | null; change_given: number | null; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; offline_created: boolean; requires_review: boolean; review_reason: string; items: OrderHistoryLine[]; }
 interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | null; }
 interface CatalogDelta extends Catalog {
   removed?: { categories: number[]; products: number[]; modifiers: number[] };
@@ -59,18 +68,28 @@ const applyCatalogDelta = (current: Catalog, delta: CatalogDelta): Catalog => {
   const products = mergeById(current.products, delta.products, delta.removed?.products ?? [])
     .sort((a, b) => (categoryOrder.get(a.category_id) ?? Number.MAX_SAFE_INTEGER) - (categoryOrder.get(b.category_id) ?? Number.MAX_SAFE_INTEGER)
       || a.name.localeCompare(b.name, 'es-CL') || a.id - b.id);
-  const modifiers = mergeById(current.modifiers, delta.modifiers, delta.removed?.modifiers ?? [])
+  const rawModifiers = mergeById(current.modifiers, delta.modifiers, delta.removed?.modifiers ?? []);
+  const modifiers = deduplicarModificadores(rawModifiers)
     .sort((a, b) => a.modifier_type.localeCompare(b.modifier_type) || a.name.localeCompare(b.name, 'es-CL') || a.id - b.id);
   return { generated_at: delta.generated_at, categories, products, modifiers };
 };
 
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
+const BASE_PRODUCT_IMAGES = new Map(obtenerCatalogoBasePos().products.map(product => [product.slug, product.image_url]));
+const normalizeCashInput = normalizeClpDigits;
+const parseCashInput = (value: string): number | null => {
+  const digits = normalizeCashInput(value);
+  if (!digits) return null;
+  const amount = Number(digits);
+  return Number.isSafeInteger(amount) ? amount : null;
+};
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
 export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, onBeforeCreateSale, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; onBeforeCreateSale: () => Promise<boolean>; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
   const { confirm, prompt } = usePosDialogs();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
+  const [orderDetail, setOrderDetail] = useState<OrderHistoryItem | null>(null);
   const [offlineOrders, setOfflineOrders] = useState<PosOfflineOrder[]>([]);
   const [offlineCancellations, setOfflineCancellations] = useState<Awaited<ReturnType<typeof listarAnulacionesOfflinePos>>>([]);
   const [printJobs, setPrintJobs] = useState<PosPrintJob[]>([]);
@@ -93,16 +112,23 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [draftLoadError, setDraftLoadError] = useState(false);
-  const [draftRestored, setDraftRestored] = useState(false);
   const [draftLoadAttempt, setDraftLoadAttempt] = useState(0);
   const [draftSaveStatus, setDraftSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
-  const [catalogNotice, setCatalogNotice] = useState('');
   const catalogSyncInProgress = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const draftWriteVersion = useRef(0);
   const paymentWriteVersion = useRef(0);
+
+  useEffect(() => {
+    if (!orderDetail) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOrderDetail(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [orderDetail]);
 
   useEffect(() => {
     onPendingPaymentChange(!draftLoaded || draftLoadError || quote !== null);
@@ -140,8 +166,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           setLines(draft.lines);
           setConsumptionType(draft.consumption_type);
           setPaymentMethod(draft.payment_method);
-          setAmountReceived(draft.amount_received);
-          setDraftRestored(true);
+          setAmountReceived(normalizeCashInput(draft.amount_received));
         }
         if (pendingPayment) {
           setQuote({
@@ -154,7 +179,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           offline_created: pendingPayment.offline_created,
           });
           setPaymentMethod(pendingPayment.payment_method);
-          setAmountReceived(pendingPayment.amount_received);
+          setAmountReceived(normalizeCashInput(pendingPayment.amount_received));
           setPendingPaymentStatus('saved');
           if (pendingPayment.status === 'PAGO_RECIBIDO') {
             setPaymentReceivedPending(true);
@@ -233,7 +258,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   };
 
   const createPrintJob = (targetQuote: Quote, method: PaymentMethod, receivedAmount: string, totalAmount = targetQuote.total_amount, paidAmount: number | null = null, changeGiven: number | null = null): Omit<PosPrintJob, 'saved_at'> => {
-    const effectivePaid = method === 'EFECTIVO' ? paidAmount ?? Number(receivedAmount) : null;
+    const effectivePaid = method === 'EFECTIVO' ? paidAmount ?? parseCashInput(receivedAmount) : null;
     return {
       uuid: targetQuote.uuid, shift_uuid: shiftUuid, shift_order_number: targetQuote.shift_order_number,
       created_at: targetQuote.created_at, consumption_type: targetQuote.consumption_type, payment_method: method,
@@ -273,6 +298,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const queueOfflineSale = async (targetQuote: Quote): Promise<boolean> => {
     try {
+      const received = parseCashInput(amountReceived);
+      if (paymentMethod === 'EFECTIVO' && (received === null || received < targetQuote.total_amount)) {
+        setError('El efectivo recibido debe cubrir el total de la venta.');
+        return false;
+      }
       await guardarVentaOfflineEnColaPos({
         uuid: targetQuote.uuid,
         shift_order_number: targetQuote.shift_order_number,
@@ -281,7 +311,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         offline_created: true,
         consumption_type: targetQuote.consumption_type,
         payment_method: paymentMethod,
-        ...(paymentMethod === 'EFECTIVO' ? { amount_received: Number(amountReceived) } : {}),
+        ...(paymentMethod === 'EFECTIVO' && received !== null ? { amount_received: received } : {}),
         items: targetQuote.items.map((item, index) => ({
           product_id: item.product_id,
           product_name: item.product_name,
@@ -292,6 +322,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         })),
       });
       await saveAndPrintSale(targetQuote, paymentMethod, amountReceived);
+      void playSaleSuccessSound();
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
       setPaymentRecordWriteFailed(false);
@@ -311,21 +342,18 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const loadCatalog = async (background = false) => {
     if (catalogSyncInProgress.current) return;
     catalogSyncInProgress.current = true;
-    if (!background) { setLoadingCatalog(true); setError(''); setCatalogNotice(''); }
+    if (!background) { setLoadingCatalog(true); setError(''); }
     let savedCatalog: StoredCatalog | null = null;
     try {
       savedCatalog = await cargarCatalogoPos();
-      if (savedCatalog) setCatalog(savedCatalog.catalog);
+      if (savedCatalog) setCatalog({ ...savedCatalog.catalog, modifiers: deduplicarModificadores(savedCatalog.catalog.modifiers) });
     } catch {
-      setCatalogNotice('No se pudo acceder al almacenamiento local. El catálogo no quedará disponible sin conexión.');
+      // Almacenamiento local no accesible
     }
 
     try {
       if (offlineMode) {
-        if (savedCatalog) {
-          const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
-          setCatalogNotice(`Sin conexión. Usando catálogo guardado el ${savedDate}; revisa los precios en la próxima sincronización.`);
-        } else setError('No hay un catálogo guardado disponible sin conexión.');
+        if (!savedCatalog) setError('No hay un catálogo guardado disponible sin conexión.');
         return;
       }
 
@@ -346,6 +374,25 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         const freshCatalog = isRealServerCatalog && savedCatalog
           ? applyCatalogDelta(savedCatalog.catalog, response)
           : response;
+
+        if (!offlineMode) {
+          try {
+            const needsSync = !freshCatalog.modifiers || freshCatalog.modifiers.length === 0 || freshCatalog.modifiers.some(m => m.updated_at === '2026-01-01T00:00:00.000Z');
+            if (needsSync) {
+              const synced = await asegurarModificadoresEnServidor(freshCatalog.modifiers);
+              if (synced && synced.length > 0) {
+                freshCatalog.modifiers = synced;
+              }
+            }
+          } catch (err) {
+            console.warn('No se pudo verificar o asegurar modificadores en servidor:', err);
+          }
+        }
+
+        freshCatalog.modifiers = deduplicarModificadores(freshCatalog.modifiers);
+        if (!freshCatalog.modifiers || freshCatalog.modifiers.length === 0) {
+          freshCatalog.modifiers = obtenerCatalogoBasePos().modifiers;
+        }
         setCatalog(freshCatalog);
 
         // Reconcile and re-map any existing cart lines or selected items
@@ -379,20 +426,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
         try {
           await guardarCatalogoPos(freshCatalog, true);
-          const syncedAt = new Intl.DateTimeFormat('es-CL', { timeStyle: 'short' }).format(new Date(freshCatalog.generated_at));
-          const changeCount = response.categories.length + response.products.length + response.modifiers.length
-            + (response.removed?.categories.length ?? 0) + (response.removed?.products.length ?? 0) + (response.removed?.modifiers.length ?? 0);
-          setCatalogNotice(changeCount && isRealServerCatalog
-            ? `Catálogo actualizado (${changeCount} cambios) a las ${syncedAt}.`
-            : `Catálogo sincronizado a las ${syncedAt}.`);
         } catch {
-          setCatalogNotice('Catálogo cargado desde el servidor, pero no se pudo guardar en este equipo. No estará disponible sin conexión.');
+          // No se pudo guardar el catálogo localmente
         }
       } catch (e) {
-        if (savedCatalog) {
-          const savedDate = new Intl.DateTimeFormat('es-CL', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(savedCatalog.saved_at));
-          setCatalogNotice(`No se pudo actualizar el catálogo. Usando la copia guardada el ${savedDate}.`);
-        } else {
+        if (!savedCatalog) {
           setError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo y no hay una copia local disponible.');
         }
       }
@@ -499,13 +537,27 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const requestQuote = async () => {
     if (!lines.length || quote || paymentReceivedPending) return;
     if (!await onBeforeCreateSale()) return;
-    if (!catalog || lines.some(line => {
-      const prodFound = catalog.products.some(product => product.id === line.product_id || product.name.trim().toLowerCase() === line.product_name.trim().toLowerCase());
-      const modFound = line.modifiers.every(entry => catalog.modifiers.some(modifier => modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase()));
-      return !prodFound || !modFound;
-    })) {
-      setError('El catálogo ya no contiene un producto o modificador del borrador. Revisa y quita las opciones marcadas antes de cotizar.');
+    if (!catalog) {
+      setError('El catálogo no está disponible.');
       return;
+    }
+    for (const line of lines) {
+      const prodFound = catalog.products.find(product => product.id === line.product_id || product.name.trim().toLowerCase() === line.product_name.trim().toLowerCase());
+      if (!prodFound || prodFound.is_active === false) {
+        setError(`El producto "${line.product_name}" ya no está disponible en el catálogo. Quítalo del pedido antes de cotizar.`);
+        return;
+      }
+      for (const entry of line.modifiers) {
+        const modFound = catalog.modifiers.find(modifier => modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase());
+        if (!modFound) {
+          setError(`El modificador "${entry.modifier_name}" ya no existe en el catálogo. Quítalo de la lista antes de cotizar.`);
+          return;
+        }
+        if (modFound.is_available === false || modFound.is_active === false) {
+          setError(`El modificador "${entry.modifier_name}" no está disponible actualmente. Quítalo de la lista antes de cotizar.`);
+          return;
+        }
+      }
     }
     setBusy(true); setError(''); setMessage('');
     try {
@@ -548,12 +600,12 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
             notes: line.notes || '',
             modifiers: line.modifiers.map(entry => {
               const modifier = catalog!.modifiers.find(m => m.id === entry.modifier_id)
-                || catalog!.modifiers.find(m => m.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase())!;
+                || catalog!.modifiers.find(m => m.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase());
               return {
-                modifier_id: Number(modifier.id),
-                expected_name: modifier.name,
-                expected_price: modifier.price,
-                expected_updated_at: modifier.updated_at,
+                modifier_id: Number(modifier ? modifier.id : entry.modifier_id),
+                expected_name: modifier ? modifier.name : entry.modifier_name,
+                expected_price: modifier ? modifier.price : entry.price_at_sale,
+                expected_updated_at: modifier?.updated_at,
                 quantity_per_unit: Math.max(1, Number(entry.quantity_per_unit) || 1),
               };
             }),
@@ -600,9 +652,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         shift_order_number: quote.shift_order_number,
         quote_token: quote.quote_token,
         payment_method: paymentMethod,
-        ...(paymentMethod === 'EFECTIVO' ? { amount_received: Number(amountReceived) } : {}),
+        ...(paymentMethod === 'EFECTIVO' ? { amount_received: parseCashInput(amountReceived) } : {}),
         confirm_repriced: quote.requires_confirmation && quote.price_confirmation_accepted,
       } });
+      void playSaleSuccessSound();
       const printJob = createPrintJob(quote, paymentMethod, amountReceived, sale.total_amount, sale.amount_paid, sale.change_given);
       try { await guardarTrabajoImpresionPos(printJob); }
       catch { setPrintNotice(`La venta #${sale.shift_order_number} quedó guardada, pero no se pudo respaldar el comprobante local para reimpresión.`); }
@@ -624,8 +677,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const saveReceivedPaymentAndRegister = async () => {
     if (!quote) return;
-    const received = Number(amountReceived);
-    if (paymentMethod === 'EFECTIVO' && (!Number.isSafeInteger(received) || received < quote.total_amount)) {
+    const received = parseCashInput(amountReceived);
+    if (paymentMethod === 'EFECTIVO' && (received === null || received < quote.total_amount)) {
       setError('Ingresa el efectivo recibido antes de registrar el pago pendiente.');
       return;
     }
@@ -662,8 +715,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       await registerSavedPayment();
       return;
     }
-    const received = Number(amountReceived);
-    if (paymentMethod === 'EFECTIVO' && (!Number.isSafeInteger(received) || received < quote.total_amount)) { setError('El efectivo recibido debe ser un monto entero que cubra el total.'); return; }
+    const received = parseCashInput(amountReceived);
+    if (paymentMethod === 'EFECTIVO' && (received === null || received < quote.total_amount)) { setError('El efectivo recibido debe ser un monto entero que cubra el total.'); return; }
     if (!quote.offline_created && Date.now() >= new Date(quote.valid_until).getTime()) {
       setPreparedQuoteExpired(true);
       setError('La cotización venció. Confirma si el pago ya se recibió antes de descartarla o registrarla para conciliación.');
@@ -722,28 +775,97 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     } catch (error) { setError(error instanceof Error ? error.message : 'No se pudo guardar la anulación offline.'); }
   };
 
-  const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => sum + (catalog?.modifiers.find(m => m.id === value.modifier_id)?.price ?? value.price_at_sale) * value.quantity_per_unit, 0);
+  const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => {
+    const mod = catalog?.modifiers.find(m => m.id === value.modifier_id || m.name.trim().toLowerCase() === value.modifier_name.trim().toLowerCase());
+    return sum + (mod ? mod.price : value.price_at_sale) * value.quantity_per_unit;
+  }, 0);
 
   return <section className="pos-sales-container space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Venta offline' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Catálogo guardado' : 'Actualizar menú'}</button></header>
-    {offlineMode && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">Modo offline: puedes registrar la venta en este equipo. No cierres el turno hasta sincronizar todas las ventas pendientes.</div>}
+    {offlineMode && <Alert severity="warning">Modo offline: puedes registrar la venta en este equipo. No cierres el turno hasta sincronizar todas las ventas pendientes.</Alert>}
     {(offlineOrders.length > 0 || offlineCancellations.length > 0) && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{offlineOrders.length} ventas y {offlineCancellations.length} anulaciones pendientes</strong><span>{syncingOfflineOrders ? 'Sincronizando…' : offlineMode ? 'Se enviarán al reconectar' : 'Reintento automático al recuperar conexión'}</span>{!offlineMode && <button type="button" className="rounded-lg border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50" disabled={syncingOfflineOrders || !navigator.onLine} onClick={() => void syncOfflineOrders()}>Reintentar sincronización</button>}</div>{offlineOrders.map(order => <div key={order.uuid} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/10 pt-3"><span>Venta #{String(order.shift_order_number).padStart(3, '0')} {offlineCancellations.some(item => item.order_uuid === order.uuid) ? '· Anulación pendiente' : '· Pendiente de sincronización'}</span>{!offlineCancellations.some(item => item.order_uuid === order.uuid) && <button type="button" disabled={busy || syncingOfflineOrders} className="rounded-lg border border-red-200/30 px-3 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50" onClick={() => void cancelOfflineOrder(order)}>Anular</button>}</div>)}{[...offlineOrders.map(order => order.sync_error), ...offlineCancellations.map(item => item.sync_error)].filter(Boolean).length > 0 && <p className="mt-2 text-xs text-amber-200">{offlineOrders.find(order => order.sync_error)?.sync_error ?? offlineCancellations.find(item => item.sync_error)?.sync_error} · Los eventos siguientes esperan que se resuelva este folio.</p>}</div>}
-    <aside aria-label="Estado de datos locales" className="space-y-3 rounded-xl border border-white/10 bg-[#101010] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-white">Respaldo de caja</h3><p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-400">El catálogo, el borrador y la cotización quedan guardados en este equipo. Los cobros se registran con conexión; si el servidor no confirma una venta cobrada, podrás reintentarlo.</p></div><span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">Almacenamiento local</span></div>
-        <div className="grid gap-2 border-t border-white/10 pt-3 sm:grid-cols-2">
-        <p role={draftLoadError || draftSaveStatus === 'error' ? 'alert' : 'status'} className={`rounded-lg px-3 py-2 text-xs ${draftLoadError || draftSaveStatus === 'error' ? 'bg-red-950/30 text-red-200' : 'bg-white/[0.035] text-gray-300'}`}>
-          <span className="font-medium text-white">Borrador</span><span className="mx-2 text-gray-600">·</span>{draftLoadError ? 'No se pudo leer; el cobro está bloqueado.' : draftSaveStatus === 'loading' ? 'Recuperando…' : draftSaveStatus === 'saving' ? 'Guardando…' : draftSaveStatus === 'saved' ? draftRestored ? 'Restaurado y guardado en este equipo.' : 'Guardado en este equipo.' : 'No se pudo guardar; el cobro está bloqueado.'}
-          {draftLoadError && <button type="button" className="ml-2 font-semibold underline" onClick={() => setDraftLoadAttempt(attempt => attempt + 1)}>Reintentar</button>}
-        </p>
-        {catalogNotice && <p role="status" className={`rounded-lg px-3 py-2 text-xs ${catalogNotice.startsWith('No se pudo') || catalogNotice.startsWith('Sin conexión') ? 'bg-amber-950/30 text-amber-200' : 'bg-white/[0.035] text-gray-300'}`}><span className="font-medium text-white">Catálogo</span><span className="mx-2 text-gray-600">·</span>{catalogNotice}</p>}
-        </div>
-    </aside>
-    {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-200">{error}</div>}{message && <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-950/30 p-3 text-sm text-emerald-200"><Check className="mr-2 inline h-4 w-4"/>{message}</div>}
-    {paymentReceivedPending && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100"><span>El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.</span><button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>{busy ? 'Registrando…' : 'Reintentar registro'}</button></div>}
-    {paymentRecordWriteFailed && quote && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-100"><span>La recepción del pago no quedó respaldada. No cobres otra vez; mantén esta venta abierta e intenta guardar el registro.</span><button type="button" disabled={busy || pendingPaymentStatus === 'saving'} className="rounded-lg bg-red-200 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>Reintentar respaldo local</button></div>}
-    {preparedQuoteExpired && <div role="alert" className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-950/30 p-4 text-sm text-amber-100"><p>La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.</p><div className="flex flex-wrap gap-2"><button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>El pago se recibió</button><button type="button" disabled={busy} className="rounded-lg border border-white/20 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={() => void discardExpiredQuote()}>El cliente no pagó; descartar</button></div></div>}
-    {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && <p role="status" className="rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-300">Guardando localmente los datos del pago; espera antes de recibirlo.</p>}
-    {pendingPaymentStatus === 'error' && quote && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-950/30 p-3 text-xs text-red-200">No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.</p>}
+    {draftLoadError && (
+      <Alert
+        severity="error"
+        action={
+          <button type="button" className="underline font-bold text-white hover:text-white/80" onClick={() => setDraftLoadAttempt(attempt => attempt + 1)}>
+            Reintentar
+          </button>
+        }
+      >
+        No se pudo leer el borrador de venta en este equipo; el cobro está bloqueado.
+      </Alert>
+    )}
+    {/* Floating Material-UI Popup Alert (Toast) */}
+    <PosSnackbarAlert
+      open={Boolean(message)}
+      severity="success"
+      message={message}
+      onClose={() => setMessage('')}
+    />
+    <PosSnackbarAlert
+      open={Boolean(error)}
+      severity="error"
+      message={error}
+      onClose={() => setError('')}
+    />
+    <PosSnackbarAlert
+      open={Boolean(printNotice)}
+      severity="warning"
+      message={printNotice}
+      onClose={() => setPrintNotice('')}
+    />
+    {paymentReceivedPending && (
+      <Alert
+        severity="warning"
+        action={
+          <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>
+            {busy ? 'Registrando…' : 'Reintentar registro'}
+          </button>
+        }
+      >
+        El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.
+      </Alert>
+    )}
+    {paymentRecordWriteFailed && quote && (
+      <Alert
+        severity="error"
+        action={
+          <button type="button" disabled={busy || pendingPaymentStatus === 'saving'} className="rounded-lg bg-red-200 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>
+            Reintentar respaldo local
+          </button>
+        }
+      >
+        La recepción del pago no quedó respaldada. No cobres otra vez; mantén esta venta abierta e intenta guardar el registro.
+      </Alert>
+    )}
+    {preparedQuoteExpired && (
+      <Alert
+        severity="warning"
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" onClick={() => void saveReceivedPaymentAndRegister()}>
+              El pago se recibió
+            </button>
+            <button type="button" disabled={busy} className="rounded-lg border border-white/20 px-4 py-2 font-semibold text-white disabled:opacity-50" onClick={() => void discardExpiredQuote()}>
+              El cliente no pagó; descartar
+            </button>
+          </div>
+        }
+      >
+        La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.
+      </Alert>
+    )}
+    {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && (
+      <Alert severity="info">
+        Guardando localmente los datos del pago; espera antes de recibirlo.
+      </Alert>
+    )}
+    {pendingPaymentStatus === 'error' && quote && (
+      <Alert severity="error">
+        No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.
+      </Alert>
+    )}
     <fieldset disabled={busy || syncingOfflineOrders || !draftLoaded || paymentReceivedPending || preparedQuoteExpired || paymentRecordWriteFailed || shiftSyncBlocked || (!offlineMode && offlineOrders.length > 0)} className="pos-sales-fields grid min-w-0 gap-5 border-0 p-0 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="min-w-0 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-300"><Filter className="h-4 w-4 text-[#FACC15]" />Filtrar productos</h3><span className="text-xs text-gray-500">{products.length} {products.length === 1 ? 'producto' : 'productos'}</span></div>
         <label className="sr-only" htmlFor="pos-product-search">Buscar producto por nombre</label>
@@ -774,7 +896,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         <nav aria-label="Filtrar productos por categoría" className="pos-category-filters flex flex-wrap gap-2">
         <button aria-pressed={category === 'all'} className={`pos-filter-chip ${category === 'all' ? 'is-active' : ''}`} type="button" onClick={() => setCategory('all')}>Todos</button>{catalog?.categories.map(c => <button aria-pressed={category === c.id} className={`pos-filter-chip ${category === c.id ? 'is-active' : ''}`} type="button" key={c.id} onClick={() => setCategory(c.id)}>{c.slug === 'ases' ? 'AS' : c.name}</button>)}
       </nav>
-        {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : products.length ? <div className="pos-product-grid grid grid-cols-2 gap-2">{products.map(p => <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => void addProduct(p)} className="pos-product-card min-h-20 rounded-xl p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FACC15] disabled:opacity-50"><span className="block text-sm font-semibold">{p.name}</span><span className="mt-1 block text-sm">{formatPrice(p.price)}</span></button>)}</div> : <div className="pos-product-empty rounded-xl border border-dashed px-4 py-8 text-center"><p className="pos-product-empty-title text-sm font-medium">No encontramos productos</p><p className="pos-product-empty-copy mt-1 text-xs">Prueba otro nombre o cambia la categoría.</p>{(productSearch || category !== 'all') && <button type="button" className="mt-3 text-sm font-semibold text-[#FACC15] underline underline-offset-4" onClick={() => { setProductSearch(''); setCategory('all'); productSearchRef.current?.focus(); }}>Limpiar filtros</button>}</div>}
+        {loadingCatalog ? <p className="text-sm text-gray-400">Cargando productos…</p> : products.length ? <div className="pos-product-grid grid grid-cols-2 gap-2">{products.map(p => { const imageUrl = p.image_url || BASE_PRODUCT_IMAGES.get(p.slug) || ''; return <button type="button" key={p.id} disabled={!draftLoaded} onClick={() => void addProduct(p)} className="pos-product-card min-h-20 rounded-xl p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FACC15] disabled:opacity-50"><span className="pos-product-card-image">{imageUrl ? <img src={imageUrl} alt="" loading="lazy" onError={event => { event.currentTarget.parentElement?.classList.add('has-error'); event.currentTarget.remove(); }} /> : <ImageIcon aria-hidden="true" />}</span><span className="pos-product-card-details"><span className="pos-product-card-name">{p.name}</span><span className="pos-product-card-price">{formatPrice(p.price)}</span></span></button>; })}</div> : <div className="pos-product-empty rounded-xl border border-dashed px-4 py-8 text-center"><p className="pos-product-empty-title text-sm font-medium">No encontramos productos</p><p className="pos-product-empty-copy mt-1 text-xs">Prueba otro nombre o cambia la categoría.</p>{(productSearch || category !== 'all') && <button type="button" className="mt-3 text-sm font-semibold text-[#FACC15] underline underline-offset-4" onClick={() => { setProductSearch(''); setCategory('all'); productSearchRef.current?.focus(); }}>Limpiar filtros</button>}</div>}
       </div>
       <div className="pos-cart-column min-w-0 space-y-4">
         {!lines.length ? <div className="rounded-xl border border-dashed border-white/15 p-6 text-center text-sm text-gray-500"><ShoppingCart className="mx-auto mb-2 h-6 w-6"/>Agrega productos a la venta.</div> : <div className="space-y-3">{lines.map(line => {const currentProduct = catalog?.products.find(p => p.id === line.product_id); const product = currentProduct ?? {name: line.product_name, price: line.unit_price}; return <article key={line.key} className="rounded-xl border border-white/10 bg-[#0D0D0D] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-sm font-semibold text-white">{product.name}</p><p className="text-xs text-gray-400">{formatPrice(product.price + modifiersFor(line))} c/u</p>{catalog && !currentProduct && <p className="mt-1 text-xs text-amber-300">Ya no está en el catálogo. Quita esta línea para continuar.</p>}</div><button className="pos-remove-line" aria-label="Quitar producto" title="Quitar producto" type="button" onClick={() => removeLine(line.key)}><Trash2 aria-hidden="true" className="h-4 w-4"/></button></div>
@@ -784,29 +906,107 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
               <span><strong>Agregados y exclusiones</strong><small>{line.modifiers.length ? `${line.modifiers.length} seleccionado${line.modifiers.length === 1 ? '' : 's'}` : 'Sin modificaciones'}</small></span>
               <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0" />
             </summary>
-            <div className="pos-modifier-options">{catalog.modifiers.map(m => {const selected = line.modifiers.find(x => x.modifier_id === m.id); return <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs" key={m.id}><label className="flex min-h-8 flex-1 cursor-pointer items-center gap-2 text-gray-300"><input type="checkbox" checked={!!selected} onChange={e => updateLine(line.key, l => ({...l, modifiers: e.target.checked ? [...l.modifiers, {modifier_id: m.id, modifier_name: m.name, price_at_sale: m.price, quantity_per_unit: 1}] : l.modifiers.filter(x => x.modifier_id !== m.id)}))}/>{m.name} {m.price ? `(+${formatPrice(m.price)})` : '(sin costo)'}</label>{selected && m.modifier_type === 'EXTRA_PAGO' && <input aria-label={`Cantidad de ${m.name}`} className="w-14 rounded border border-white/10 bg-[#171717] px-2 py-1 text-white" type="number" min="1" max="20" value={selected.quantity_per_unit} onChange={e => updateLine(line.key, l => ({...l, modifiers: l.modifiers.map(x => x.modifier_id === m.id ? {...x, quantity_per_unit: Math.max(1, Number(e.target.value))} : x)}))}/>}</div>;})}
-            {line.modifiers.filter(entry => !catalog.modifiers.some(modifier => modifier.id === entry.modifier_id)).map(entry => <div key={entry.modifier_id} className="flex items-center justify-between rounded border border-amber-500/20 bg-amber-950/20 px-2 py-1 text-xs text-amber-200"><span>{entry.modifier_name} ya no está disponible.</span><button type="button" className="underline" onClick={() => updateLine(line.key, current => ({...current, modifiers: current.modifiers.filter(modifier => modifier.modifier_id !== entry.modifier_id)}))}>Quitar</button></div>)}
+            <div className="pos-modifier-options">
+              {deduplicarModificadores(catalog.modifiers)
+                .filter(m => m.is_available !== false && m.is_active !== false)
+                .map(m => {
+                  const selected = line.modifiers.find(x => x.modifier_id === m.id || x.modifier_name.trim().toLowerCase() === m.name.trim().toLowerCase());
+                  return (
+                    <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs" key={m.id}>
+                      <label className="flex min-h-8 flex-1 cursor-pointer items-center gap-2 text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={!!selected}
+                          onChange={e => updateLine(line.key, l => ({
+                            ...l,
+                            modifiers: e.target.checked
+                              ? [...l.modifiers.filter(x => x.modifier_id !== m.id && x.modifier_name.trim().toLowerCase() !== m.name.trim().toLowerCase()), { modifier_id: m.id, modifier_name: m.name, price_at_sale: m.price, quantity_per_unit: 1 }]
+                              : l.modifiers.filter(x => x.modifier_id !== m.id && x.modifier_name.trim().toLowerCase() !== m.name.trim().toLowerCase()),
+                          }))}
+                        />
+                        {m.name} {m.price ? `(+${formatPrice(m.price)})` : '(sin costo)'}
+                      </label>
+                      {selected && m.modifier_type === 'EXTRA_PAGO' && (
+                        <input
+                          aria-label={`Cantidad de ${m.name}`}
+                          className="w-14 rounded border border-white/10 bg-[#171717] px-2 py-1 text-white"
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={selected.quantity_per_unit}
+                          onChange={e => updateLine(line.key, l => ({
+                            ...l,
+                            modifiers: l.modifiers.map(x => (x.modifier_id === m.id || x.modifier_name.trim().toLowerCase() === m.name.trim().toLowerCase())
+                              ? { ...x, quantity_per_unit: Math.max(1, Number(e.target.value)) }
+                              : x
+                            ),
+                          }))}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              {line.modifiers
+                .filter(entry => !deduplicarModificadores(catalog.modifiers).some(modifier =>
+                  (modifier.id === entry.modifier_id || modifier.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase()) &&
+                  modifier.is_available !== false &&
+                  modifier.is_active !== false
+                ))
+                .map(entry => (
+                  <div key={entry.modifier_id || entry.modifier_name} className="flex items-center justify-between rounded border border-amber-500/20 bg-amber-950/20 px-2 py-1 text-xs text-amber-200">
+                    <span>{entry.modifier_name} no está disponible actualmente.</span>
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => updateLine(line.key, current => ({
+                        ...current,
+                        modifiers: current.modifiers.filter(modifier =>
+                          modifier.modifier_id !== entry.modifier_id &&
+                          modifier.modifier_name.trim().toLowerCase() !== entry.modifier_name.trim().toLowerCase()
+                        ),
+                      }))}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ))}
             </div>
           </details>}
           <input className="mt-3 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-xs text-white" maxLength={150} placeholder="Nota para cocina (opcional)" value={line.notes} onChange={e => updateLine(line.key, l => ({...l, notes: e.target.value}))}/>
         </article>;})}</div>}
         <fieldset className="space-y-2 border-0 p-0"><legend className="text-xs font-bold uppercase tracking-wider text-gray-300">Tipo de pedido</legend><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={consumptionType === 'PARA_SERVIR'} className={`pos-type-choice ${consumptionType === 'PARA_SERVIR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_SERVIR'); invalidateQuote();}}><Utensils className="h-5 w-5"/><span><strong>Para servir</strong><small>Consumo en el local</small></span></button><button type="button" aria-pressed={consumptionType === 'PARA_LLEVAR'} className={`pos-type-choice ${consumptionType === 'PARA_LLEVAR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_LLEVAR'); invalidateQuote();}}><ShoppingBag className="h-5 w-5"/><span><strong>Para llevar</strong><small>Pedido para llevar</small></span></button></div></fieldset>
-        <button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()} className="w-full rounded-xl bg-[#FACC15] px-4 py-3 font-bold text-black disabled:opacity-40">{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar venta'}</button>
+        <div className={`pos-quote-sticky ${quote ? 'is-quoted' : ''}`}><span>{lines.length ? `${lines.reduce((count, line) => count + line.quantity, 0)} productos · ${consumptionType === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}` : 'Agrega productos para cotizar'}</span><button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()}>{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar venta'}</button></div>
         {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>{quote.offline_created ? 'Total calculado con catálogo local' : 'Total validado'}</span><span>{formatPrice(quote.total_amount)}</span></div><p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · {quote.offline_created ? 'Venta y folio guardados localmente antes del cobro.' : `Válida hasta ${new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización respaldada en este equipo.`}</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de cobrar.</p>}
           <label className="block text-sm text-gray-300">Medio de pago<select className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" value={paymentMethod} onChange={e => updatePaymentMethod(e.target.value as PaymentMethod)}><option value="EFECTIVO">Efectivo</option><option value="TRANSBANK">Transbank (débito/crédito)</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
-          {paymentMethod === 'EFECTIVO' && <label className="block text-sm text-gray-300">Efectivo recibido<input className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" type="number" min={quote.total_amount} step="1" inputMode="numeric" value={amountReceived} onChange={e => updateAmountReceived(e.target.value)}/></label>}
+          {paymentMethod === 'EFECTIVO' && <label className="block text-sm text-gray-300">Efectivo recibido (CLP)<ClpInput className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Ej.: 5.000" aria-label="Efectivo recibido en pesos chilenos" value={amountReceived} onValueChange={updateAmountReceived}/></label>}
           {!paymentReceivedPending && !preparedQuoteExpired && <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void saveSale()} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Guardando venta…' : 'Confirmar recepción del pago'}</button>}
         </div>}
       </div>
     </fieldset>
     {!offlineMode && <details className="pos-info-disclosure border-t border-white/10 pt-3">
       <summary>Ventas recientes <span className="pos-disclosure-meta">{orders.length} registros</span></summary>
-      {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method.replace('_', ' ')}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
+      {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method.replace('_', ' ')}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span><button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:border-[#FACC15]/60 hover:text-[#FACC15]" onClick={() => setOrderDetail(order)}><ReceiptText aria-hidden="true" className="h-4 w-4"/>Ver detalle</button>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
     </details>}
     {!!printJobs.length && <details className="pos-info-disclosure border-t border-white/10 pt-3">
       <summary>Impresiones recientes <span className="pos-disclosure-meta">{printJobs.length} comprobantes · este equipo</span></summary>
       <div className="mt-3 space-y-2">{printJobs.map(job => <div key={job.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">Venta #{String(job.shift_order_number).padStart(3, '0')} · {formatPrice(job.total_amount)}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle: 'short', timeStyle: 'short'}).format(new Date(job.created_at))} · {job.print_error ? 'Impresión pendiente' : job.printed_at ? 'Enviada a impresora' : 'Pendiente de imprimir'}</p>{job.print_error && <p className="mt-1 text-xs text-amber-200">{job.print_error}</p>}</div><button type="button" disabled={printingJobUuid !== null} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white hover:border-[#FACC15]/50 hover:text-[#FACC15] disabled:opacity-50" onClick={() => void printStoredJob(job, true)}>{printingJobUuid === job.uuid ? 'Enviando…' : 'Reimprimir'}</button></div>)}</div>
     </details>}
     {printNotice && <p role="status" className="rounded-lg border border-amber-400/20 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">{printNotice}</p>}
+    {orderDetail && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-3 backdrop-blur-sm sm:p-6" onMouseDown={event => { if (event.target === event.currentTarget) setOrderDetail(null); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="pos-sale-detail-title" className="w-full max-w-xl overflow-hidden rounded-2xl border border-white/15 bg-[#171717] text-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-6">
+          <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-[#FACC15]">Comprobante de venta</p><h2 id="pos-sale-detail-title" className="mt-1 font-heading text-xl font-bold">Venta #{String(orderDetail.shift_order_number).padStart(3, '0')}</h2><p className="mt-1 text-xs text-gray-400">{new Intl.DateTimeFormat('es-CL', {dateStyle: 'medium', timeStyle: 'short'}).format(new Date(orderDetail.created_at))}</p></div>
+          <button type="button" aria-label="Cerrar detalle" className="rounded-lg border border-white/15 p-2 text-gray-300 transition hover:border-white/30 hover:text-white" onClick={() => setOrderDetail(null)}><X aria-hidden="true" className="h-4 w-4"/></button>
+        </header>
+        <div className="max-h-[min(70vh,620px)] space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+          <div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Tipo de pedido</p><p className="mt-1 font-semibold">{orderDetail.consumption_type === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}</p></div><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Medio de pago</p><p className="mt-1 font-semibold">{orderDetail.payment_method.replace('_', ' ')}</p></div></div>
+          <div><h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Productos</h3><div className="divide-y divide-white/10 rounded-xl border border-white/10 px-4">{orderDetail.items.map((item, index) => <article key={`${item.product_name}-${index}`} className="py-3"><div className="flex justify-between gap-4"><div><p className="text-sm font-semibold">{item.quantity} × {item.product_name}</p><p className="mt-0.5 text-xs text-gray-400">{formatPrice(item.unit_price)} c/u</p></div><p className="text-sm font-semibold">{formatPrice(item.line_total)}</p></div>{item.modifiers.length > 0 && <ul className="mt-2 space-y-1 pl-3 text-xs text-gray-400">{item.modifiers.map((modifier, modifierIndex) => <li key={`${modifier.modifier_name}-${modifierIndex}`}>• {modifier.modifier_name}{modifier.price_at_sale > 0 ? ` · ${formatPrice(modifier.price_at_sale)}` : ''}</li>)}</ul>}{item.notes && <p className="mt-2 rounded-md bg-white/[0.04] px-2.5 py-2 text-xs text-gray-300"><span className="font-semibold">Nota cocina:</span> {item.notes}</p>}</article>)}</div></div>
+          <dl className="space-y-2 text-sm"><div className="flex justify-between text-gray-300"><dt>Subtotal</dt><dd>{formatPrice(orderDetail.subtotal)}</dd></div>{orderDetail.delivery_fee > 0 && <div className="flex justify-between text-gray-300"><dt>Despacho</dt><dd>{formatPrice(orderDetail.delivery_fee)}</dd></div>}<div className="flex justify-between border-t border-white/15 pt-3 text-base font-bold"><dt>Total</dt><dd>{formatPrice(orderDetail.total_amount)}</dd></div>{orderDetail.amount_paid !== null && <div className="flex justify-between text-gray-300"><dt>Recibido</dt><dd>{formatPrice(orderDetail.amount_paid)}</dd></div>}{orderDetail.change_given !== null && <div className="flex justify-between text-gray-300"><dt>Vuelto</dt><dd>{formatPrice(orderDetail.change_given)}</dd></div>}</dl>
+          {orderDetail.status === 'ANULADA' && <p className="rounded-lg border border-red-500/25 bg-red-950/20 p-3 text-sm text-red-200"><span className="font-semibold">Anulada.</span> Motivo: {orderDetail.cancellation_reason || 'Sin motivo informado.'}</p>}
+          {orderDetail.requires_review && <p className="rounded-lg border border-amber-400/25 bg-amber-950/20 p-3 text-xs text-amber-100">Venta offline sincronizada. Requiere revisión{orderDetail.review_reason ? `: ${orderDetail.review_reason}` : '.'}</p>}
+        </div>
+        <footer className="border-t border-white/10 px-5 py-3 text-right sm:px-6"><button type="button" className="rounded-lg bg-[#FACC15] px-4 py-2 text-sm font-bold text-black transition hover:brightness-105" onClick={() => setOrderDetail(null)}>Cerrar</button></footer>
+      </section>
+    </div>}
   </section>;
 };

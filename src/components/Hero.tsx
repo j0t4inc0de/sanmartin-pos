@@ -83,7 +83,7 @@ export const Hero = ({ onNavigateToMenu }: HeroProps = {}) => {
               transition={{ duration: 0.5, delay: 0.15 }}
               className="text-gray-300 text-base sm:text-lg md:text-xl max-w-2xl mx-auto lg:mx-0 font-normal leading-relaxed"
             >
-              Sándwiches con proteína a elección, vianesas, ases, chorrillanas, papas fritas y promociones preparados al momento a la plancha con <strong className="text-white font-bold">abundante palta fresca y mayo casera</strong>.
+              Sándwiches con proteína a elección, vianesas, as, chorrillanas, papas fritas y promociones preparados al momento a la plancha con <strong className="text-white font-bold">abundante palta fresca y mayo casera</strong>.
             </motion.p>
 
 

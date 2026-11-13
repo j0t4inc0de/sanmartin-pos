@@ -7,6 +7,7 @@ from .views import (
     ManageModifierListView,
     ManageProductDetailView,
     ManageProductListView,
+    ManageProductImageUploadView,
     PosCatalogView,
     PublicMenuView,
 )
@@ -20,6 +21,7 @@ urlpatterns = [
     path("pos/catalog/manage/categories/", ManageCategoryListView.as_view(), name="pos-manage-categories"),
     path("pos/catalog/manage/categories/<int:pk>/", ManageCategoryDetailView.as_view(), name="pos-manage-category"),
     path("pos/catalog/manage/products/", ManageProductListView.as_view(), name="pos-manage-products"),
+    path("pos/catalog/manage/product-images/", ManageProductImageUploadView.as_view(), name="pos-manage-product-images"),
     path("pos/catalog/manage/products/<int:pk>/", ManageProductDetailView.as_view(), name="pos-manage-product"),
     path("pos/catalog/manage/modifiers/", ManageModifierListView.as_view(), name="pos-manage-modifiers"),
     path("pos/catalog/manage/modifiers/<int:pk>/", ManageModifierDetailView.as_view(), name="pos-manage-modifier"),

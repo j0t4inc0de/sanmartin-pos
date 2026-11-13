@@ -1115,5 +1115,175 @@
       "is_available": true,
       "is_active": true
     }
+  ],
+  "modifiers": [
+    {
+      "id": 1,
+      "name": "Tomate (3 rodajas)",
+      "price": 500,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 2,
+      "name": "Palta",
+      "price": 1000,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 3,
+      "name": "Americana",
+      "price": 700,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 4,
+      "name": "Chucrut",
+      "price": 700,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 5,
+      "name": "Lechuga",
+      "price": 700,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 6,
+      "name": "Pepinillo",
+      "price": 700,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 7,
+      "name": "Queso mantecoso (1.5 láminas)",
+      "price": 1000,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 8,
+      "name": "Queso mozzarella (3 láminas)",
+      "price": 1000,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 9,
+      "name": "Queso cheddar (3 láminas)",
+      "price": 1000,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 10,
+      "name": "Cebolla caramelizada",
+      "price": 700,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 11,
+      "name": "Tocino",
+      "price": 1000,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 12,
+      "name": "Papa hilo",
+      "price": 700,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 13,
+      "name": "Poroto verde",
+      "price": 700,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 14,
+      "name": "Ají verde",
+      "price": 0,
+      "modifier_type": "EXTRA_PAGO",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 15,
+      "name": "Sin cebolla",
+      "price": 0,
+      "modifier_type": "EXCLUSION_COCINA",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 16,
+      "name": "Sin mayo",
+      "price": 0,
+      "modifier_type": "EXCLUSION_COCINA",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 17,
+      "name": "Sin tomate",
+      "price": 0,
+      "modifier_type": "EXCLUSION_COCINA",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 18,
+      "name": "Sin chucrut",
+      "price": 0,
+      "modifier_type": "EXCLUSION_COCINA",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 19,
+      "name": "Sin ají",
+      "price": 0,
+      "modifier_type": "EXCLUSION_COCINA",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 20,
+      "name": "Sin mostaza",
+      "price": 0,
+      "modifier_type": "EXCLUSION_COCINA",
+      "is_available": true,
+      "is_active": true
+    },
+    {
+      "id": 21,
+      "name": "Sin ketchup",
+      "price": 0,
+      "modifier_type": "EXCLUSION_COCINA",
+      "is_available": true,
+      "is_active": true
+    }
   ]
 }

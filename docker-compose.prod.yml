@@ -37,6 +37,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - sanmartin_static:/app/staticfiles
+      - sanmartin_media:/app/media
     expose:
       - "8000"
     networks:
@@ -45,6 +46,7 @@ services:
 volumes:
   sanmartin_db_data:
   sanmartin_static:
+  sanmartin_media:
 
 networks:
   proxy_network:

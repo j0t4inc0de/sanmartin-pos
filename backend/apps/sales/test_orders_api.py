@@ -401,6 +401,26 @@ class OrderApiTests(APITestCase):
                 self.assertIsNone(response.data["amount_paid"])
                 self.assertIsNone(response.data["change_given"])
 
+    def test_historial_incluye_detalle_de_comprobante_para_ventas_recientes(self):
+        payload, quote = self.cotizar(extra_qty=2)
+        sale = self.cobrar(quote, payload, amount=15000)
+
+        self.assertEqual(sale.status_code, 201)
+        history = self.client.get("/api/orders/")
+
+        self.assertEqual(history.status_code, 200)
+        order = history.data["orders"][0]
+        self.assertEqual(order["uuid"], sale.data["uuid"])
+        self.assertEqual(order["consumption_type"], "PARA_LLEVAR")
+        self.assertEqual(order["subtotal"], 14000)
+        self.assertEqual(order["total_amount"], 14000)
+        self.assertEqual(order["amount_paid"], 15000)
+        self.assertEqual(order["change_given"], 1000)
+        self.assertEqual(order["items"][0]["product_name"], self.product.name)
+        self.assertEqual(order["items"][0]["notes"], "Sin cebolla")
+        self.assertEqual(order["items"][0]["line_total"], 14000)
+        self.assertEqual(len(order["items"][0]["modifiers"]), 2)
+
     def test_reintento_idempotente_no_duplica_y_datos_distintos_conflicto(self):
         payload, quote = self.cotizar()
         body = {
@@ -454,10 +474,11 @@ class OrderApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["products"][0]["id"], self.product.pk)
-        self.assertEqual(
-            {modifier["id"] for modifier in response.data["modifiers"]},
-            {self.extra.pk, self.exclusion.pk},
-        )
+        modifier_names = [modifier["name"].strip().casefold() for modifier in response.data["modifiers"]]
+        modifier_ids = {modifier["id"] for modifier in response.data["modifiers"]}
+        self.assertIn(self.extra.pk, modifier_ids)
+        self.assertIn(self.exclusion.pk, modifier_ids)
+        self.assertEqual(len(modifier_names), len(set(modifier_names)))
 
         sin_permiso = User.objects.create_user(
             username="catalogo_sin_permiso",

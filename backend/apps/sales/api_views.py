@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Max, Sum
+from django.db.models import Count, F, Max, Sum
 from django.db.models.functions import ExtractHour, TruncDay, TruncHour
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -42,6 +42,18 @@ def _report_period(request):
             return None
         start = datetime.combine(selected_day, time.min, tzinfo=REPORT_TIMEZONE)
         return period, start, start + timedelta(days=1), selected_day.isoformat()
+    if period == "week":
+        raw_day = request.query_params.get("date", "")
+        selected_day = parse_date(raw_day) if raw_day else timezone.now().astimezone(REPORT_TIMEZONE).date()
+        if selected_day is None:
+            return None
+        days_since_tuesday = (selected_day.weekday() - 1) % 7
+        week_start = selected_day - timedelta(days=days_since_tuesday)
+        week_end = week_start + timedelta(days=6)
+        start = datetime.combine(week_start, time.min, tzinfo=REPORT_TIMEZONE)
+        end = datetime.combine(week_end, time.min, tzinfo=REPORT_TIMEZONE)
+        selected = f"{week_start.isoformat()}..{(week_end - timedelta(days=1)).isoformat()}"
+        return period, start, end, selected
     if period == "month":
         raw_month = request.query_params.get("month", "")
         try:
@@ -64,7 +76,7 @@ class SalesReportView(APIView):
         period_data = _report_period(request)
         if period_data is None:
             return Response(
-                {"detail": "Indica un período válido: day con date YYYY-MM-DD o month con month YYYY-MM."},
+                {"detail": "Indica un período válido: day o week con date YYYY-MM-DD, o month con month YYYY-MM."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         period, start, end, selected = period_data
@@ -92,15 +104,31 @@ class SalesReportView(APIView):
         cancelled = orders.filter(status=Order.Status.ANULADA).aggregate(
             total=Sum("total_amount"), count=Count("id")
         )
-        top_products = list(
-            OrderItem.objects.filter(
-                order__cash_shift__user=request.user,
-                order__created_at__gte=start,
-                order__created_at__lt=end,
-                order__status=Order.Status.COMPLETADA,
-            ).values("product_name").annotate(quantity=Sum("quantity"))
-            .order_by("-quantity", "product_name")[:8]
+        completed_items = OrderItem.objects.filter(
+            order__cash_shift__user=request.user,
+            order__created_at__gte=start,
+            order__created_at__lt=end,
+            order__status=Order.Status.COMPLETADA,
+        ).exclude(product__category__slug="salsas")
+        product_sales = completed_items.values("product_id").annotate(
+            reported_name=Max("product__name"), quantity=Sum("quantity")
         )
+        top_products = [
+            {"product_id": item["product_id"], "product_name": item["reported_name"], "quantity": item["quantity"]}
+            for item in product_sales.order_by("-quantity", "reported_name")[:3]
+        ]
+        least_products = [
+            {"product_id": item["product_id"], "product_name": item["reported_name"], "quantity": item["quantity"]}
+            for item in product_sales.order_by("quantity", "reported_name")[:3]
+        ]
+        unsold_products = Product.objects.filter(
+            is_active=True,
+            is_available=True,
+            category__is_active=True,
+        ).exclude(category__slug="salsas").exclude(
+            id__in=completed_items.values("product_id")
+        ).order_by("name")
+        unsold_product_names = list(unsold_products.values_list("name", flat=True))
         rush_hours = list(
             completed.annotate(hour=ExtractHour("created_at", tzinfo=REPORT_TIMEZONE))
             .values("hour").annotate(
@@ -129,7 +157,7 @@ class SalesReportView(APIView):
             ).order_by("bucket")
             time_series = [
                 {
-                    "key": row["bucket"].strftime("%d"),
+                    "key": row["bucket"].strftime("%Y-%m-%d") if period == "week" else row["bucket"].strftime("%d"),
                     "total_amount": row["total_amount"],
                     "order_count": row["order_count"],
                 }
@@ -171,6 +199,11 @@ class SalesReportView(APIView):
                 "total_amount": cancelled["total"] or 0,
             },
             "top_products": top_products,
+            "least_products": least_products,
+            "unsold_products": {
+                "count": len(unsold_product_names),
+                "product_names": unsold_product_names,
+            },
             "rush_hours": rush_hours,
             "time_series": time_series,
             "shifts": shifts,

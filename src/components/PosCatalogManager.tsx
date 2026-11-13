@@ -1,18 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Archive, ArrowLeft, Check, CirclePlus, Package, RefreshCw, RotateCcw, Search, Tag, Trash2, X } from 'lucide-react';
+import { Archive, ArrowLeft, Check, CirclePlus, ImagePlus, Package, RefreshCw, RotateCcw, Search, Tag, Trash2, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
-import { cargarCatalogoPos, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
+import { asegurarModificadoresEnServidor, cargarCatalogoPos, deduplicarModificadores, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
 import { usePosDialogs } from './PosDialogs';
+import { PosSnackbarAlert } from './PosSnackbarAlert';
+import { ClpInput } from './ClpInput';
 
 type Section = 'products' | 'categories' | 'modifiers';
 interface Category { id: number; slug: string; name: string; sort_order: number; is_active: boolean; updated_at: string; }
 interface Product { id: number; slug: string; category_id: number; category_name: string; name: string; description: string; ingredients: string[]; price: number; original_price: number | null; image_url: string; badge: string; is_available: boolean; is_active: boolean; updated_at: string; }
 interface Modifier { id: number; name: string; price: number; modifier_type: 'EXTRA_PAGO' | 'EXCLUSION_COCINA'; is_available: boolean; is_active: boolean; updated_at: string; }
-type ProductForm = Omit<Product, 'id' | 'slug' | 'category_name' | 'updated_at' | 'ingredients'> & { id?: number; ingredients_text: string };
+type ProductForm = Omit<Product, 'id' | 'slug' | 'category_name' | 'updated_at' | 'ingredients' | 'price'> & { id?: number; ingredients_text: string; price: number | '' };
 type CategoryForm = { id?: number; name: string; sort_order: number; is_active: boolean };
 type ModifierForm = { id?: number; name: string; price: number; modifier_type: Modifier['modifier_type']; is_available: boolean; is_active: boolean };
 
-const blankProduct = (categoryId = 0): ProductForm => ({ category_id: categoryId, name: '', description: '', ingredients_text: '', price: 0, original_price: null, image_url: '', badge: '', is_available: true, is_active: true });
+const blankProduct = (categoryId = 0): ProductForm => ({ category_id: categoryId, name: '', description: '', ingredients_text: '', price: '', original_price: null, image_url: '', badge: '', is_available: true, is_active: true });
 const blankCategory = (): CategoryForm => ({ name: '', sort_order: 0, is_active: true });
 const blankModifier = (): ModifierForm => ({ name: '', price: 0, modifier_type: 'EXTRA_PAGO', is_available: true, is_active: true });
 const money = (value: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(value);
@@ -31,6 +33,18 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+
+  useEffect(() => {
+    if (!selectedImage) {
+      setImagePreview('');
+      return;
+    }
+    const previewUrl = URL.createObjectURL(selectedImage);
+    setImagePreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [selectedImage]);
 
   const applyStoredCatalog = (stored: StoredCatalog) => {
     const loadedCategories: Category[] = stored.catalog.categories.map(item => ({
@@ -57,7 +71,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       is_active: item.is_active ?? true,
       updated_at: item.updated_at ?? stored.catalog.generated_at,
     }));
-    const loadedModifiers: Modifier[] = stored.catalog.modifiers.map(item => ({
+    const loadedModifiers: Modifier[] = deduplicarModificadores(stored.catalog.modifiers).map(item => ({
       id: item.id,
       name: item.name,
       price: item.price,
@@ -107,11 +121,51 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
     }
 
     try {
-      const [nextCategories, nextProducts, nextModifiers] = await Promise.all([
+      const [nextCategories, nextProducts, fetchedModifiers] = await Promise.all([
         solicitarApi<Category[]>('/api/pos/catalog/manage/categories/'),
         solicitarApi<Product[]>('/api/pos/catalog/manage/products/'),
         solicitarApi<Modifier[]>('/api/pos/catalog/manage/modifiers/'),
       ]);
+      let nextModifiers: Modifier[] = (fetchedModifiers && fetchedModifiers.length > 0)
+        ? fetchedModifiers
+        : obtenerCatalogoBasePos().modifiers.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            modifier_type: item.modifier_type,
+            is_available: item.is_available ?? true,
+            is_active: item.is_active ?? true,
+            updated_at: item.updated_at ?? new Date().toISOString(),
+          }));
+
+      if (!offlineMode && (!fetchedModifiers || fetchedModifiers.length === 0)) {
+        try {
+          const synced = await asegurarModificadoresEnServidor(fetchedModifiers);
+          if (synced && synced.length > 0) {
+            nextModifiers = synced.map(item => ({
+              id: item.id,
+              name: item.name,
+              price: item.price,
+              modifier_type: item.modifier_type,
+              is_available: item.is_available ?? true,
+              is_active: item.is_active ?? true,
+              updated_at: item.updated_at ?? new Date().toISOString(),
+            }));
+          }
+        } catch (err) {
+          console.warn('No se pudo asegurar modificadores en servidor:', err);
+        }
+      }
+      nextModifiers = deduplicarModificadores(nextModifiers).map(item => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        modifier_type: item.modifier_type,
+        is_available: item.is_available ?? true,
+        is_active: item.is_active ?? true,
+        updated_at: item.updated_at ?? new Date().toISOString(),
+      }));
+
       setCategories(nextCategories);
       setProducts(nextProducts);
       setModifiers(nextModifiers);
@@ -161,6 +215,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
 
   const startNew = () => {
     if (offlineMode) return;
+    setSelectedImage(null);
     setError('');
     setMessage('');
     if (section === 'products') setProductForm(blankProduct(categories.find(item => item.is_active)?.id ?? categories[0]?.id ?? 0));
@@ -174,6 +229,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       setError('Modo solo lectura sin conexión. Para modificar precios o agregar productos, debes reconectar con el servidor.');
       return;
     }
+    if (section === 'products' && (productForm.price === '' || !Number.isSafeInteger(productForm.price) || productForm.price < 0)) {
+      setError('Ingresa un precio válido en pesos chilenos.');
+      return;
+    }
     setSaving(true);
     setError('');
     setMessage('');
@@ -184,7 +243,14 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       if (section === 'products') {
         id = productForm.id;
         path = '/api/pos/catalog/manage/products/';
-        body = { ...productForm, ingredients: productForm.ingredients_text.split('\n').map(value => value.trim()).filter(Boolean) };
+        let imageUrl = productForm.image_url;
+        if (selectedImage) {
+          const imageData = new FormData();
+          imageData.append('image', selectedImage);
+          const uploaded = await solicitarApi<{ image_url: string }>('/api/pos/catalog/manage/product-images/', { method: 'POST', body: imageData });
+          imageUrl = uploaded.image_url;
+        }
+        body = { ...productForm, image_url: imageUrl, price: Number(productForm.price), ingredients: productForm.ingredients_text.split('\n').map(value => value.trim()).filter(Boolean) };
         delete body.id;
         delete body.ingredients_text;
       } else if (section === 'categories') {
@@ -195,11 +261,15 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
       } else {
         id = modifierForm.id;
         path = '/api/pos/catalog/manage/modifiers/';
-        body = modifierForm;
+        body = {
+          ...modifierForm,
+          price: modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : modifierForm.price,
+        };
         delete body.id;
       }
       await solicitarApi(`${path}${id ? `${id}/` : ''}`, { method: id ? 'PATCH' : 'POST', body });
       await loadData();
+      setSelectedImage(null);
       setMessage('Cambios guardados. El POS actualizará la carta y el menú automáticamente.');
       window.dispatchEvent(new Event('pos:catalog-updated'));
     } catch (cause) {
@@ -210,6 +280,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   };
 
   const selectSection = (next: Section) => {
+    setSelectedImage(null);
     setSection(next);
     setError('');
     setMessage('');
@@ -237,7 +308,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
     }
   };
 
-  const selectProduct = (item: Product) => setProductForm({ ...item, ingredients_text: (item.ingredients || []).join('\n') });
+  const selectProduct = (item: Product) => {
+    setSelectedImage(null);
+    setProductForm({ ...item, ingredients_text: (item.ingredients || []).join('\n') });
+  };
   const selectCategory = (item: Category) => setCategoryForm({ id: item.id, name: item.name, sort_order: item.sort_order, is_active: item.is_active });
   const selectModifier = (item: Modifier) => setModifierForm({ id: item.id, name: item.name, price: item.price, modifier_type: item.modifier_type, is_available: item.is_available, is_active: item.is_active });
   const close = onClose;
@@ -285,21 +359,37 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   return (
     <section className="pos-catalog-workspace" aria-labelledby="pos-catalog-title">
       <div className="pos-catalog-surface">
-        <header className="pos-catalog-header">
+        <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
           <div>
-            <p className="pos-catalog-eyebrow">Administración del POS</p>
-            <h2 id="pos-catalog-title">Catálogo y menú</h2>
-            <p>
-              {offlineMode
-                ? 'Modo consulta (sin conexión). Los cambios requieren conexión con el servidor.'
-                : 'Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.'}
+            <p className="pos-catalog-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Administración del POS</p>
+            <h2 id="pos-catalog-title" className="mt-1 font-heading text-2xl font-bold tracking-tight">Catálogo y menú</h2>
+            <p className="pos-workspace-desc mt-1.5 text-sm">
+              {offlineMode ? 'Modo consulta (sin conexión). Los cambios requieren conexión con el servidor.' : 'Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.'}
             </p>
           </div>
-          <button type="button" className="pos-catalog-close" onClick={close}>
-            <ArrowLeft aria-hidden="true" />
-            <span>Volver a caja</span>
+          <button
+            type="button"
+            className="pos-back-to-caja flex items-center justify-center gap-2.5 h-11 px-5 rounded-xl bg-[#FACC15] hover:bg-[#EAB308] active:scale-95 text-[#0D0D0D] font-extrabold text-sm uppercase tracking-wider shadow-lg shadow-yellow-500/20 cursor-pointer transition-all border border-yellow-400"
+            onClick={close}
+            title="Volver a la vista de caja"
+          >
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+            <span>VOLVER A CAJA</span>
           </button>
         </header>
+
+        <PosSnackbarAlert
+          open={Boolean(message)}
+          severity="success"
+          message={message}
+          onClose={() => setMessage('')}
+        />
+        <PosSnackbarAlert
+          open={Boolean(error)}
+          severity="error"
+          message={error}
+          onClose={() => setError('')}
+        />
 
         {offlineMode && (
           <div className="pos-catalog-offline" role="status">
@@ -495,14 +585,11 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                   </label>
                   <label>
                     Precio (CLP)
-                    <input
+                    <ClpInput
                       required
-                      type="number"
-                      min="0"
-                      step="1"
                       disabled={offlineMode}
                       value={productForm.price}
-                      onChange={event => setProductForm({ ...productForm, price: Number(event.target.value) })}
+                      onValueChange={value => setProductForm({ ...productForm, price: value === '' ? '' : Number(value)})}
                     />
                   </label>
                 </div>
@@ -527,13 +614,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                 <div className="pos-catalog-form-row">
                   <label>
                     Precio de referencia (opcional)
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
+                    <ClpInput
                       disabled={offlineMode}
                       value={productForm.original_price ?? ''}
-                      onChange={event => setProductForm({ ...productForm, original_price: event.target.value === '' ? null : Number(event.target.value) })}
+                      onValueChange={value => setProductForm({ ...productForm, original_price: value === '' ? null : Number(value) })}
                     />
                   </label>
                   <label>
@@ -546,16 +630,60 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                     />
                   </label>
                 </div>
-                <label>
-                  Ruta o URL de imagen
-                  <input
-                    maxLength={500}
-                    disabled={offlineMode}
-                    value={productForm.image_url}
-                    onChange={event => setProductForm({ ...productForm, image_url: event.target.value })}
-                    placeholder="/productos/mi-producto.jpg"
-                  />
-                </label>
+                <div className="pos-catalog-image-field">
+                  <div className="pos-catalog-image-heading">
+                    <span>Foto del producto</span>
+                    <small>JPEG, PNG o WEBP · máximo 5 MB</small>
+                  </div>
+                  <div className="pos-catalog-image-card">
+                    <div className="pos-catalog-image-preview">
+                      {(imagePreview || productForm.image_url) ? (
+                        <img src={imagePreview || productForm.image_url} alt={`Vista previa de ${productForm.name || 'producto'}`} />
+                      ) : (
+                        <ImagePlus aria-hidden="true" />
+                      )}
+                    </div>
+                    <div className="pos-catalog-image-copy">
+                      <strong>{selectedImage ? selectedImage.name : productForm.image_url ? 'Imagen actual del producto' : 'Agrega una foto a tu producto'}</strong>
+                      <span>{selectedImage ? `${(selectedImage.size / 1024 / 1024).toFixed(2)} MB · lista para guardar` : 'Una imagen clara ayuda a identificarlo en la carta.'}</span>
+                      <div className="pos-catalog-image-actions">
+                        <label className="pos-catalog-image-upload">
+                          <ImagePlus aria-hidden="true" />
+                          {productForm.image_url || selectedImage ? 'Cambiar foto' : 'Elegir imagen'}
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                            disabled={offlineMode || saving}
+                            onChange={event => {
+                              const file = event.target.files?.[0];
+                              event.currentTarget.value = '';
+                              if (!file) return;
+                              if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                                setError('Elige una imagen JPEG, PNG o WEBP de máximo 5 MB.');
+                                return;
+                              }
+                              setError('');
+                              setSelectedImage(file);
+                            }}
+                          />
+                        </label>
+                        {(productForm.image_url || selectedImage) && (
+                          <button
+                            className="pos-catalog-image-remove"
+                            type="button"
+                            disabled={offlineMode || saving}
+                            onClick={() => {
+                              setSelectedImage(null);
+                              setProductForm({ ...productForm, image_url: '' });
+                            }}
+                          >
+                            Quitar imagen
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <div className="pos-catalog-switches">
                   <label>
                     <input
@@ -651,7 +779,14 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                       <select
                         disabled={offlineMode}
                         value={modifierForm.modifier_type}
-                        onChange={event => setModifierForm({ ...modifierForm, modifier_type: event.target.value as Modifier['modifier_type'] })}
+                        onChange={event => {
+                          const nextType = event.target.value as Modifier['modifier_type'];
+                          setModifierForm({
+                            ...modifierForm,
+                            modifier_type: nextType,
+                            price: nextType === 'EXCLUSION_COCINA' ? 0 : modifierForm.price,
+                          });
+                        }}
                       >
                         <option value="EXTRA_PAGO">Extra con costo</option>
                         <option value="EXCLUSION_COCINA">Indicación para cocina</option>
@@ -659,14 +794,14 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                     </label>
                     <label>
                       Precio (CLP)
-                      <input
+                      <ClpInput
                         required
-                        type="number"
-                        min="0"
-                        step="1"
-                        disabled={offlineMode}
-                        value={modifierForm.price}
-                        onChange={event => setModifierForm({ ...modifierForm, price: Number(event.target.value) })}
+                        disabled={offlineMode || modifierForm.modifier_type === 'EXCLUSION_COCINA'}
+                        value={modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : modifierForm.price}
+                        onValueChange={value => setModifierForm({
+                          ...modifierForm,
+                          price: modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : Number(value || 0)
+                        })}
                       />
                     </label>
                   </div>
@@ -704,7 +839,6 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
         </div>
         <footer className="pos-catalog-footer">
           <span>Los registros se desactivan para conservar el historial de ventas.</span>
-          <button type="button" onClick={close}>Volver a caja</button>
         </footer>
       </div>
     </section>

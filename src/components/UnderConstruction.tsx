@@ -73,7 +73,14 @@ export const UnderConstruction = ({ onNavigateToMenu }: UnderConstructionProps) 
 
           <div className="inline-block px-4 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs sm:text-sm text-gray-300">
             <span className="text-white font-bold">Sitio en construcción</span> por{' '}
-            <span className="text-[#FACC15] font-extrabold tracking-wide">We Are Samod</span>
+            <a
+              href="https://www.wearesamod.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#FACC15] font-extrabold tracking-wide hover:underline"
+            >
+              We Are Samod
+            </a>
             <span className="text-gray-400 block sm:inline sm:before:content-['•'] sm:before:mx-2 text-[11px] sm:text-xs">
               Empresa de soluciones informáticas
             </span>
@@ -130,9 +137,14 @@ export const UnderConstruction = ({ onNavigateToMenu }: UnderConstructionProps) 
       <footer className="relative z-10 max-w-4xl mx-auto w-full text-center border-t border-white/5 pt-4 text-[11px] text-gray-500 space-y-1">
         <p>
           Desarrollado y administrado por{' '}
-          <strong className="text-gray-300 font-semibold tracking-wider uppercase">
+          <a
+            href="https://www.wearesamod.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-300 hover:text-[#FACC15] font-semibold tracking-wider uppercase transition-colors"
+          >
             We Are Samod
-          </strong>{' '}
+          </a>{' '}
           — Soluciones Informáticas & Desarrollo Fullstack
         </p>
         <p className="text-[10px] text-gray-600">

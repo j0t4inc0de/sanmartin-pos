@@ -4,7 +4,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.catalog.models import Category, Product
+from apps.catalog.models import Category, Modifier, Product
 
 
 class Command(BaseCommand):
@@ -20,6 +20,7 @@ class Command(BaseCommand):
 
         category_rows = catalog.get("categories", [])
         product_rows = catalog.get("products", [])
+        modifier_rows = catalog.get("modifiers", [])
         category_slugs = {row.get("slug") for row in category_rows}
         if None in category_slugs or len(category_slugs) != len(category_rows):
             raise CommandError("El archivo contiene categorías sin slug o slugs repetidos.")
@@ -40,6 +41,7 @@ class Command(BaseCommand):
         categories_by_slug = {}
         created_categories = 0
         created_products = 0
+        created_modifiers = 0
 
         with transaction.atomic():
             for row in category_rows:
@@ -75,9 +77,24 @@ class Command(BaseCommand):
                 )
                 created_products += int(created)
 
+            for row in modifier_rows:
+                if not isinstance(row.get("price"), int) or row["price"] < 0:
+                    raise CommandError(f"El precio de modificador {row.get('name', '')} no es válido.")
+
+                _, created = Modifier.objects.get_or_create(
+                    name=row["name"],
+                    defaults={
+                        "price": row["price"],
+                        "modifier_type": row.get("modifier_type", Modifier.ModifierType.EXTRA_PAGO),
+                        "is_available": row.get("is_available", True),
+                        "is_active": row.get("is_active", True),
+                    },
+                )
+                created_modifiers += int(created)
+
         self.stdout.write(
             self.style.SUCCESS(
-                f"Catálogo inicial cargado: {created_categories} categorías y "
-                f"{created_products} productos nuevos. Los registros existentes se conservaron."
+                f"Catálogo inicial cargado: {created_categories} categorías, "
+                f"{created_products} productos y {created_modifiers} modificadores nuevos. Los registros existentes se conservaron."
             )
         )

@@ -1,5 +1,18 @@
 import { ComboItem, ExtraItem, GoogleReviewItem } from '../types';
 
+// real product catalog categories and prices directly from productos_y_precios_foodtrucksanmartin(Productos).csv
+export const MENU_CATEGORIES = [
+  { id: 'all', name: 'Todos' },
+  { id: 'sandwiches', name: 'Sándwiches' },
+  { id: 'vianesas', name: 'Vianesas' },
+  { id: 'ases', name: 'As' },
+  { id: 'chorrillanas', name: 'Chorrillanas' },
+  { id: 'acompanamientos', name: 'Acompañamientos' },
+  { id: 'salsas', name: 'Salsas' },
+  { id: 'bebestibles', name: 'Bebestibles' },
+  { id: 'agregados', name: 'Agregados' },
+] as const;
+
 export const CHILEAN_EXTRAS: ExtraItem[] = [
   { id: 'agregado-tomate', name: 'Tomate (3 rodajas)', price: 500 },
   { id: 'agregado-palta', name: 'Palta', price: 1000 },

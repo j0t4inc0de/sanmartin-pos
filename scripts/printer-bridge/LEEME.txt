@@ -1,0 +1,35 @@
+=============================================================================
+  SANGUCHERÍA SAN MARTÍN — PUENTE DE IMPRESIÓN DINON 9390 (WINDOWS)
+=============================================================================
+
+Este paquete permite conectar la impresora térmica DINON 9390 con la
+plataforma web del POS (https://sangucheriasanmartin.cl/pos) usando los
+controladores normales de Windows.
+
+REQUISITO PREVIO:
+  - Tener Python instalado en el computador (https://www.python.org).
+    ¡IMPORTANTE!: Al instalarlo, marcar la casilla "Add Python to PATH".
+
+INSTRUCCIONES DE USO:
+
+OPCIÓN 1 (Recomendada): INICIO AUTOMÁTICO
+  1. Haz doble clic en "instalar_inicio_automatico.bat".
+  2. ¡Listo! A partir de ese momento, cada vez que enciendas el computador
+     del Food Truck, el puente arrancará solo en segundo plano.
+  3. Abre el POS en el navegador y verás el estado en VERDE:
+     "🟢 Puente local conectado".
+
+OPCIÓN 2: INICIO MANUAL
+  1. Si solo quieres hacer una prueba rápida, haz doble clic en "iniciar_puente.bat".
+  2. Se abrirá una ventana negra que mostrará la impresora detectada.
+  3. No cierres esa ventana mientras estés usando el sistema de caja.
+
+¿CÓMO PROBAR QUE FUNCIONA?
+  1. En el POS web, entra a la pestaña "Impresora".
+  2. Haz clic en "Imprimir dos pruebas". Saldrán el vale del cliente y la
+     comanda de cocina.
+  3. Haz clic en "Probar gaveta" para verificar que se abra el cajón de dinero.
+
+SOPORTE Y DESINSTALACIÓN:
+  - Para quitar el arranque automático, ejecuta "desinstalar_inicio_automatico.bat".
+=============================================================================
