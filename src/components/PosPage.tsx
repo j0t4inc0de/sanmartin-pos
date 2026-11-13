@@ -7,6 +7,7 @@ import { PosSalesPanel } from './PosSalesPanel';
 import { PosPrinterDiagnostics } from './PosPrinterDiagnostics';
 import { PosCatalogManager } from './PosCatalogManager';
 import { PosReports } from './PosReports';
+import { ClpInput } from './ClpInput';
 import { usePosDialogs } from './PosDialogs';
 import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarAnulacionOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, guardarVentaOfflineEnColaPos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
@@ -1323,15 +1324,11 @@ export const PosPage = () => {
 
                 <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-counted-cash">
                   Efectivo contado físicamente (CLP)
-                  <input
+                  <ClpInput
                     id="pos-counted-cash"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
                     required
                     value={closingCashCount}
-                    onChange={(event) => setClosingCashCount(event.target.value)}
+                    onValueChange={setClosingCashCount}
                     className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none transition focus:border-[#FACC15]"
                   />
                   <span className="block text-xs text-gray-500">
@@ -1427,15 +1424,11 @@ export const PosPage = () => {
 
                 <label className="block space-y-2 text-sm text-gray-300" htmlFor="pos-initial-cash">
                   Fondo inicial (CLP)
-                  <input
+                  <ClpInput
                     id="pos-initial-cash"
-                    type="number"
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
                     required
                     value={initialCash}
-                    onChange={(event) => setInitialCash(event.target.value)}
+                    onValueChange={setInitialCash}
                     className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-white outline-none transition focus:border-[#FACC15]"
                   />
                 </label>

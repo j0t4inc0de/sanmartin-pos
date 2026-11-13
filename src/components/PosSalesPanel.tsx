@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Filter, Image as ImageIcon, Minus, Plus, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
+import { ClpInput, normalizeClpDigits } from './ClpInput';
 import { printPosSale } from '../services/posPrinter';
 import { Alert } from './Alert';
 import { PosSnackbarAlert } from './PosSnackbarAlert';
@@ -73,14 +74,13 @@ const applyCatalogDelta = (current: Catalog, delta: CatalogDelta): Catalog => {
 
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
 const BASE_PRODUCT_IMAGES = new Map(obtenerCatalogoBasePos().products.map(product => [product.slug, product.image_url]));
-const normalizeCashInput = (value: string) => value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+const normalizeCashInput = normalizeClpDigits;
 const parseCashInput = (value: string): number | null => {
   const digits = normalizeCashInput(value);
   if (!digits) return null;
   const amount = Number(digits);
   return Number.isSafeInteger(amount) ? amount : null;
 };
-const formatCashInput = (value: string) => normalizeCashInput(value).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
 export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, onBeforeCreateSale, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; onBeforeCreateSale: () => Promise<boolean>; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
@@ -103,7 +103,6 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [paymentRecordWriteFailed, setPaymentRecordWriteFailed] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('EFECTIVO');
   const [amountReceived, setAmountReceived] = useState('');
-  const [amountReceivedFocused, setAmountReceivedFocused] = useState(false);
   const [category, setCategory] = useState<number | 'all'>('all');
   const [productSearch, setProductSearch] = useState('');
   const productSearchRef = useRef<HTMLInputElement>(null);
@@ -967,7 +966,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         <div className={`pos-quote-sticky ${quote ? 'is-quoted' : ''}`}><span>{lines.length ? `${lines.reduce((count, line) => count + line.quantity, 0)} productos · ${consumptionType === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}` : 'Agrega productos para cotizar'}</span><button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()}>{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar venta'}</button></div>
         {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>{quote.offline_created ? 'Total calculado con catálogo local' : 'Total validado'}</span><span>{formatPrice(quote.total_amount)}</span></div><p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · {quote.offline_created ? 'Venta y folio guardados localmente antes del cobro.' : `Válida hasta ${new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización respaldada en este equipo.`}</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de cobrar.</p>}
           <label className="block text-sm text-gray-300">Medio de pago<select className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" value={paymentMethod} onChange={e => updatePaymentMethod(e.target.value as PaymentMethod)}><option value="EFECTIVO">Efectivo</option><option value="TRANSBANK">Transbank (débito/crédito)</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
-          {paymentMethod === 'EFECTIVO' && <label className="block text-sm text-gray-300">Efectivo recibido (CLP)<input className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" type="text" inputMode="decimal" autoComplete="off" placeholder="Ej.: 5.000" aria-label="Efectivo recibido en pesos chilenos" value={amountReceivedFocused ? amountReceived : formatCashInput(amountReceived)} onFocus={() => setAmountReceivedFocused(true)} onBlur={event => { setAmountReceivedFocused(false); updateAmountReceived(normalizeCashInput(event.currentTarget.value)); }} onChange={e => updateAmountReceived(e.target.value)}/></label>}
+          {paymentMethod === 'EFECTIVO' && <label className="block text-sm text-gray-300">Efectivo recibido (CLP)<ClpInput className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Ej.: 5.000" aria-label="Efectivo recibido en pesos chilenos" value={amountReceived} onValueChange={updateAmountReceived}/></label>}
           {!paymentReceivedPending && !preparedQuoteExpired && <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void saveSale()} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Guardando venta…' : 'Confirmar recepción del pago'}</button>}
         </div>}
       </div>

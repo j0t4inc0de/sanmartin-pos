@@ -4,6 +4,7 @@ import { solicitarApi } from '../services/apiClient';
 import { asegurarModificadoresEnServidor, cargarCatalogoPos, deduplicarModificadores, guardarCatalogoPos, obtenerCatalogoBasePos, type StoredCatalog } from '../services/posLocalStore';
 import { usePosDialogs } from './PosDialogs';
 import { PosSnackbarAlert } from './PosSnackbarAlert';
+import { ClpInput } from './ClpInput';
 
 type Section = 'products' | 'categories' | 'modifiers';
 interface Category { id: number; slug: string; name: string; sort_order: number; is_active: boolean; updated_at: string; }
@@ -584,14 +585,11 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                   </label>
                   <label>
                     Precio (CLP)
-                    <input
+                    <ClpInput
                       required
-                      type="number"
-                      min="0"
-                      step="1"
                       disabled={offlineMode}
                       value={productForm.price}
-                      onChange={event => setProductForm({ ...productForm, price: event.target.value === '' ? '' : Number(event.target.value) })}
+                      onValueChange={value => setProductForm({ ...productForm, price: value === '' ? '' : Number(value)})}
                     />
                   </label>
                 </div>
@@ -616,13 +614,10 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                 <div className="pos-catalog-form-row">
                   <label>
                     Precio de referencia (opcional)
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
+                    <ClpInput
                       disabled={offlineMode}
                       value={productForm.original_price ?? ''}
-                      onChange={event => setProductForm({ ...productForm, original_price: event.target.value === '' ? null : Number(event.target.value) })}
+                      onValueChange={value => setProductForm({ ...productForm, original_price: value === '' ? null : Number(value) })}
                     />
                   </label>
                   <label>
@@ -799,16 +794,13 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                     </label>
                     <label>
                       Precio (CLP)
-                      <input
+                      <ClpInput
                         required
-                        type="number"
-                        min="0"
-                        step="1"
                         disabled={offlineMode || modifierForm.modifier_type === 'EXCLUSION_COCINA'}
                         value={modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : modifierForm.price}
-                        onChange={event => setModifierForm({
+                        onValueChange={value => setModifierForm({
                           ...modifierForm,
-                          price: modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : Number(event.target.value)
+                          price: modifierForm.modifier_type === 'EXCLUSION_COCINA' ? 0 : Number(value || 0)
                         })}
                       />
                     </label>
