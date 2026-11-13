@@ -29,16 +29,27 @@ def seed_modifiers(apps, schema_editor):
     Modifier = apps.get_model("catalog", "Modifier")
     database = schema_editor.connection.alias
 
+    seen = {}
+    for mod in list(Modifier.objects.using(database).all().order_by("id")):
+        key = mod.name.strip().lower()
+        if key not in seen:
+            seen[key] = mod.id
+        else:
+            try:
+                mod.delete()
+            except Exception:
+                pass
+
     for item in INITIAL_MODIFIERS:
-        Modifier.objects.using(database).get_or_create(
-            name=item["name"],
-            defaults={
-                "price": item["price"],
-                "modifier_type": item["modifier_type"],
-                "is_available": True,
-                "is_active": True,
-            },
-        )
+        existing = Modifier.objects.using(database).filter(name=item["name"]).first()
+        if not existing:
+            Modifier.objects.using(database).create(
+                name=item["name"],
+                price=item["price"],
+                modifier_type=item["modifier_type"],
+                is_available=True,
+                is_active=True,
+            )
 
 
 def unseed_modifiers(apps, schema_editor):
