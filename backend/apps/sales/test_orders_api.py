@@ -74,6 +74,7 @@ class OrderApiTests(APITestCase):
             "uuid": str(uuid4()),
             "shift_order_number": numero,
             "created_at": timezone.now().isoformat(),
+            "customer_name": "Cliente de prueba",
             "consumption_type": "PARA_LLEVAR",
             "items": [
                 {
@@ -115,6 +116,7 @@ class OrderApiTests(APITestCase):
             "shift_uuid": str(self.shift.uuid),
             "created_at": timezone.now().isoformat(),
             "offline_created": True,
+            "customer_name": "Cliente offline",
             "consumption_type": "PARA_LLEVAR",
             "payment_method": "EFECTIVO",
             "amount_received": 15000,
@@ -149,6 +151,7 @@ class OrderApiTests(APITestCase):
         self.assertEqual(response.data["total_amount"], 13600)
         self.assertEqual(response.data["change_given"], 1400)
         self.assertTrue(response.data["offline_created"])
+        self.assertEqual(response.data["customer_name"], "Cliente offline")
         self.assertTrue(response.data["requires_review"])
         self.assertEqual(Order.objects.get().items.get().product_name, "Sándwich guardado localmente")
         self.assertEqual(Order.objects.get().items.get().unit_price, 5000)
@@ -412,6 +415,7 @@ class OrderApiTests(APITestCase):
         order = history.data["orders"][0]
         self.assertEqual(order["uuid"], sale.data["uuid"])
         self.assertEqual(order["consumption_type"], "PARA_LLEVAR")
+        self.assertEqual(order["customer_name"], "Cliente de prueba")
         self.assertEqual(order["subtotal"], 14000)
         self.assertEqual(order["total_amount"], 14000)
         self.assertEqual(order["amount_paid"], 15000)

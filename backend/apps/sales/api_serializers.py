@@ -117,6 +117,7 @@ class OrderQuoteInputSerializer(serializers.Serializer):
     uuid = serializers.UUIDField()
     shift_order_number = serializers.IntegerField(min_value=1)
     created_at = serializers.DateTimeField()
+    customer_name = serializers.CharField(max_length=100, trim_whitespace=True)
     consumption_type = serializers.ChoiceField(
         choices=["PARA_SERVIR", "PARA_LLEVAR"]
     )
@@ -200,6 +201,14 @@ class OfflineOrderSyncInputSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     offline_created = serializers.BooleanField()
     consumption_type = serializers.ChoiceField(choices=["PARA_SERVIR", "PARA_LLEVAR"])
+    # Los clientes POS anteriores pueden conservar ventas pendientes en IndexedDB.
+    # La interfaz actual siempre exige el nombre; este valor permite sincronizar esas ventas antiguas.
+    customer_name = serializers.CharField(
+        max_length=100,
+        trim_whitespace=True,
+        required=False,
+        default="Sin nombre",
+    )
     payment_method = serializers.ChoiceField(choices=["EFECTIVO", "TRANSBANK", "TRANSFERENCIA"])
     amount_received = serializers.IntegerField(min_value=0, required=False)
     items = OfflineOrderItemInputSerializer(many=True, allow_empty=False)
@@ -268,6 +277,7 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "received_at",
             "offline_created",
             "consumption_type",
+            "customer_name",
             "payment_method",
             "subtotal",
             "delivery_fee",

@@ -64,6 +64,7 @@ class PostgresConcurrencyTests(TransactionTestCase):
             "shift_uuid": str(shift.uuid),
             "created_at": timezone.now().isoformat(),
             "offline_created": True,
+            "customer_name": "Cliente concurrencia",
             "consumption_type": "PARA_LLEVAR",
             "payment_method": "EFECTIVO",
             "amount_received": 5000,
