@@ -159,8 +159,8 @@ export const FEATURES_DATA = [
   {
     id: 'porciones',
     icon: 'ShieldCheck',
-    title: 'Chorrillanas & Promos Reales',
-    description: 'Desde vianesas desde $1.000 hasta chorrillanas familiares y promos de 2 sándwiches + papas desde $7.000.',
+    title: 'Chorrillanas & Sándwiches Contundentes',
+    description: 'Desde vianesas desde $1.000 hasta chorrillanas familiares y sándwiches contundentes con carne 100% de primera.',
     tag: 'Precios Imbatibles',
   },
 ];

@@ -3,7 +3,6 @@ import { AnnouncementBar } from './components/AnnouncementBar';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { AboutFeatures } from './components/AboutFeatures';
-import { CombosSection } from './components/CombosSection';
 import { LocationHours } from './components/LocationHours';
 import { Testimonials } from './components/Testimonials';
 import { Footer } from './components/Footer';
@@ -103,11 +102,10 @@ export default function App() {
         onNavigateToMenu={() => navigateTo('menu')}
       />
 
-      {/* Main Content Sections: 1: Por Qué Elegirnos, 2: Combos, 3: Ubicación & Horarios, 4: Reseñas */}
+      {/* Main Content Sections: 1: Por Qué Elegirnos, 2: Ubicación & Horarios, 3: Reseñas */}
       <main className="flex-1">
         <Hero onNavigateToMenu={() => navigateTo('menu')} />
         <AboutFeatures />
-        <CombosSection onNavigateToMenu={() => navigateTo('menu')} />
         <LocationHours />
         <Testimonials />
       </main>
