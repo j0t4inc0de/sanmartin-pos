@@ -31,6 +31,7 @@ class Product(models.Model):
     badge = models.CharField(max_length=50, blank=True)
     is_available = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -62,6 +63,7 @@ class Modifier(models.Model):
     )
     is_available = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

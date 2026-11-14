@@ -33,6 +33,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | number>('all');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
 
@@ -336,7 +337,11 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
     setMessage('');
     try {
       const endpoint = section === 'products' ? 'products' : section === 'categories' ? 'categories' : 'modifiers';
-      await solicitarApi(`/api/pos/catalog/manage/${endpoint}/${item.id}/`, { method: 'PATCH', body: { is_active: !isActive } });
+      if (section === 'products' && isActive) {
+        await solicitarApi(`/api/pos/catalog/manage/${endpoint}/${item.id}/`, { method: 'PATCH', body: { is_deleted: true, is_active: false } });
+      } else {
+        await solicitarApi(`/api/pos/catalog/manage/${endpoint}/${item.id}/`, { method: 'PATCH', body: { is_active: !isActive } });
+      }
       await loadData();
       setMessage(isActive ? `${label[0].toLocaleUpperCase('es-CL') + label.slice(1)} retirado de la carta. El historial se conserva.` : `${label[0].toLocaleUpperCase('es-CL') + label.slice(1)} restaurado.`);
       window.dispatchEvent(new Event('pos:catalog-updated'));
@@ -351,9 +356,11 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const sectionSingular = section === 'products' ? 'producto' : section === 'categories' ? 'categoría' : 'modificador';
   const itemsCount = section === 'products' ? products.length : section === 'categories' ? categories.length : modifiers.length;
   const normalizedProductSearch = productSearch.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').trim();
-  const filteredProducts = normalizedProductSearch
-    ? products.filter(item => [item.name, item.category_name, item.slug, ...(item.ingredients || [])].some(value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').includes(normalizedProductSearch)))
-    : products;
+  const filteredProducts = products.filter(item => {
+    if (categoryFilter !== 'all' && item.category_id !== categoryFilter) return false;
+    if (!normalizedProductSearch) return true;
+    return [item.name, item.category_name, item.slug, ...(item.ingredients || [])].some(value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').includes(normalizedProductSearch));
+  });
   const displayedCount = section === 'products' ? filteredProducts.length : itemsCount;
 
   return (
@@ -415,7 +422,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
         <div className="pos-catalog-content">
           <aside className="pos-catalog-list" aria-label={`Lista de ${sectionTitle.toLocaleLowerCase('es-CL')}`}>
             <div className="pos-catalog-list-heading">
-              <span>{productSearch && section === 'products' ? `${displayedCount} de ${itemsCount} productos` : `${itemsCount} ${sectionTitle.toLocaleLowerCase('es-CL')}`}</span>
+              <span>{(productSearch || categoryFilter !== 'all') && section === 'products' ? `${displayedCount} de ${itemsCount} productos` : `${itemsCount} ${sectionTitle.toLocaleLowerCase('es-CL')}`}</span>
               <button type="button" onClick={startNew} disabled={offlineMode}>
                 <CirclePlus aria-hidden="true" />
                 Nuevo
@@ -423,6 +430,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
             </div>
 
             {section === 'products' && (
+              <>
               <div className="pos-catalog-search-wrap">
                 <label className="sr-only" htmlFor="pos-catalog-product-search">Buscar producto por nombre, categoría o ingredientes</label>
                 <Search aria-hidden="true" className="pos-catalog-search-icon" />
@@ -443,6 +451,28 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                   </button>
                 )}
               </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por categoría">
+                <button
+                  type="button"
+                  aria-pressed={categoryFilter === 'all'}
+                  className={`pos-filter-chip ${categoryFilter === 'all' ? 'is-active' : ''}`}
+                  onClick={() => setCategoryFilter('all')}
+                >
+                  Todas
+                </button>
+                {categories.map(cat => (
+                  <button
+                    type="button"
+                    key={cat.id}
+                    aria-pressed={categoryFilter === cat.id}
+                    className={`pos-filter-chip ${categoryFilter === cat.id ? 'is-active' : ''}`}
+                    onClick={() => setCategoryFilter(cat.id)}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+              </>
             )}
 
             {loading ? (

@@ -98,7 +98,7 @@ class ManageProductSerializer(serializers.ModelSerializer):
         fields = (
             "id", "slug", "category_id", "category_name", "name", "description",
             "ingredients", "price", "original_price", "image_url", "badge",
-            "is_available", "is_active", "updated_at",
+            "is_available", "is_active", "is_deleted", "updated_at",
         )
         read_only_fields = ("id", "slug", "category_name", "updated_at")
 

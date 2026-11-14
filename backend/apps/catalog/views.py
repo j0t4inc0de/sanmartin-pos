@@ -39,6 +39,7 @@ class PublicMenuView(APIView):
                 category__is_active=True,
                 is_active=True,
                 is_available=True,
+                is_deleted=False,
             )
             .select_related("category")
             .order_by("category__sort_order", "category_id", "name", "id")
@@ -170,6 +171,7 @@ class PosCatalogView(APIView):
                 category__is_active=True,
                 is_active=True,
                 is_available=True,
+                is_deleted=False,
             )
             .select_related("category")
             .order_by("category__sort_order", "category_id", "name", "id")
@@ -240,12 +242,19 @@ class ManageCategoryDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIVi
 
 class ManageProductListView(ManageCatalogPermissionMixin, ListCreateAPIView):
     serializer_class = ManageProductSerializer
-    queryset = Product.objects.select_related("category").all().order_by("category__sort_order", "category_id", "name", "id")
+    queryset = Product.objects.select_related("category").filter(is_deleted=False).order_by("category__sort_order", "category_id", "name", "id")
 
 
 class ManageProductDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIView):
     serializer_class = ManageProductSerializer
-    queryset = Product.objects.select_related("category").all()
+    queryset = Product.objects.select_related("category").filter(is_deleted=False)
+
+    def delete(self, request, *args, **kwargs):
+        product = self.get_object()
+        product.is_deleted = True
+        product.is_active = False
+        product.save(update_fields=["is_deleted", "is_active", "updated_at"])
+        return Response(status=204)
 
 
 class ManageModifierListView(ManageCatalogPermissionMixin, ListCreateAPIView):
