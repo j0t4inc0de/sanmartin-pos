@@ -86,11 +86,6 @@ export const Footer = () => {
                 </a>
               </li>
               <li>
-                <a href="#combos" className="hover:text-white transition-colors">
-                  Combos & Promociones
-                </a>
-              </li>
-              <li>
                 <a href="#nosotros" className="hover:text-white transition-colors">
                   Por Qué Elegirnos
                 </a>
