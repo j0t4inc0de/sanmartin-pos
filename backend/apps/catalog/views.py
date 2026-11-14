@@ -10,7 +10,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateAPIView, RetrieveUpdateDestroyAPIView
 
 from apps.sales.permissions import CanOperatePOS
 
@@ -36,10 +36,10 @@ class PublicMenuView(APIView):
     def get(self, request):
         products: QuerySet[Product] = (
             Product.objects.filter(
+                is_deleted=False,
                 category__is_active=True,
                 is_active=True,
                 is_available=True,
-                is_deleted=False,
             )
             .select_related("category")
             .order_by("category__sort_order", "category_id", "name", "id")
@@ -125,12 +125,13 @@ class PosCatalogView(APIView):
 
             products = [
                 product for product in changed_products
-                if product.is_active
+                if not product.is_deleted
+                and product.is_active
                 and product.is_available
                 and product.category.is_active
             ]
             removed_product_ids = {
-                product.id for product in changed_products if product not in products
+                product.id for product in changed_products if product.is_deleted or product not in products
             }
             # Deactivating a category also removes its unchanged products from
             # the local POS catalog.
@@ -168,10 +169,10 @@ class PosCatalogView(APIView):
 
         products: QuerySet[Product] = (
             Product.objects.filter(
+                is_deleted=False,
                 category__is_active=True,
                 is_active=True,
                 is_available=True,
-                is_deleted=False,
             )
             .select_related("category")
             .order_by("category__sort_order", "category_id", "name", "id")
@@ -242,19 +243,23 @@ class ManageCategoryDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIVi
 
 class ManageProductListView(ManageCatalogPermissionMixin, ListCreateAPIView):
     serializer_class = ManageProductSerializer
-    queryset = Product.objects.select_related("category").filter(is_deleted=False).order_by("category__sort_order", "category_id", "name", "id")
+    queryset = Product.objects.filter(is_deleted=False).select_related("category").order_by("category__sort_order", "category_id", "name", "id")
 
 
-class ManageProductDetailView(ManageCatalogPermissionMixin, RetrieveUpdateAPIView):
+class ManageProductDetailView(ManageCatalogPermissionMixin, RetrieveUpdateDestroyAPIView):
     serializer_class = ManageProductSerializer
-    queryset = Product.objects.select_related("category").filter(is_deleted=False)
+    queryset = Product.objects.filter(is_deleted=False).select_related("category")
 
-    def delete(self, request, *args, **kwargs):
-        product = self.get_object()
-        product.is_deleted = True
-        product.is_active = False
-        product.save(update_fields=["is_deleted", "is_active", "updated_at"])
-        return Response(status=204)
+    def perform_destroy(self, instance):
+        if not instance.order_items.exists():
+            instance.delete()
+        else:
+            instance.is_deleted = True
+            instance.deleted_at = timezone.now()
+            instance.is_active = False
+            instance.is_available = False
+            instance.slug = f"deleted-{instance.id}-{instance.slug}"[:100]
+            instance.save()
 
 
 class ManageModifierListView(ManageCatalogPermissionMixin, ListCreateAPIView):

@@ -31,6 +31,10 @@ class PosCatalogDeltaApiTests(APITestCase):
             price=5000,
         )
         self.modifier = Modifier.objects.create(name="Queso extra", price=500)
+        past = timezone.now() - timedelta(hours=1)
+        Category.objects.all().update(updated_at=past)
+        Product.objects.all().update(updated_at=past)
+        Modifier.objects.all().update(updated_at=past)
 
     def get_delta(self, cursor):
         return self.client.get(

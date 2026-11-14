@@ -445,6 +445,32 @@ html[data-theme="light"] .appearance-trigger:hover {
 .pos-modifier-options { display: grid; gap: .15rem; padding: .45rem; }
 .pos-modifier-options > div:hover { background: rgb(255 255 255 / 3%); }
 
+/* Pos Recent Sales Status Badges */
+.pos-sale-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.375rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+}
+.pos-sale-status--completada {
+  color: #ffffff;
+  background-color: rgba(6, 78, 59, 0.7);
+  border: 1px solid rgba(16, 185, 129, 0.5);
+}
+.pos-sale-status--anulada {
+  color: #ffffff;
+  background-color: rgba(127, 29, 29, 0.7);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+html[data-theme="dark"] .pos-sale-status--completada,
+html[data-theme="dark"] .pos-sale-status--anulada {
+  color: #ffffff !important;
+}
+
 html[data-theme="light"] .pos-info-disclosure > summary { color: #334155; }
 html[data-theme="light"] .pos-info-disclosure > summary:hover { color: #172334; }
 html[data-theme="light"] .pos-info-disclosure > summary::after { border-color: #d6dee8; color: #9a6700; }
@@ -481,6 +507,16 @@ html[data-theme="light"] .pos-modifier-disclosure > summary small { color: #5261
 html[data-theme="light"] .pos-modifier-disclosure > summary:hover { color: #172334; background: #f1f5f9; }
 html[data-theme="light"] .pos-modifier-disclosure[open] > summary { border-color: #e2e8f0; }
 html[data-theme="light"] .pos-modifier-options > div:hover { background: #f1f5f9; }
+html[data-theme="light"] .pos-sale-status--completada {
+  color: #000000 !important;
+  background-color: #d1fae5;
+  border: 1px solid #34d399;
+}
+html[data-theme="light"] .pos-sale-status--anulada {
+  color: #000000 !important;
+  background-color: #fee2e2;
+  border: 1px solid #f87171;
+}
 
 .pos-workspace-nav { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; border-bottom: 1px solid rgb(148 163 184 / 14%); padding: .15rem 0 .75rem; }
 .pos-master-navbar .pos-workspace-nav {

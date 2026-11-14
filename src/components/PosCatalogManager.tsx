@@ -33,7 +33,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | number>('all');
+  const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState('');
 
@@ -317,6 +317,51 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const selectModifier = (item: Modifier) => setModifierForm({ id: item.id, name: item.name, price: item.price, modifier_type: item.modifier_type, is_available: item.is_available, is_active: item.is_active });
   const close = onClose;
 
+  const deleteProduct = async (item: Product) => {
+    if (offlineMode || saving) return;
+    const confirmed = await confirm({
+      title: 'Retirar producto de la carta',
+      message: `¿Estás seguro de que deseas retirar “${item.name}” de la carta permanentemente?\n\nEl producto se eliminará del catálogo pero se conservará intacto todo el historial de pedidos y ventas anteriores.`,
+      confirmLabel: 'Retirar permanentemente',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await solicitarApi(`/api/pos/catalog/manage/products/${item.id}/`, { method: 'DELETE' });
+      const nextProducts = products.filter(p => p.id !== item.id);
+      setProducts(nextProducts);
+
+      if (productForm.id === item.id) {
+        const nextSelected = nextProducts[0];
+        if (nextSelected) {
+          selectProduct(nextSelected);
+        } else {
+          setProductForm(blankProduct(categories[0]?.id ?? 0));
+        }
+      }
+
+      const stored = await cargarCatalogoPos();
+      if (stored) {
+        const updatedProducts = stored.catalog.products.filter(p => p.id !== item.id);
+        await guardarCatalogoPos({
+          ...stored.catalog,
+          products: updatedProducts,
+          generated_at: new Date().toISOString(),
+        });
+      }
+
+      window.dispatchEvent(new CustomEvent('pos:catalog-updated'));
+      setMessage(`Producto “${item.name}” retirado de la carta. El historial de ventas se conserva intacto.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo retirar el producto. Inténtalo nuevamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggleActive = async (item: Product | Category | Modifier) => {
     if (offlineMode || saving) return;
     const isActive = item.is_active;
@@ -337,11 +382,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
     setMessage('');
     try {
       const endpoint = section === 'products' ? 'products' : section === 'categories' ? 'categories' : 'modifiers';
-      if (section === 'products' && isActive) {
-        await solicitarApi(`/api/pos/catalog/manage/${endpoint}/${item.id}/`, { method: 'PATCH', body: { is_deleted: true, is_active: false } });
-      } else {
-        await solicitarApi(`/api/pos/catalog/manage/${endpoint}/${item.id}/`, { method: 'PATCH', body: { is_active: !isActive } });
-      }
+      await solicitarApi(`/api/pos/catalog/manage/${endpoint}/${item.id}/`, { method: 'PATCH', body: { is_active: !isActive } });
       await loadData();
       setMessage(isActive ? `${label[0].toLocaleUpperCase('es-CL') + label.slice(1)} retirado de la carta. El historial se conserva.` : `${label[0].toLocaleUpperCase('es-CL') + label.slice(1)} restaurado.`);
       window.dispatchEvent(new Event('pos:catalog-updated'));
@@ -357,9 +398,15 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
   const itemsCount = section === 'products' ? products.length : section === 'categories' ? categories.length : modifiers.length;
   const normalizedProductSearch = productSearch.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').trim();
   const filteredProducts = products.filter(item => {
-    if (categoryFilter !== 'all' && item.category_id !== categoryFilter) return false;
-    if (!normalizedProductSearch) return true;
-    return [item.name, item.category_name, item.slug, ...(item.ingredients || [])].some(value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').includes(normalizedProductSearch));
+    if (selectedCategory !== 'all' && item.category_id !== selectedCategory) {
+      return false;
+    }
+    if (!normalizedProductSearch) {
+      return true;
+    }
+    return [item.name, item.category_name, item.slug, ...(item.ingredients || [])].some(value =>
+      value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL').includes(normalizedProductSearch)
+    );
   });
   const displayedCount = section === 'products' ? filteredProducts.length : itemsCount;
 
@@ -369,7 +416,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
         <header className="pos-workspace-topbar flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 rounded-2xl mb-6">
           <div>
             <p className="pos-catalog-eyebrow text-xs font-extrabold uppercase tracking-widest text-[#FACC15]">Administración del POS</p>
-            <h2 id="pos-catalog-title" className="mt-1 font-heading text-2xl font-bold tracking-tight">Catálogo y Menú</h2>
+            <h2 id="pos-catalog-title" className="mt-1 font-heading text-2xl font-bold tracking-tight">Catálogo y menú</h2>
             <p className="pos-workspace-desc mt-1.5 text-sm">
               {offlineMode ? 'Modo consulta (sin conexión). Los cambios requieren conexión con el servidor.' : 'Los cambios se guardan en el servidor y se reflejan en el POS y la carta pública.'}
             </p>
@@ -422,7 +469,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
         <div className="pos-catalog-content">
           <aside className="pos-catalog-list" aria-label={`Lista de ${sectionTitle.toLocaleLowerCase('es-CL')}`}>
             <div className="pos-catalog-list-heading">
-              <span>{(productSearch || categoryFilter !== 'all') && section === 'products' ? `${displayedCount} de ${itemsCount} productos` : `${itemsCount} ${sectionTitle.toLocaleLowerCase('es-CL')}`}</span>
+              <span>{(productSearch || selectedCategory !== 'all') && section === 'products' ? `${displayedCount} de ${itemsCount} productos` : `${itemsCount} ${sectionTitle.toLocaleLowerCase('es-CL')}`}</span>
               <button type="button" onClick={startNew} disabled={offlineMode}>
                 <CirclePlus aria-hidden="true" />
                 Nuevo
@@ -430,7 +477,6 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
             </div>
 
             {section === 'products' && (
-              <>
               <div className="pos-catalog-search-wrap">
                 <label className="sr-only" htmlFor="pos-catalog-product-search">Buscar producto por nombre, categoría o ingredientes</label>
                 <Search aria-hidden="true" className="pos-catalog-search-icon" />
@@ -451,28 +497,30 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                   </button>
                 )}
               </div>
-              <div className="mt-2.5 flex flex-wrap gap-1.5" role="group" aria-label="Filtrar por categoría">
+            )}
+
+            {section === 'products' && (
+              <nav aria-label="Filtrar productos por categoría" className="pos-category-filters flex flex-wrap gap-1.5 my-2">
                 <button
                   type="button"
-                  aria-pressed={categoryFilter === 'all'}
-                  className={`pos-filter-chip ${categoryFilter === 'all' ? 'is-active' : ''}`}
-                  onClick={() => setCategoryFilter('all')}
+                  aria-pressed={selectedCategory === 'all'}
+                  className={`pos-filter-chip ${selectedCategory === 'all' ? 'is-active' : ''}`}
+                  onClick={() => setSelectedCategory('all')}
                 >
                   Todas
                 </button>
                 {categories.map(cat => (
                   <button
-                    type="button"
                     key={cat.id}
-                    aria-pressed={categoryFilter === cat.id}
-                    className={`pos-filter-chip ${categoryFilter === cat.id ? 'is-active' : ''}`}
-                    onClick={() => setCategoryFilter(cat.id)}
+                    type="button"
+                    aria-pressed={selectedCategory === cat.id}
+                    className={`pos-filter-chip ${selectedCategory === cat.id ? 'is-active' : ''}`}
+                    onClick={() => setSelectedCategory(cat.id)}
                   >
                     {cat.name}
                   </button>
                 ))}
-              </div>
-              </>
+              </nav>
             )}
 
             {loading ? (
@@ -532,7 +580,9 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
 
             {!loading && displayedCount === 0 && (
               <p className="pos-catalog-muted">
-                {section === 'products' && productSearch ? 'No encontramos productos. Prueba con otro nombre o ingrediente.' : `Todavía no hay ${sectionTitle.toLocaleLowerCase('es-CL')}.`}
+                {section === 'products' && (productSearch || selectedCategory !== 'all')
+                  ? 'No encontramos productos con los filtros aplicados. Prueba con otra categoría o término.'
+                  : `Todavía no hay ${sectionTitle.toLocaleLowerCase('es-CL')}.`}
               </p>
             )}
           </aside>
@@ -552,14 +602,29 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
                 </h3>
               </div>
               <div className="pos-catalog-editor-actions">
-                {!offlineMode && (section === 'products' ? productForm.id : section === 'categories' ? categoryForm.id : modifierForm.id) && (
+                {!offlineMode && section === 'products' && productForm.id && (
                   <button
                     type="button"
-                    className={`pos-catalog-archive ${((section === 'products' ? productForm.is_active : section === 'categories' ? categoryForm.is_active : modifierForm.is_active)) ? '' : 'is-restore'}`}
-                    onClick={() => void toggleActive(section === 'products' ? products.find(item => item.id === productForm.id)! : section === 'categories' ? categories.find(item => item.id === categoryForm.id)! : modifiers.find(item => item.id === modifierForm.id)!)}
+                    className="pos-catalog-archive"
+                    onClick={() => {
+                      const target = products.find(item => item.id === productForm.id);
+                      if (target) void deleteProduct(target);
+                    }}
+                    disabled={saving || loading}
+                    title="Retirar producto de la carta permanentemente"
+                  >
+                    <Trash2 aria-hidden="true" />
+                    Retirar de la carta
+                  </button>
+                )}
+                {!offlineMode && section !== 'products' && (section === 'categories' ? categoryForm.id : modifierForm.id) && (
+                  <button
+                    type="button"
+                    className={`pos-catalog-archive ${((section === 'categories' ? categoryForm.is_active : modifierForm.is_active)) ? '' : 'is-restore'}`}
+                    onClick={() => void toggleActive(section === 'categories' ? categories.find(item => item.id === categoryForm.id)! : modifiers.find(item => item.id === modifierForm.id)!)}
                     disabled={saving || loading}
                   >
-                    {((section === 'products' ? productForm.is_active : section === 'categories' ? categoryForm.is_active : modifierForm.is_active)) ? <><Trash2 aria-hidden="true" />Retirar de la carta</> : <><RotateCcw aria-hidden="true" />Restaurar</>}
+                    {((section === 'categories' ? categoryForm.is_active : modifierForm.is_active)) ? <><Trash2 aria-hidden="true" />Retirar de la carta</> : <><RotateCcw aria-hidden="true" />Restaurar</>}
                   </button>
                 )}
                 <button type="button" className="pos-catalog-refresh" onClick={() => void loadData()} disabled={loading || saving}>
