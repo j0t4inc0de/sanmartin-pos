@@ -859,13 +859,20 @@ export const PosPage = () => {
     }
   }, [shift, user, nextOrderNumber, hasPendingPayment, hasQueuedOfflineSales, offlineMode]);
 
+  const lastShiftRefreshRef = useRef(0);
   const comprobarTurnoAntesDeVenta = useCallback(async (): Promise<boolean> => {
     if (!shift?.is_open) return false;
-    if (!debeCerrarAutomaticamente(shift.opened_at, new Date())) return true;
-    setAutoCloseDue(true);
-    await cerrarTurnoAutomaticamente();
-    return false;
-  }, [shift, cerrarTurnoAutomaticamente]);
+    if (debeCerrarAutomaticamente(shift.opened_at, new Date())) {
+      setAutoCloseDue(true);
+      await cerrarTurnoAutomaticamente();
+      return false;
+    }
+    if (!offlineMode && Date.now() - lastShiftRefreshRef.current > 3000) {
+      lastShiftRefreshRef.current = Date.now();
+      await refreshShift().catch(() => undefined);
+    }
+    return true;
+  }, [shift, cerrarTurnoAutomaticamente, offlineMode]);
 
   const handleRetryPendingShiftEvents = async () => {
     if (!user || isSubmitting) return;
@@ -933,18 +940,31 @@ export const PosPage = () => {
         void cerrarTurnoAutomaticamente();
       }
     };
-    const handleVisibilityChange = () => { if (document.visibilityState === 'visible') checkAutomaticClose(); };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAutomaticClose();
+        if (!offlineMode) {
+          void refreshShift().catch(() => undefined);
+        }
+      }
+    };
+    const handleFocus = () => {
+      checkAutomaticClose();
+      if (!offlineMode) {
+        void refreshShift().catch(() => undefined);
+      }
+    };
     void checkAutomaticClose();
     const intervalId = window.setInterval(checkAutomaticClose, 15000);
-    window.addEventListener('focus', checkAutomaticClose);
+    window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
-      window.removeEventListener('focus', checkAutomaticClose);
+      window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [shift, user, cerrarTurnoAutomaticamente]);
+  }, [shift, user, cerrarTurnoAutomaticamente, offlineMode]);
 
   return (
     <main className="pos-shell min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">

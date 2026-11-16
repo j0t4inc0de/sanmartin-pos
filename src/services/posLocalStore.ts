@@ -108,6 +108,7 @@ export interface PosPendingPaymentDraft {
   payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
   amount_received: string;
   payment_received_at: string | null;
+  conflict_error?: string | null;
   saved_at: string;
 }
 
@@ -631,6 +632,7 @@ export const cargarCobroPendientePos = async (
         payment_received_at: stored.payment_received_at,
         status: stored.status,
         offline_created: stored.offline_created,
+        conflict_error: stored.conflict_error ?? null,
         saved_at: stored.saved_at,
       });
     };

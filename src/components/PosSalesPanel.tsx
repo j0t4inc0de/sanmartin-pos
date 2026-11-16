@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Filter, Image as ImageIcon, Minus, Plus, ReceiptText, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
-import { solicitarApi } from '../services/apiClient';
+import { ApiError, solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
 import { ClpInput, normalizeClpDigits } from './ClpInput';
 import { printPosSale } from '../services/posPrinter';
@@ -103,6 +103,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [quote, setQuote] = useState<Quote | null>(null);
   const [pendingPaymentStatus, setPendingPaymentStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [paymentReceivedPending, setPaymentReceivedPending] = useState(false);
+  const [paymentConflictError, setPaymentConflictError] = useState<string | null>(null);
   const [preparedQuoteExpired, setPreparedQuoteExpired] = useState(false);
   const [paymentRecordWriteFailed, setPaymentRecordWriteFailed] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('EFECTIVO');
@@ -121,6 +122,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [message, setMessage] = useState('');
   const draftWriteVersion = useRef(0);
   const paymentWriteVersion = useRef(0);
+  const nextOrderNumberRef = useRef(nextOrderNumber);
+
+  useEffect(() => {
+    nextOrderNumberRef.current = nextOrderNumber;
+  }, [nextOrderNumber]);
 
   useEffect(() => {
     if (!orderDetail) return;
@@ -159,6 +165,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     setDraftSaveStatus('loading');
     setPendingPaymentStatus('idle');
     setPaymentReceivedPending(false);
+    setPaymentConflictError(null);
     setPreparedQuoteExpired(false);
     setPaymentRecordWriteFailed(false);
     void Promise.all([cargarBorradorVentaPos(shiftUuid), cargarCobroPendientePos(shiftUuid)])
@@ -187,7 +194,12 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           setPendingPaymentStatus('saved');
           if (pendingPayment.status === 'PAGO_RECIBIDO') {
             setPaymentReceivedPending(true);
-            setMessage(`Pago recibido en el equipo para la venta #${pendingPayment.shift_order_number}. No vuelvas a cobrar; reintenta el registro.`);
+            if (pendingPayment.conflict_error) {
+              setPaymentConflictError(pendingPayment.conflict_error);
+              setError(`Conflicto previo al registrar la venta #${pendingPayment.shift_order_number}: ${pendingPayment.conflict_error}`);
+            } else {
+              setMessage(`Pago recibido en el equipo para la venta #${pendingPayment.shift_order_number}. No vuelvas a cobrar; reintenta el registro.`);
+            }
           } else {
             setPreparedQuoteExpired(Date.now() >= new Date(pendingPayment.quote.valid_until).getTime());
             setMessage(`Se restauró la cotización #${pendingPayment.shift_order_number}. Revisa el estado del pago antes de continuar.`);
@@ -234,6 +246,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     receivedAmount: string,
     status: PosPendingPaymentDraft['status'],
     paymentReceivedAt: string | null = null,
+    conflictError: string | null = null,
   ): Promise<boolean> => {
     const writeVersion = ++paymentWriteVersion.current;
     setPendingPaymentStatus('saving');
@@ -253,6 +266,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         payment_method: method,
         amount_received: receivedAmount,
         payment_received_at: paymentReceivedAt,
+        conflict_error: conflictError,
       });
       if (writeVersion === paymentWriteVersion.current) setPendingPaymentStatus('saved');
       return true;
@@ -332,6 +346,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       void playSaleSuccessSound();
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
+      setPaymentConflictError(null);
       setPaymentRecordWriteFailed(false);
       setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
       setMessage(`Venta #${targetQuote.shift_order_number} guardada en este equipo y pendiente de sincronización.`);
@@ -531,6 +546,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     if (paymentReceivedPending) return;
     paymentWriteVersion.current += 1;
     setQuote(null);
+    setPaymentConflictError(null);
     setPendingPaymentStatus('idle');
     void eliminarCobroPendientePos(shiftUuid).catch(() => setPendingPaymentStatus('error'));
   };
@@ -597,7 +613,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       } else {
         response = await solicitarApi<QuoteResponse>('/api/orders/quote/', { method: 'POST', body: {
         uuid,
-        shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
+        shift_order_number: Math.max(1, Number(nextOrderNumberRef.current) || Number(nextOrderNumber) || 1),
         created_at: createdAt,
         consumption_type: consumptionType,
         customer_name: normalizedCustomerName,
@@ -634,7 +650,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         ...response,
         items: response.items.map((item, index) => ({ ...item, notes: lines[index]?.notes ?? '' })),
         uuid,
-        shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
+        shift_order_number: Math.max(1, Number(nextOrderNumberRef.current) || Number(nextOrderNumber) || 1),
         created_at: createdAt,
         customer_name: normalizedCustomerName,
         consumption_type: consumptionType,
@@ -676,6 +692,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       await eliminarCobroPendientePos(shiftUuid);
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
+      setPaymentConflictError(null);
       setPaymentRecordWriteFailed(false);
       setMessage(`Venta #${sale.shift_order_number} guardada. Total ${formatPrice(sale.total_amount)}${sale.change_given !== null ? ` · Vuelto ${formatPrice(sale.change_given)}` : ''}.`);
       setLines([]); setQuote(null); setAmountReceived(''); setCustomerName('');
@@ -684,9 +701,57 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       try { await onSale(); }
       catch { setError('La venta quedó guardada. No se pudo actualizar el folio; recarga esta pantalla antes de iniciar otra venta.'); }
     } catch (e) {
-      setPaymentReceivedPending(true);
-      setError('El pago ya está respaldado en este equipo, pero el servidor aún no confirmó la venta. No cobres nuevamente; reintenta el registro cuando haya conexión.');
+      const isApiError = e instanceof ApiError || (e instanceof Error && typeof (e as { status?: unknown }).status === 'number');
+      const status = isApiError ? (e as ApiError).status : undefined;
+      const isConflictOrClientError = status !== undefined && status >= 400 && status < 500;
+
+      if (isConflictOrClientError) {
+        const errorMsg = e instanceof Error ? e.message : 'Conflicto al registrar la venta.';
+        setPaymentReceivedPending(true);
+        setPaymentConflictError(errorMsg);
+        setError(`El servidor rechazó el registro (${status}): ${errorMsg}`);
+        void persistPendingPayment(quote, paymentMethod, amountReceived, 'PAGO_RECIBIDO', null, errorMsg);
+        void onSale().catch(() => undefined);
+      } else {
+        setPaymentReceivedPending(true);
+        setPaymentConflictError(null);
+        setError('El pago ya está respaldado en este equipo, pero el servidor aún no confirmó la venta. No cobres nuevamente; reintenta el registro cuando haya conexión.');
+      }
     } finally { setBusy(false); }
+  };
+
+  const resolvePaymentConflict = async () => {
+    const confirmed = await confirm({
+      title: '¿Actualizar folio y desbloquear carrito?',
+      message: 'Confirma únicamente si la venta ya figura en el historial del turno o si no se realizó un cobro doble al cliente. Se eliminará el cobro pendiente local y se actualizará el folio desde el servidor.',
+      confirmLabel: 'Actualizar folio y desbloquear',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      paymentWriteVersion.current += 1;
+      await eliminarCobroPendientePos(shiftUuid);
+      setQuote(null);
+      setPendingPaymentStatus('idle');
+      setPaymentReceivedPending(false);
+      setPaymentRecordWriteFailed(false);
+      setPreparedQuoteExpired(false);
+      setPaymentConflictError(null);
+      await loadOrders();
+      try {
+        await onSale();
+      } catch {
+        setError('El carrito fue desbloqueado, pero no se pudo sincronizar el folio del turno desde el servidor.');
+      }
+      setMessage('Carrito desbloqueado. Se sincronizó el folio del turno desde el servidor.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo eliminar el cobro pendiente local.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const saveReceivedPaymentAndRegister = async () => {
@@ -704,6 +769,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
     setPaymentRecordWriteFailed(false);
     setPreparedQuoteExpired(false);
+    setPaymentConflictError(null);
     setPaymentReceivedPending(true);
     setMessage('Pago respaldado localmente. La cotización venció; la venta queda pendiente de conciliación.');
     await registerSavedPayment();
@@ -715,6 +781,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       await eliminarCobroPendientePos(shiftUuid);
       setQuote(null);
       setPreparedQuoteExpired(false);
+      setPaymentConflictError(null);
       setPendingPaymentStatus('idle');
       setMessage('Cotización vencida descartada; puedes volver a cotizar.');
     } catch {
@@ -831,14 +898,41 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     />
     {paymentReceivedPending && (
       <Alert
-        severity="warning"
+        severity={paymentConflictError ? 'error' : 'warning'}
         action={
-          <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>
-            {busy ? 'Registrando…' : 'Reintentar registro'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50"
+              disabled={busy || pendingPaymentStatus !== 'saved'}
+              onClick={() => void registerSavedPayment()}
+            >
+              {busy ? 'Registrando…' : 'Reintentar registro'}
+            </button>
+            {paymentConflictError && (
+              <button
+                type="button"
+                className="rounded-lg bg-white px-4 py-2 font-bold text-red-700 hover:bg-gray-100 disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void resolvePaymentConflict()}
+              >
+                Actualizar folio y desbloquear carrito
+              </button>
+            )}
+          </div>
         }
       >
-        El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.
+        {paymentConflictError ? (
+          <div>
+            <span className="font-bold">Conflicto con el servidor: </span>
+            <span>{paymentConflictError}</span>
+            <p className="mt-1 text-xs opacity-90">
+              El servidor rechazó el registro. Si la venta ya fue registrada por otra operación o no se realizó un cobro doble, puedes actualizar el folio y desbloquear el carrito.
+            </p>
+          </div>
+        ) : (
+          'El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.'
+        )}
       </Alert>
     )}
     {paymentRecordWriteFailed && quote && (
