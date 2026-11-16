@@ -964,11 +964,6 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.
       </Alert>
     )}
-    {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && (
-      <Alert severity="info">
-        Guardando localmente los datos del pago; espera antes de recibirlo.
-      </Alert>
-    )}
     {pendingPaymentStatus === 'error' && quote && (
       <Alert severity="error">
         No se pudo respaldar el cobro local. No recibas el pago y reintenta la cotización.
@@ -1088,7 +1083,16 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>{quote.offline_created ? 'Total calculado con catálogo local' : 'Total validado'}</span><span>{formatPrice(quote.total_amount)}</span></div><p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · {quote.offline_created ? 'Venta y folio guardados localmente antes del cobro.' : `Válida hasta ${new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización respaldada en este equipo.`}</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de cobrar.</p>}
           <label className="block text-sm text-gray-300">Medio de pago<select className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" value={paymentMethod} onChange={e => updatePaymentMethod(e.target.value as PaymentMethod)}><option value="EFECTIVO">Efectivo</option><option value="TRANSBANK">Transbank (débito/crédito)</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
           {paymentMethod === 'EFECTIVO' && <label className="block text-sm text-gray-300">Efectivo recibido (CLP)<ClpInput className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Ej.: 5.000" aria-label="Efectivo recibido en pesos chilenos" value={amountReceived} onValueChange={updateAmountReceived}/></label>}
-          {!paymentReceivedPending && !preparedQuoteExpired && <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void saveSale()} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Guardando venta…' : 'Confirmar recepción del pago'}</button>}
+          {!paymentReceivedPending && !preparedQuoteExpired && (
+            <div className="space-y-1">
+              <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void saveSale()} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">
+                {busy ? 'Guardando venta…' : pendingPaymentStatus === 'saving' ? 'Respaldando cobro…' : 'Confirmar recepción del pago'}
+              </button>
+              {pendingPaymentStatus === 'saving' && (
+                <p className="text-center text-xs text-gray-400">Guardando datos en este equipo…</p>
+              )}
+            </div>
+          )}
         </div>}
       </div>
     </fieldset>
