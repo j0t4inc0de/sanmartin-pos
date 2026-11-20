@@ -226,6 +226,7 @@ class OfflineOrderSyncInputSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     offline_created = serializers.BooleanField()
     consumption_type = serializers.ChoiceField(choices=["PARA_SERVIR", "PARA_LLEVAR"])
+
     delivery_fee = serializers.IntegerField(min_value=0, required=False, default=0)
     # Los clientes POS anteriores pueden conservar ventas pendientes en IndexedDB.
     # La interfaz actual siempre exige el nombre; este valor permite sincronizar esas ventas antiguas.

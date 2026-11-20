@@ -6,7 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
-
+.wrangler
 node_modules
 dist
 dist-ssr
@@ -15,6 +15,7 @@ dist-ssr
 __pycache__/
 *.py[cod]
 backend/staticfiles/
+backend/media/
 
 # Configuración local y secretos del backend
 .env

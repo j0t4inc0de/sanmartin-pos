@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Filter, Image as ImageIcon, Minus, Plus, ReceiptText, RefreshCw, Search, ShoppingBag, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
-import { solicitarApi } from '../services/apiClient';
+import { ApiError, solicitarApi } from '../services/apiClient';
 import { usePosDialogs } from './PosDialogs';
 import { ClpInput, normalizeClpDigits } from './ClpInput';
 import { printPosSale } from '../services/posPrinter';
@@ -43,6 +43,7 @@ type PaymentMethod = 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
 type ProteinChoice = 'CHURRASCO' | 'LOMO' | 'MECHADA' | 'POLLO' | 'HAMBURGUESA';
 type Product = Catalog['products'][number];
 interface CartModifier { modifier_id: number; modifier_name: string; price_at_sale: number; quantity_per_unit: number; }
+
 interface CartLine { key: string; product_id: number; product_name: string; unit_price: number; quantity: number; notes: string; protein_choice?: ProteinChoice | ''; modifiers: CartModifier[]; }
 interface Quote { uuid: string; shift_order_number: number; created_at: string; customer_name: string; consumption_type: LegacyConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; delivery_fee: number; total_amount: number; }
 type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confirmation' | 'items' | 'subtotal' | 'delivery_fee' | 'total_amount'>;
@@ -92,7 +93,7 @@ const parseCashInput = (value: string): number | null => {
 };
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
-export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod | null; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
+export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, onBeforeCreateSale, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod | null; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; onBeforeCreateSale: () => Promise<boolean>; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
   const { confirm, prompt } = usePosDialogs();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
@@ -111,6 +112,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [quote, setQuote] = useState<Quote | null>(null);
   const [pendingPaymentStatus, setPendingPaymentStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [paymentReceivedPending, setPaymentReceivedPending] = useState(false);
+  const [paymentConflictError, setPaymentConflictError] = useState<string | null>(null);
   const [preparedQuoteExpired, setPreparedQuoteExpired] = useState(false);
   const [paymentRecordWriteFailed, setPaymentRecordWriteFailed] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('EFECTIVO');
@@ -129,6 +131,11 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [message, setMessage] = useState('');
   const draftWriteVersion = useRef(0);
   const paymentWriteVersion = useRef(0);
+  const nextOrderNumberRef = useRef(nextOrderNumber);
+
+  useEffect(() => {
+    nextOrderNumberRef.current = nextOrderNumber;
+  }, [nextOrderNumber]);
 
   useEffect(() => {
     if (!orderDetail) return;
@@ -168,6 +175,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     setDraftSaveStatus('loading');
     setPendingPaymentStatus('idle');
     setPaymentReceivedPending(false);
+    setPaymentConflictError(null);
     setPreparedQuoteExpired(false);
     setPaymentRecordWriteFailed(false);
     void Promise.all([cargarBorradorVentaPos(shiftUuid), cargarCobroPendientePos(shiftUuid)])
@@ -176,6 +184,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         if (draft) {
           setLines(draft.lines);
           setCustomerName(draft.customer_name ?? '');
+
           setConsumptionType(draft.consumption_type === 'CONSUMO' ? 'PARA_LLEVAR' : draft.consumption_type);
           setPaymentMethod(draft.payment_method ?? 'EFECTIVO');
           setDeliveryFeeInput(draft.delivery_fee ? String(draft.delivery_fee) : '');
@@ -199,9 +208,14 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           setPendingPaymentStatus('saved');
           if (pendingPayment.status === 'PAGO_RECIBIDO' || pendingPayment.status === 'CONSUMO_CONFIRMADO') {
             setPaymentReceivedPending(true);
-            setMessage(pendingPayment.status === 'PAGO_RECIBIDO'
-              ? `Pago recibido en el equipo para la venta #${pendingPayment.shift_order_number}. No vuelvas a cobrar; reintenta el registro.`
-              : `Se encontró el borrador #${pendingPayment.shift_order_number} de un tipo retirado; descártalo para continuar.`);
+            if (pendingPayment.conflict_error) {
+              setPaymentConflictError(pendingPayment.conflict_error);
+              setError(`Conflicto previo al registrar la venta #${pendingPayment.shift_order_number}: ${pendingPayment.conflict_error}`);
+            } else if (pendingPayment.status === 'CONSUMO_CONFIRMADO') {
+              setMessage(`Se encontró el borrador #${pendingPayment.shift_order_number} de un tipo retirado; descártalo para continuar.`);
+            } else {
+              setMessage(`Pago recibido en el equipo para la venta #${pendingPayment.shift_order_number}. No vuelvas a cobrar; reintenta el registro.`);
+            }
           } else {
             setPreparedQuoteExpired(Date.now() >= new Date(pendingPayment.quote.valid_until).getTime());
             setMessage(`Se restauró la cotización #${pendingPayment.shift_order_number}. Revisa el estado del pago antes de continuar.`);
@@ -227,6 +241,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       .then(() => { if (active && writeVersion === draftWriteVersion.current) setDraftSaveStatus('saved'); })
       .catch(() => { if (active && writeVersion === draftWriteVersion.current) setDraftSaveStatus('error'); });
     return () => { active = false; };
+
   }, [draftLoaded, shiftUuid, lines, customerName, consumptionType, paymentMethod, amountReceived, deliveryFeeInput]);
 
   const persistCurrentDraft = async (): Promise<boolean> => {
@@ -248,6 +263,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     receivedAmount: string,
     status: PosPendingPaymentDraft['status'],
     paymentReceivedAt: string | null = null,
+    conflictError: string | null = null,
   ): Promise<boolean> => {
     const writeVersion = ++paymentWriteVersion.current;
     setPendingPaymentStatus('saving');
@@ -267,6 +283,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         payment_method: method,
         amount_received: receivedAmount,
         payment_received_at: paymentReceivedAt,
+        conflict_error: conflictError,
       });
       if (writeVersion === paymentWriteVersion.current) setPendingPaymentStatus('saved');
       return true;
@@ -282,6 +299,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       uuid: targetQuote.uuid, shift_uuid: shiftUuid, shift_order_number: targetQuote.shift_order_number,
       created_at: targetQuote.created_at, consumption_type: targetQuote.consumption_type, payment_method: method,
       customer_name: targetQuote.customer_name,
+
       delivery_fee: targetQuote.delivery_fee,
       total_amount: totalAmount, amount_paid: effectivePaid,
       change_given: method === 'EFECTIVO' ? changeGiven ?? Math.max(0, (effectivePaid ?? 0) - totalAmount) : null,
@@ -351,6 +369,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       void playSaleSuccessSound();
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
+      setPaymentConflictError(null);
       setPaymentRecordWriteFailed(false);
       setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
       setMessage(`Venta #${targetQuote.shift_order_number} guardada en este equipo y pendiente de sincronización.`);
@@ -555,6 +574,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     if (paymentReceivedPending) return;
     paymentWriteVersion.current += 1;
     setQuote(null);
+    setPaymentConflictError(null);
     setPendingPaymentStatus('idle');
     void eliminarCobroPendientePos(shiftUuid).catch(() => setPendingPaymentStatus('error'));
   };
@@ -571,6 +591,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setError('Ingresa el nombre del cliente antes de cotizar.');
       return;
     }
+
+    if (!await onBeforeCreateSale()) return;
     if (!catalog) {
       setError('El catálogo no está disponible.');
       return;
@@ -624,9 +646,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       } else {
         response = await solicitarApi<QuoteResponse>('/api/orders/quote/', { method: 'POST', body: {
         uuid,
-        shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
+        shift_order_number: Math.max(1, Number(nextOrderNumberRef.current) || Number(nextOrderNumber) || 1),
         created_at: createdAt,
         consumption_type: consumptionType,
+
         delivery_fee: consumptionType === 'PARA_LLEVAR' ? parseCashInput(deliveryFeeInput) ?? 0 : 0,
         customer_name: normalizedCustomerName,
         items: lines.map(line => {
@@ -663,7 +686,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         ...response,
         items: response.items.map((item, index) => ({ ...item, notes: lines[index]?.notes ?? '', protein_choice: lines[index]?.protein_choice ?? item.protein_choice ?? '' })),
         uuid,
-        shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
+        shift_order_number: Math.max(1, Number(nextOrderNumberRef.current) || Number(nextOrderNumber) || 1),
         created_at: createdAt,
         customer_name: normalizedCustomerName,
         consumption_type: consumptionType,
@@ -710,6 +733,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       await eliminarCobroPendientePos(shiftUuid);
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
+      setPaymentConflictError(null);
       setPaymentRecordWriteFailed(false);
       setMessage(`Venta #${sale.shift_order_number} guardada. Total ${formatPrice(sale.total_amount)}${sale.change_given !== null ? ` · Vuelto ${formatPrice(sale.change_given)}` : ''}.`);
       setLines([]); setQuote(null); setAmountReceived(''); setCustomerName('');
@@ -718,9 +742,57 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       try { await onSale(); }
       catch { setError('La venta quedó guardada. No se pudo actualizar el folio; recarga esta pantalla antes de iniciar otra venta.'); }
     } catch (e) {
-      setPaymentReceivedPending(true);
-      setError('El pago ya está respaldado en este equipo, pero el servidor aún no confirmó la venta. No cobres nuevamente; reintenta el registro cuando haya conexión.');
+      const isApiError = e instanceof ApiError || (e instanceof Error && typeof (e as { status?: unknown }).status === 'number');
+      const status = isApiError ? (e as ApiError).status : undefined;
+      const isConflictOrClientError = status !== undefined && status >= 400 && status < 500;
+
+      if (isConflictOrClientError) {
+        const errorMsg = e instanceof Error ? e.message : 'Conflicto al registrar la venta.';
+        setPaymentReceivedPending(true);
+        setPaymentConflictError(errorMsg);
+        setError(`El servidor rechazó el registro (${status}): ${errorMsg}`);
+        void persistPendingPayment(quote, paymentMethod, amountReceived, 'PAGO_RECIBIDO', null, errorMsg);
+        void onSale().catch(() => undefined);
+      } else {
+        setPaymentReceivedPending(true);
+        setPaymentConflictError(null);
+        setError('El pago ya está respaldado en este equipo, pero el servidor aún no confirmó la venta. No cobres nuevamente; reintenta el registro cuando haya conexión.');
+      }
     } finally { setBusy(false); }
+  };
+
+  const resolvePaymentConflict = async () => {
+    const confirmed = await confirm({
+      title: '¿Actualizar folio y desbloquear carrito?',
+      message: 'Confirma únicamente si la venta ya figura en el historial del turno o si no se realizó un cobro doble al cliente. Se eliminará el cobro pendiente local y se actualizará el folio desde el servidor.',
+      confirmLabel: 'Actualizar folio y desbloquear',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      paymentWriteVersion.current += 1;
+      await eliminarCobroPendientePos(shiftUuid);
+      setQuote(null);
+      setPendingPaymentStatus('idle');
+      setPaymentReceivedPending(false);
+      setPaymentRecordWriteFailed(false);
+      setPreparedQuoteExpired(false);
+      setPaymentConflictError(null);
+      await loadOrders();
+      try {
+        await onSale();
+      } catch {
+        setError('El carrito fue desbloqueado, pero no se pudo sincronizar el folio del turno desde el servidor.');
+      }
+      setMessage('Carrito desbloqueado. Se sincronizó el folio del turno desde el servidor.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo eliminar el cobro pendiente local.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const saveReceivedPaymentAndRegister = async () => {
@@ -738,6 +810,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
     setPaymentRecordWriteFailed(false);
     setPreparedQuoteExpired(false);
+    setPaymentConflictError(null);
     setPaymentReceivedPending(true);
     setMessage('Pago respaldado localmente. La cotización venció; la venta queda pendiente de conciliación.');
     await registerSavedPayment();
@@ -749,6 +822,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       await eliminarCobroPendientePos(shiftUuid);
       setQuote(null);
       setPreparedQuoteExpired(false);
+      setPaymentConflictError(null);
       setPendingPaymentStatus('idle');
       setMessage('Cotización vencida descartada; puedes volver a cotizar.');
     } catch {
@@ -892,12 +966,19 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     />
     {paymentReceivedPending && (
       <Alert
-        severity="warning"
+        severity={paymentConflictError ? 'error' : 'warning'}
         action={quote?.consumption_type === 'CONSUMO'
           ? <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void discardLegacyQuote()}>Descartar borrador antiguo</button>
-          : <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>{busy ? 'Registrando…' : 'Reintentar registro'}</button>}
+          : <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>{busy ? 'Registrando…' : 'Reintentar registro'}</button>
+              {paymentConflictError && <button type="button" className="rounded-lg bg-white px-4 py-2 font-bold text-red-700 hover:bg-gray-100 disabled:opacity-50" disabled={busy} onClick={() => void resolvePaymentConflict()}>Actualizar folio y desbloquear carrito</button>}
+            </div>}
       >
-        {quote?.consumption_type === 'CONSUMO' ? 'Este borrador usa un tipo de pedido retirado y no tiene un pago asociado.' : 'El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.'}
+        {quote?.consumption_type === 'CONSUMO'
+          ? 'Este borrador usa un tipo de pedido retirado y no tiene un pago asociado.'
+          : paymentConflictError
+            ? <><strong>Conflicto con el servidor: </strong>{paymentConflictError}<p className="mt-1 text-xs opacity-90">Si la venta ya fue registrada por otra operación o no se realizó un cobro doble, puedes actualizar el folio y desbloquear el carrito.</p></>
+            : 'El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.'}
       </Alert>
     )}
     {paymentRecordWriteFailed && quote && (
@@ -927,11 +1008,6 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         }
       >
         La cotización venció. Verifica si el cliente alcanzó a pagar antes de continuar.
-      </Alert>
-    )}
-    {pendingPaymentStatus === 'saving' && quote && !paymentReceivedPending && (
-      <Alert severity="info">
-        Guardando localmente los datos del pago; espera antes de recibirlo.
       </Alert>
     )}
     {pendingPaymentStatus === 'error' && quote && (
@@ -1049,6 +1125,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           <input className="mt-3 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-xs text-white" maxLength={150} placeholder="Nota para cocina (opcional)" value={line.notes} onChange={e => updateLine(line.key, l => ({...l, notes: e.target.value}))}/>
         </article>;})}</div>}
         <label className="block text-xs font-bold uppercase tracking-wider text-gray-300">Nombre del cliente <span className="text-red-300">*</span><input required maxLength={100} autoComplete="name" className="mt-2 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-sm font-normal normal-case tracking-normal text-white placeholder:text-gray-500" placeholder="Nombre para identificar el pedido" value={customerName} disabled={!!quote || paymentReceivedPending} onChange={event => { setCustomerName(event.target.value); invalidateQuote(); }} /></label>
+
         <fieldset className="space-y-2 border-0 p-0"><legend className="text-xs font-bold uppercase tracking-wider text-gray-300">Tipo de pedido</legend><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><button type="button" aria-pressed={consumptionType === 'PARA_SERVIR'} className={`pos-type-choice ${consumptionType === 'PARA_SERVIR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_SERVIR'); setDeliveryFeeInput(''); invalidateQuote();}}><Utensils className="h-5 w-5"/><span><strong>Para servir</strong><small>Consumo en el local</small></span></button><button type="button" aria-pressed={consumptionType === 'PARA_LLEVAR'} className={`pos-type-choice ${consumptionType === 'PARA_LLEVAR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_LLEVAR'); invalidateQuote();}}><ShoppingBag className="h-5 w-5"/><span><strong>Para llevar</strong><small>Pedido para llevar</small></span></button></div></fieldset>
         {consumptionType === 'PARA_LLEVAR' && <label className="block text-sm text-gray-300">Valor delivery (opcional)<ClpInput className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Ej.: 1.500" aria-label="Valor delivery en pesos chilenos" value={deliveryFeeInput} onValueChange={value => { setDeliveryFeeInput(value); invalidateQuote(); }}/></label>}
         <div className={`pos-quote-sticky ${quote ? 'is-quoted' : ''}`}><span>{lines.length ? `${lines.reduce((count, line) => count + line.quantity, 0)} productos · ${consumptionType === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}` : 'Agrega productos para cotizar'}</span><button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()}>{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar'}</button></div>
@@ -1061,6 +1138,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     </fieldset>
     {!offlineMode && <details className="pos-info-disclosure border-t border-white/10 pt-3">
       <summary>Ventas recientes <span className="pos-disclosure-meta">{orders.length} registros</span></summary>
+
       {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method?.replace('_', ' ') ?? 'Sin pago registrado'}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span><button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:border-[#FACC15]/60 hover:text-[#FACC15]" onClick={() => setOrderDetail(order)}><ReceiptText aria-hidden="true" className="h-4 w-4"/>Ver detalle</button>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
     </details>}
     {!!printJobs.length && <details className="pos-info-disclosure border-t border-white/10 pt-3">
@@ -1075,6 +1153,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           <button type="button" aria-label="Cerrar detalle" className="rounded-lg border border-white/15 p-2 text-gray-300 transition hover:border-white/30 hover:text-white" onClick={() => setOrderDetail(null)}><X aria-hidden="true" className="h-4 w-4"/></button>
         </header>
         <div className="max-h-[min(70vh,620px)] space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+
           <div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Tipo de pedido</p><p className="mt-1 font-semibold">{orderDetail.consumption_type === 'PARA_SERVIR' ? 'Para servir' : orderDetail.consumption_type === 'PARA_LLEVAR' ? 'Para llevar' : 'Registro histórico'}</p></div><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Medio de pago</p><p className="mt-1 font-semibold">{orderDetail.payment_method?.replace('_', ' ') ?? 'Sin pago registrado'}</p></div></div>
           <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><span className="text-xs text-gray-400">Cliente</span><br/><strong>{orderDetail.customer_name || 'Sin nombre'}</strong></p>
           <div><h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Productos</h3><div className="divide-y divide-white/10 rounded-xl border border-white/10 px-4">{orderDetail.items.map((item, index) => <article key={`${item.product_name}-${index}`} className="py-3"><div className="flex justify-between gap-4"><div><p className="text-sm font-semibold">{item.quantity} × {item.product_name}</p><p className="mt-0.5 text-xs text-gray-400">{formatPrice(item.unit_price)} c/u</p>{item.protein_choice && <p className="mt-1 text-sm font-bold text-amber-200">Proteína: {item.protein_choice}</p>}</div><p className="text-sm font-semibold">{formatPrice(item.line_total)}</p></div>{item.modifiers.length > 0 && <ul className="mt-2 space-y-1 pl-3 text-xs text-gray-400">{item.modifiers.map((modifier, modifierIndex) => <li key={`${modifier.modifier_name}-${modifierIndex}`}>• {modifier.modifier_name}{modifier.price_at_sale > 0 ? ` · ${formatPrice(modifier.price_at_sale)}` : ''}</li>)}</ul>}{item.notes && <p className="mt-2 rounded-md bg-white/[0.04] px-2.5 py-2 text-xs text-gray-300"><span className="font-semibold">Nota cocina:</span> {item.notes}</p>}</article>)}</div></div>

@@ -852,6 +852,7 @@ class SyncOfflineOrderView(APIView):
                     offline_created=True,
                     consumption_type=values["consumption_type"],
                     customer_name=values["customer_name"],
+
                     payment_method=payment_method,
                     subtotal=subtotal,
                     delivery_fee=delivery_fee,

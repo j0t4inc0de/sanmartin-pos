@@ -3,7 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Search, 
   MapPin, 
-  Clock
+
+  Clock,
+  Heart
 } from 'lucide-react';
 import { CatalogStatus } from './CatalogStatus';
 import { useMenuCatalog } from '../hooks/useMenuCatalog';
@@ -42,6 +44,7 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
   }, [activeCategory, items, searchQuery]);
 
   const categories = menuCategories;
+
   const totalResults = filteredItems.length;
 
   return (
@@ -286,6 +289,25 @@ export const QrMenuPage = ({ onNavigateHome }: QrMenuPageProps) => {
             </motion.div>
           </div>
         )}
+
+
+        {/* End of Menu Agency Credit */}
+        <div className="mt-12 mb-6 pt-6 border-t border-white/5 text-center text-xs text-gray-500 space-y-1">
+          <p>© {new Date().getFullYear()} Sanguchería San Martín · Carta Digital</p>
+          <p className="flex items-center justify-center gap-1 text-[11px] text-gray-400">
+            <span>Desarrollado con</span>
+            <Heart className="w-3 h-3 text-red-500 fill-red-500" />
+            <span>por</span>
+            <a
+              href="https://www.wearesamod.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-200 font-bold hover:text-[#FACC15] transition-colors underline decoration-white/20 underline-offset-2 hover:decoration-[#FACC15]"
+            >
+              We Are Samod
+            </a>
+          </p>
+        </div>
 
       </main>
 

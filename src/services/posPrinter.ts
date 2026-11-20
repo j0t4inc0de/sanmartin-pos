@@ -65,11 +65,13 @@ const row = (label: string, value: string, width = 46) => {
 const dateText = (iso: string) => new Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago', dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
 const orderNo = (number: number) => String(number).padStart(3, '0');
 const totalForItem = (item: PosPrintJob['items'][number]) => item.quantity * (item.unit_price + item.modifiers.reduce((sum, modifier) => sum + (modifier.price_at_sale > 0 ? modifier.price_at_sale * modifier.quantity_per_unit : 0), 0));
+
 const proteinLabel = (value: string) => ({ CHURRASCO: 'Churrasco', LOMO: 'Lomo', MECHADA: 'Mechada', POLLO: 'Pollo', HAMBURGUESA: 'Hamburguesa' }[value] ?? value);
 const printLogo = () => {
   const raw = atob(POS_LOGO_BASE64);
   const bitmap = Uint8Array.from(raw, character => character.charCodeAt(0));
   const rowBytes = Math.ceil(POS_LOGO_WIDTH / 8);
+
   return append(esc(27, 97, 1), esc(29, 118, 48, 0, rowBytes & 255, rowBytes >> 8, POS_LOGO_HEIGHT & 255, POS_LOGO_HEIGHT >> 8), bitmap, esc(10), esc(27, 97, 0));
 };
 const dateReceipt = (iso: string) => new Intl.DateTimeFormat('es-CL', {
@@ -80,6 +82,7 @@ const finishReceipt = () => append(esc(27, 100, 4), esc(29, 86, 0, 0));
 
 const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
   const columns = { quantity: 5, description: 27, total: 14 };
+
   const title = job.consumption_type === 'CONSUMO' ? `REGISTRO HISTÓRICO N° ${orderNo(job.shift_order_number)}` : `VALE N° ${orderNo(job.shift_order_number)} - ${job.consumption_type === 'PARA_LLEVAR' ? 'LLEVAR' : 'SERVIR'}`;
   const paymentLabel = job.payment_method === 'TRANSBANK' ? 'TARJETA' : job.payment_method?.replace('_', ' ') ?? 'SIN PAGO REGISTRADO';
   const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), printLogo(), centered('SAN MARTÍN'), esc(27, 69, 1), centered(title), esc(27, 69, 0)];
@@ -94,6 +97,7 @@ const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
       const amount = index === 0 ? money(totalForItem(item)) : '';
       parts.push(line(`${quantity}${fit(value, columns.description).padEnd(columns.description)}${fit(amount, columns.total).padStart(columns.total)}`));
     });
+
     if (item.protein_choice) wrap(`Proteína: ${proteinLabel(item.protein_choice)}`, columns.description)
       .forEach(value => parts.push(line(`${' '.repeat(columns.quantity)}${fit(value, columns.description)}`)));
     item.modifiers.filter(modifier => modifier.price_at_sale > 0).forEach(modifier => {
@@ -106,6 +110,7 @@ const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
   if (job.payment_method === 'EFECTIVO' && job.amount_paid !== null) {
     parts.push(row('Recibido', money(job.amount_paid)), row('Vuelto', money(job.change_given ?? 0)));
   }
+
   if ((job.delivery_fee ?? 0) > 0) parts.push(row('DELIVERY', money(job.delivery_fee ?? 0)));
   parts.push(esc(27, 69, 1), esc(29, 33, 17));
   wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`, 23).forEach(value => parts.push(line(value)));
@@ -118,6 +123,7 @@ const kitchenChit = (job: PosPrintJob, reprint: boolean) => {
   const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), printLogo(), centered('SAN MARTÍN'), esc(27, 69, 1), centered('COMANDA COCINA'), esc(27, 69, 0)];
   if (reprint) parts.push(centered('REIMPRESION'));
   parts.push(esc(29, 33, 17), centered(`N. ${orderNo(job.shift_order_number)}`), esc(29, 33, 0));
+
   parts.push(centered(job.consumption_type === 'CONSUMO' ? 'REGISTRO HISTÓRICO' : job.consumption_type === 'PARA_LLEVAR' ? 'PARA LLEVAR' : 'PARA SERVIR'), centered(dateText(job.created_at)));
   parts.push(esc(27, 69, 1), esc(29, 33, 17));
   wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`, 23).forEach(value => parts.push(centered(value)));

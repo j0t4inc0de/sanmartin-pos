@@ -365,6 +365,28 @@ export const PosPage = () => {
     if (user) await syncPendingCloseEvents(user.id);
   };
 
+  const comprobarTurnoAntesDeVenta = useCallback(async (): Promise<boolean> => {
+    if (!shift?.is_open) {
+      setErrorMessage('No hay un turno abierto para registrar la venta.');
+      return false;
+    }
+    if (offlineMode) return true;
+    try {
+      const current = await solicitarApi<ShiftStateResponse>('/api/shifts/current/');
+      setShift(current.shift);
+      setAnotherShiftOpen(current.another_shift_open);
+      setNextOrderNumber(current.next_order_number);
+      if (!current.shift?.is_open || current.shift.uuid !== shift.uuid) {
+        setErrorMessage('El turno cambió o se cerró en otro equipo. Revisa la caja antes de cotizar.');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo verificar el turno antes de cotizar.');
+      return false;
+    }
+  }, [shift, offlineMode]);
+
   const handleReconnect = async (silent = false) => {
     setIsSubmitting(true);
     setErrorMessage('');
@@ -791,6 +813,7 @@ export const PosPage = () => {
     }
   };
 
+
   const handleRetryPendingShiftEvents = async () => {
     if (!user || isSubmitting) return;
     setIsSubmitting(true);
@@ -842,6 +865,7 @@ export const PosPage = () => {
       setIsSubmitting(false);
     }
   };
+
 
 
 
@@ -1192,7 +1216,7 @@ export const PosPage = () => {
             )}
             {shift?.is_open ? (
             <div className="pos-shift-layout min-w-0 space-y-5">
-              <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} />
+              <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} onBeforeCreateSale={comprobarTurnoAntesDeVenta} />
               <aside aria-labelledby="pos-active-shift-title" className="pos-shift-summary grid min-w-0 gap-5 rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6 lg:grid-cols-2">
                 <header className="flex items-start justify-between gap-4 lg:col-span-2">
                   <div>

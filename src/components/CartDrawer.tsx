@@ -139,7 +139,7 @@ export const CartDrawer = ({
                       Tu carrito está vacío
                     </h4>
                     <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
-                      Agrega tus sánguches, completos o combos favoritos para armar tu pedido.
+                      Agrega tus sánguches o completos favoritos para armar tu pedido.
                     </p>
                   </div>
                   <button

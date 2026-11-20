@@ -76,6 +76,7 @@ class Order(models.Model):
         default=ConsumptionType.PARA_LLEVAR,
     )
     customer_name = models.CharField(max_length=100, blank=True, default="")
+
     # Nullable only to retain already-recorded legacy unpaid orders; current APIs require payment.
     payment_method = models.CharField(max_length=30, choices=PaymentMethod.choices, null=True, blank=True)
     subtotal = models.PositiveIntegerField()
