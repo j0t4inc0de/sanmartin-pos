@@ -65,11 +65,12 @@ const row = (label: string, value: string, width = 46) => {
 const dateText = (iso: string) => new Intl.DateTimeFormat('es-CL', { timeZone: 'America/Santiago', dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
 const orderNo = (number: number) => String(number).padStart(3, '0');
 const totalForItem = (item: PosPrintJob['items'][number]) => item.quantity * (item.unit_price + item.modifiers.reduce((sum, modifier) => sum + (modifier.price_at_sale > 0 ? modifier.price_at_sale * modifier.quantity_per_unit : 0), 0));
+const proteinLabel = (value: string) => ({ CHURRASCO: 'Churrasco', LOMO: 'Lomo', MECHADA: 'Mechada', POLLO: 'Pollo', HAMBURGUESA: 'Hamburguesa' }[value] ?? value);
 const printLogo = () => {
   const raw = atob(POS_LOGO_BASE64);
   const bitmap = Uint8Array.from(raw, character => character.charCodeAt(0));
   const rowBytes = Math.ceil(POS_LOGO_WIDTH / 8);
-  return append(esc(29, 118, 48, 0, rowBytes & 255, rowBytes >> 8, POS_LOGO_HEIGHT & 255, POS_LOGO_HEIGHT >> 8), bitmap, esc(10));
+  return append(esc(27, 97, 1), esc(29, 118, 48, 0, rowBytes & 255, rowBytes >> 8, POS_LOGO_HEIGHT & 255, POS_LOGO_HEIGHT >> 8), bitmap, esc(10), esc(27, 97, 0));
 };
 const dateReceipt = (iso: string) => new Intl.DateTimeFormat('es-CL', {
   timeZone: 'America/Santiago', day: '2-digit', month: '2-digit', year: 'numeric',
@@ -79,8 +80,8 @@ const finishReceipt = () => append(esc(27, 100, 4), esc(29, 86, 0, 0));
 
 const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
   const columns = { quantity: 5, description: 27, total: 14 };
-  const title = `VALE N° ${orderNo(job.shift_order_number)} - ${job.consumption_type === 'PARA_LLEVAR' ? 'LLEVAR' : 'SERVIR'}`;
-  const paymentLabel = job.payment_method === 'TRANSBANK' ? 'TARJETA' : job.payment_method.replace('_', ' ');
+  const title = job.consumption_type === 'CONSUMO' ? `REGISTRO HISTÓRICO N° ${orderNo(job.shift_order_number)}` : `VALE N° ${orderNo(job.shift_order_number)} - ${job.consumption_type === 'PARA_LLEVAR' ? 'LLEVAR' : 'SERVIR'}`;
+  const paymentLabel = job.payment_method === 'TRANSBANK' ? 'TARJETA' : job.payment_method?.replace('_', ' ') ?? 'SIN PAGO REGISTRADO';
   const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), printLogo(), centered('SAN MARTÍN'), esc(27, 69, 1), centered(title), esc(27, 69, 0)];
   if (reprint) parts.push(centered('REIMPRESION'));
   parts.push(centered(dateReceipt(job.created_at)), line('-'.repeat(46)));
@@ -93,6 +94,8 @@ const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
       const amount = index === 0 ? money(totalForItem(item)) : '';
       parts.push(line(`${quantity}${fit(value, columns.description).padEnd(columns.description)}${fit(amount, columns.total).padStart(columns.total)}`));
     });
+    if (item.protein_choice) wrap(`Proteína: ${proteinLabel(item.protein_choice)}`, columns.description)
+      .forEach(value => parts.push(line(`${' '.repeat(columns.quantity)}${fit(value, columns.description)}`)));
     item.modifiers.filter(modifier => modifier.price_at_sale > 0).forEach(modifier => {
       wrap(`+ ${modifier.modifier_name}${modifier.quantity_per_unit > 1 ? ` x${modifier.quantity_per_unit}` : ''}`, columns.description)
         .forEach(value => parts.push(line(`${' '.repeat(columns.quantity)}${fit(value, columns.description)}`)));
@@ -103,28 +106,44 @@ const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
   if (job.payment_method === 'EFECTIVO' && job.amount_paid !== null) {
     parts.push(row('Recibido', money(job.amount_paid)), row('Vuelto', money(job.change_given ?? 0)));
   }
-  wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`).forEach(value => parts.push(line(value)));
+  if ((job.delivery_fee ?? 0) > 0) parts.push(row('DELIVERY', money(job.delivery_fee ?? 0)));
+  parts.push(esc(27, 69, 1), esc(29, 33, 17));
+  wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`, 23).forEach(value => parts.push(line(value)));
+  parts.push(esc(29, 33, 0), esc(27, 69, 0));
   parts.push(centered('GRACIAS POR PREFERIRNOS'), finishReceipt());
   return append(...parts);
 };
 
 const kitchenChit = (job: PosPrintJob, reprint: boolean) => {
-  const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), centered('SAN MARTÍN'), esc(27, 69, 1), centered('COMANDA COCINA'), esc(27, 69, 0)];
+  const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), printLogo(), centered('SAN MARTÍN'), esc(27, 69, 1), centered('COMANDA COCINA'), esc(27, 69, 0)];
   if (reprint) parts.push(centered('REIMPRESION'));
   parts.push(esc(29, 33, 17), centered(`N. ${orderNo(job.shift_order_number)}`), esc(29, 33, 0));
-  parts.push(centered(job.consumption_type === 'PARA_LLEVAR' ? 'PARA LLEVAR' : 'PARA SERVIR'), centered(dateText(job.created_at)));
-  wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`).forEach(value => parts.push(centered(value)));
+  parts.push(centered(job.consumption_type === 'CONSUMO' ? 'REGISTRO HISTÓRICO' : job.consumption_type === 'PARA_LLEVAR' ? 'PARA LLEVAR' : 'PARA SERVIR'), centered(dateText(job.created_at)));
+  parts.push(esc(27, 69, 1), esc(29, 33, 17));
+  wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`, 23).forEach(value => parts.push(centered(value)));
+  parts.push(esc(29, 33, 0), esc(27, 69, 0));
   parts.push(line('-'.repeat(46)));
   job.items.forEach(item => {
     parts.push(esc(29, 33, 17));
     wrap(`${item.quantity} x ${item.product_name}`, 23).forEach(value => parts.push(line(value)));
     parts.push(esc(29, 33, 0));
+    if (item.protein_choice) {
+      parts.push(esc(29, 33, 17));
+      wrap(`Proteína: ${proteinLabel(item.protein_choice)}`).forEach(value => parts.push(line(value)));
+      parts.push(esc(29, 33, 0));
+    }
     item.modifiers.forEach(modifier => {
       const prefix = modifier.price_at_sale > 0 ? '+ ' : '';
       const count = modifier.price_at_sale > 0 && modifier.quantity_per_unit > 1 ? ` x${modifier.quantity_per_unit}` : '';
-      wrap(`  ${prefix}${modifier.modifier_name}${count}`).forEach(value => parts.push(line(value)));
+      parts.push(esc(27, 69, 1), esc(29, 33, 17));
+      wrap(`  ${prefix}${modifier.modifier_name}${count}`, 23).forEach(value => parts.push(line(value)));
+      parts.push(esc(29, 33, 0), esc(27, 69, 0));
     });
-    if ((item.notes ?? '').trim()) wrap(`  Nota: ${item.notes.trim()}`).forEach(value => parts.push(line(value)));
+    if ((item.notes ?? '').trim()) {
+      parts.push(esc(27, 69, 1), esc(29, 33, 17));
+      wrap(`  Nota: ${item.notes.trim()}`, 23).forEach(value => parts.push(line(value)));
+      parts.push(esc(29, 33, 0), esc(27, 69, 0));
+    }
     parts.push(line(''));
   });
   parts.push(line('-'.repeat(46)), finishReceipt());
@@ -185,11 +204,22 @@ export const printViaLocalBridge = async (
     printer_name: options.printerName,
     open_drawer: Boolean(options.openDrawer),
   };
-  const res = await fetch(`${LOCAL_BRIDGE_URL}/print`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  let res: Response;
+  try {
+    res = await fetch(`${LOCAL_BRIDGE_URL}/print`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('La impresora local no respondió dentro de 15 segundos.');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.status === 'error') {
     throw new Error(json.message || `Error del puente local (${res.status})`);
@@ -278,6 +308,34 @@ const send = async (data: Uint8Array, options: { openDrawer?: boolean; printerNa
 export const printPosSale = async (job: PosPrintJob, options: { reprint?: boolean; openDrawer?: boolean } = {}) => {
   const data = append(customerReceipt(job, Boolean(options.reprint)), kitchenChit(job, Boolean(options.reprint)), ...(options.openDrawer ? [esc(27, 112, 0, 25, 250)] : []));
   await send(data, { openDrawer: options.openDrawer });
+};
+
+export interface PosShiftClosePrintJob {
+  opened_at: string;
+  closed_at: string | null;
+  sales_summary: Array<{ payment_method: string; total_amount: number }>;
+}
+
+const shiftCloseReceipt = (shift: PosShiftClosePrintJob) => {
+  const amountFor = (method: string) => shift.sales_summary.find(item => item.payment_method === method)?.total_amount ?? 0;
+  const cash = amountFor('EFECTIVO');
+  const card = amountFor('TRANSBANK');
+  const transfer = amountFor('TRANSFERENCIA');
+  const total = cash + card + transfer;
+  const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), centered('SAN MARTÍN'), esc(27, 69, 1), centered('VENTA DEL DÍA'), esc(27, 69, 0)];
+  parts.push(centered(`INICIO ${dateReceipt(shift.opened_at)}`));
+  parts.push(centered(`TÉRMINO ${dateReceipt(shift.closed_at ?? new Date().toISOString())}`));
+  parts.push(line('-'.repeat(46)));
+  parts.push(row('PAGOS CON EFECTIVO', money(cash)));
+  parts.push(row('PAGOS CON TARJETA', money(card)));
+  parts.push(row('PAGOS CON TRANSFERENCIA', money(transfer)));
+  parts.push(line('-'.repeat(46)), esc(27, 69, 1), row('TOTAL GENERAL', money(total)), esc(27, 69, 0));
+  parts.push(finishReceipt());
+  return append(...parts);
+};
+
+export const printPosShiftClose = async (shift: PosShiftClosePrintJob) => {
+  await send(shiftCloseReceipt(shift));
 };
 
 export const openPosCashDrawer = async () => {

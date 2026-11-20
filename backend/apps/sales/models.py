@@ -76,7 +76,8 @@ class Order(models.Model):
         default=ConsumptionType.PARA_LLEVAR,
     )
     customer_name = models.CharField(max_length=100, blank=True, default="")
-    payment_method = models.CharField(max_length=30, choices=PaymentMethod.choices)
+    # Nullable only to retain already-recorded legacy unpaid orders; current APIs require payment.
+    payment_method = models.CharField(max_length=30, choices=PaymentMethod.choices, null=True, blank=True)
     subtotal = models.PositiveIntegerField()
     delivery_fee = models.PositiveIntegerField(default=0)
     total_amount = models.PositiveIntegerField()
@@ -108,7 +109,7 @@ class Order(models.Model):
                 name="order_total_matches_components",
             ),
             models.CheckConstraint(
-                condition=Q(consumption_type="DELIVERY") | Q(delivery_fee=0),
+                condition=Q(consumption_type__in=["PARA_LLEVAR", "DELIVERY"]) | Q(delivery_fee=0),
                 name="delivery_fee_only_for_delivery",
             ),
             models.CheckConstraint(
@@ -119,12 +120,22 @@ class Order(models.Model):
                 condition=(
                     Q(
                         payment_method="EFECTIVO",
+                        consumption_type__in=["PARA_SERVIR", "PARA_LLEVAR", "CONSUMO_PROPIO", "DELIVERY", "RETIRO"],
                         amount_paid__isnull=False,
                         change_given__isnull=False,
                         amount_paid=F("total_amount") + F("change_given"),
                     )
                     | Q(
                         payment_method__in=["TRANSBANK", "TRANSFERENCIA"],
+                        consumption_type__in=["PARA_SERVIR", "PARA_LLEVAR", "CONSUMO_PROPIO", "DELIVERY", "RETIRO"],
+                        amount_paid__isnull=True,
+                        change_given__isnull=True,
+                    )
+                    | Q(
+                        # Retain compatibility with already-recorded legacy orders;
+                        # the API no longer accepts this type for new orders.
+                        payment_method__isnull=True,
+                        consumption_type="CONSUMO",
                         amount_paid__isnull=True,
                         change_given__isnull=True,
                     )
@@ -151,12 +162,20 @@ class Order(models.Model):
 
 
 class OrderItem(models.Model):
+    class ProteinChoice(models.TextChoices):
+        CHURRASCO = "CHURRASCO", "Churrasco"
+        LOMO = "LOMO", "Lomo"
+        MECHADA = "MECHADA", "Mechada"
+        POLLO = "POLLO", "Pollo"
+        HAMBURGUESA = "HAMBURGUESA", "Hamburguesa"
+
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="order_items")
     product_name = models.CharField(max_length=100)
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.PositiveIntegerField()
     notes = models.CharField(max_length=150, blank=True)
+    protein_choice = models.CharField(max_length=20, choices=ProteinChoice.choices, blank=True, default="")
 
     class Meta:
         db_table = "order_items"

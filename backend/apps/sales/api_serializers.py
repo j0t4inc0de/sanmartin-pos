@@ -1,3 +1,5 @@
+import unicodedata
+
 from django.db.models import Count, Sum
 from rest_framework import serializers
 
@@ -110,6 +112,7 @@ class QuoteItemInputSerializer(serializers.Serializer):
     expected_updated_at = serializers.DateTimeField(required=False)
     quantity = serializers.IntegerField(min_value=1)
     notes = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    protein_choice = serializers.ChoiceField(choices=["CHURRASCO", "LOMO", "MECHADA", "POLLO", "HAMBURGUESA"], required=False, allow_blank=True, default="")
     modifiers = QuoteModifierInputSerializer(many=True, required=False, default=list)
 
 
@@ -121,9 +124,13 @@ class OrderQuoteInputSerializer(serializers.Serializer):
     consumption_type = serializers.ChoiceField(
         choices=["PARA_SERVIR", "PARA_LLEVAR"]
     )
+    delivery_fee = serializers.IntegerField(min_value=0, required=False, default=0)
     items = QuoteItemInputSerializer(many=True, allow_empty=False)
 
     def validate(self, attrs):
+        delivery_fee = attrs.get("delivery_fee", 0)
+        if delivery_fee and attrs["consumption_type"] != "PARA_LLEVAR":
+            raise serializers.ValidationError({"delivery_fee": "El delivery solo aplica a pedidos para llevar."})
         for indice, linea in enumerate(attrs["items"]):
             product = Product.objects.filter(
                 pk=linea["product_id"], is_active=True, is_available=True
@@ -133,6 +140,11 @@ class OrderQuoteInputSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {"items": {indice: {"product_id": f"El producto '{nombre_prod}' no existe o no está disponible."}}}
                 )
+            protein_choice = linea.get("protein_choice", "")
+            if product_accepts_protein_choice(product) and not protein_choice:
+                raise serializers.ValidationError({"items": {indice: {"protein_choice": "Selecciona la proteína de este sándwich."}}})
+            if protein_choice and not product_accepts_protein_choice(product):
+                raise serializers.ValidationError({"items": {indice: {"protein_choice": "Este producto no permite elegir proteína."}}})
             vistos: set[int] = set()
             for modifier_data in linea["modifiers"]:
                 modifier = Modifier.objects.filter(
@@ -156,6 +168,18 @@ class OrderQuoteInputSerializer(serializers.Serializer):
                         {"items": {indice: {"modifiers": f"Una exclusión de cocina no se puede repetir ({nombre_mod})."}}}
                     )
         return attrs
+
+
+def product_accepts_protein_choice(product):
+    if product.category.slug != "sandwiches":
+        return False
+    normalize = lambda value: "".join(
+        character for character in unicodedata.normalize("NFD", value.lower())
+        if unicodedata.category(character) != "Mn"
+    )
+    searchable = " ".join([product.description, *product.ingredients])
+    normalized = normalize(searchable)
+    return "proteina a eleccion" in normalized and "vegetariano" not in normalize(product.name)
 
 
 class OrderPaymentInputSerializer(serializers.Serializer):
@@ -191,6 +215,7 @@ class OfflineOrderItemInputSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(min_value=1)
     unit_price = serializers.IntegerField(min_value=0)
     notes = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    protein_choice = serializers.ChoiceField(choices=["CHURRASCO", "LOMO", "MECHADA", "POLLO", "HAMBURGUESA"], required=False, allow_blank=True, default="")
     modifiers = OfflineOrderModifierInputSerializer(many=True, required=False, default=list)
 
 
@@ -201,6 +226,7 @@ class OfflineOrderSyncInputSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     offline_created = serializers.BooleanField()
     consumption_type = serializers.ChoiceField(choices=["PARA_SERVIR", "PARA_LLEVAR"])
+    delivery_fee = serializers.IntegerField(min_value=0, required=False, default=0)
     # Los clientes POS anteriores pueden conservar ventas pendientes en IndexedDB.
     # La interfaz actual siempre exige el nombre; este valor permite sincronizar esas ventas antiguas.
     customer_name = serializers.CharField(
@@ -216,6 +242,8 @@ class OfflineOrderSyncInputSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not attrs["offline_created"]:
             raise serializers.ValidationError({"offline_created": "La ruta de sincronización acepta solo ventas creadas offline."})
+        if attrs["delivery_fee"] and attrs["consumption_type"] != "PARA_LLEVAR":
+            raise serializers.ValidationError({"delivery_fee": "El delivery solo aplica a pedidos para llevar."})
         if attrs["payment_method"] == "EFECTIVO" and "amount_received" not in attrs:
             raise serializers.ValidationError({"amount_received": "Indica el efectivo recibido."})
         if attrs["payment_method"] != "EFECTIVO" and "amount_received" in attrs:
@@ -256,7 +284,7 @@ class OrderItemReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ("product_name", "quantity", "unit_price", "notes", "modifiers", "line_total")
+        fields = ("product_name", "quantity", "unit_price", "notes", "protein_choice", "modifiers", "line_total")
 
     def get_line_total(self, item):
         extras_per_unit = sum(modifier.price_at_sale for modifier in item.modifiers.all())

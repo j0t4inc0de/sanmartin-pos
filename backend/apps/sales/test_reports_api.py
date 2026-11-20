@@ -62,6 +62,28 @@ class SalesReportApiTests(APITestCase):
         self.assertEqual(len(response.data["payments"]), 2)
         self.assertEqual(len(response.data["shifts"]), 1)
 
+    def test_reporte_excluye_registros_historicos_sin_pago_de_ventas(self):
+        paid = self.create_order(1, datetime(2026, 1, 15, 11, 0, tzinfo=CHILE), 3000)
+        historical = Order.objects.create(
+            cash_shift=self.shift,
+            shift_order_number=2,
+            created_at=datetime(2026, 1, 15, 12, 0, tzinfo=CHILE),
+            consumption_type="CONSUMO",
+            payment_method=None,
+            subtotal=5000,
+            total_amount=5000,
+        )
+        OrderItem.objects.create(order=paid, product=self.product, product_name="Italiano", quantity=1, unit_price=3000)
+        OrderItem.objects.create(order=historical, product=self.product, product_name="Italiano", quantity=4, unit_price=5000)
+
+        response = self.client.get("/api/reports/sales/?period=day&date=2026-01-15")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["sales"], {"total_amount": 3000, "order_count": 1, "average_ticket": 3000})
+        self.assertNotIn("consumption", response.data)
+        self.assertEqual(len(response.data["payments"]), 1)
+        self.assertEqual(response.data["top_products"], [{"product_id": self.product.id, "product_name": "Italiano", "quantity": 1}])
+
     def test_reporte_mensual_limita_ventas_al_mes_seleccionado(self):
         self.create_order(1, datetime(2026, 1, 31, 23, 59, tzinfo=CHILE), 4000)
         self.create_order(2, datetime(2026, 2, 1, 0, 0, tzinfo=CHILE), 9000)

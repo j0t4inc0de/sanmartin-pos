@@ -387,6 +387,79 @@ class OrderApiTests(APITestCase):
         self.assertEqual(response.data["items"][0]["product_name"], self.product.name)
         self.assertEqual(OrderItem.objects.get().unit_price, 5000)
 
+    def test_delivery_suma_al_total_y_al_vuelto(self):
+        payload = self.payload_cotizacion()
+        payload["delivery_fee"] = 1500
+        _, quote = self.cotizar(payload)
+
+        response = self.cobrar(quote, payload, amount=7000)
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.data["subtotal"], 5000)
+        self.assertEqual(quote.data["delivery_fee"], 1500)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["total_amount"], 6500)
+        self.assertEqual(response.data["delivery_fee"], 1500)
+        self.assertEqual(response.data["change_given"], 500)
+
+    def test_delivery_se_rechaza_fuera_de_para_llevar(self):
+        payload = self.payload_cotizacion()
+        payload["consumption_type"] = "PARA_SERVIR"
+        payload["delivery_fee"] = 1000
+
+        response = self.client.post("/api/orders/quote/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("delivery_fee", response.data)
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_tipo_de_pedido_consumo_retirado_no_se_puede_cotizar(self):
+        payload = self.payload_cotizacion()
+        payload["consumption_type"] = "CONSUMO"
+        response = self.client.post("/api/orders/quote/", payload, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_proteina_obligatoria_se_guarda_en_la_linea_del_sandwich(self):
+        self.product.category.slug = "sandwiches"
+        self.product.description = "Proteína a elección"
+        self.product.category.save(update_fields=["slug"])
+        self.product.save(update_fields=["description", "updated_at"])
+        payload = self.payload_cotizacion()
+        _, missing_choice = self.cotizar(payload)
+        self.assertEqual(missing_choice.status_code, 400)
+        self.assertIn("items", missing_choice.data)
+
+        payload["items"][0]["protein_choice"] = "POLLO"
+        _, quote = self.cotizar(payload)
+        response = self.cobrar(quote, payload, amount=5000)
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertEqual(quote.data["items"][0]["protein_choice"], "POLLO")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["items"][0]["protein_choice"], "POLLO")
+        self.assertEqual(OrderItem.objects.get().protein_choice, "POLLO")
+
+    def test_producto_vegetariano_no_exige_proteina_ni_acepta_eleccion(self):
+        self.product.category.slug = "sandwiches"
+        self.product.category.save(update_fields=["slug"])
+        vegetarian = Product.objects.create(
+            category=self.product.category,
+            name="Sándwich vegetariano",
+            slug="sandwich-vegetariano-prueba",
+            description="Proteína a elección",
+            price=4500,
+        )
+        payload = self.payload_cotizacion()
+        payload["items"][0].update(product_id=vegetarian.pk, expected_name=vegetarian.name, expected_unit_price=vegetarian.price, expected_updated_at=vegetarian.updated_at.isoformat())
+
+        _, no_choice = self.cotizar(payload)
+        self.assertEqual(no_choice.status_code, 200)
+        payload["items"][0]["protein_choice"] = "POLLO"
+        _, with_choice = self.cotizar(payload)
+        self.assertEqual(with_choice.status_code, 400)
+
     def test_efectivo_insuficiente_se_rechaza_sin_crear_venta(self):
         payload, quote = self.cotizar()
         response = self.cobrar(quote, payload, amount=4999)

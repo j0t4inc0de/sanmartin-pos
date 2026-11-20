@@ -17,11 +17,11 @@ export interface PosCatalogProduct {
   category_id: number;
   category_name: string;
   name: string;
+  description?: string;
+  ingredients?: string[];
   price: number;
   updated_at: string;
   image_url: string;
-  description?: string;
-  ingredients?: string[];
   original_price?: number | null;
   badge?: string;
   is_available?: boolean;
@@ -61,6 +61,7 @@ export interface PosSaleDraft {
     unit_price: number;
     quantity: number;
     notes: string;
+    protein_choice?: 'CHURRASCO' | 'LOMO' | 'MECHADA' | 'POLLO' | 'HAMBURGUESA' | '';
     modifiers: {
       modifier_id: number;
       modifier_name: string;
@@ -68,21 +69,22 @@ export interface PosSaleDraft {
       quantity_per_unit: number;
     }[];
   }[];
-  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
-  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
+  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR' | 'CONSUMO';
+  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA' | null;
+  delivery_fee?: number;
   amount_received: string;
   saved_at: string;
 }
 
 export interface PosPendingPaymentDraft {
-  status: 'PREPARADO' | 'PAGO_RECIBIDO';
+  status: 'PREPARADO' | 'PAGO_RECIBIDO' | 'CONSUMO_CONFIRMADO';
   offline_created?: boolean;
   shift_uuid: string;
   uuid: string;
   shift_order_number: number;
   created_at: string;
   customer_name: string;
-  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
+  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR' | 'CONSUMO';
   quote: {
     quote_token: string;
     valid_until: string;
@@ -93,6 +95,7 @@ export interface PosPendingPaymentDraft {
       quantity: number;
       unit_price: number;
       notes?: string;
+      protein_choice?: 'CHURRASCO' | 'LOMO' | 'MECHADA' | 'POLLO' | 'HAMBURGUESA' | '';
       modifiers: {
         modifier_id: number;
         modifier_name: string;
@@ -102,10 +105,11 @@ export interface PosPendingPaymentDraft {
       line_total: number;
     }[];
     subtotal: number;
+    delivery_fee?: number;
     total_amount: number;
   };
   price_confirmation_accepted: boolean;
-  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
+  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA' | null;
   amount_received: string;
   payment_received_at: string | null;
   saved_at: string;
@@ -136,8 +140,9 @@ export interface PosOfflineOrder {
   created_at: string;
   offline_created: true;
   customer_name: string;
-  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
-  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
+  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR' | 'CONSUMO';
+  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA' | null;
+  delivery_fee?: number;
   amount_received?: number;
   items: {
     product_id: number;
@@ -145,6 +150,7 @@ export interface PosOfflineOrder {
     quantity: number;
     unit_price: number;
     notes: string;
+    protein_choice?: 'CHURRASCO' | 'LOMO' | 'MECHADA' | 'POLLO' | 'HAMBURGUESA' | '';
     modifiers: { modifier_id: number; modifier_name: string; quantity_per_unit: number; price_at_sale: number }[];
   }[];
   saved_at: string;
@@ -157,8 +163,9 @@ export interface PosPrintJob {
   shift_order_number: number;
   created_at: string;
   customer_name: string;
-  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR';
-  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
+  consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR' | 'CONSUMO';
+  payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA' | null;
+  delivery_fee?: number;
   total_amount: number;
   amount_paid: number | null;
   change_given: number | null;

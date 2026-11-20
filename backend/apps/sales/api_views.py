@@ -85,7 +85,10 @@ class SalesReportView(APIView):
             created_at__gte=start,
             created_at__lt=end,
         )
-        completed = orders.filter(status=Order.Status.COMPLETADA)
+        completed = orders.filter(
+            status=Order.Status.COMPLETADA,
+            payment_method__isnull=False,
+        )
         completed_totals = completed.aggregate(total=Sum("total_amount"), count=Count("id"))
         total = completed_totals["total"] or 0
         count = completed_totals["count"] or 0
@@ -109,6 +112,7 @@ class SalesReportView(APIView):
             order__created_at__gte=start,
             order__created_at__lt=end,
             order__status=Order.Status.COMPLETADA,
+            order__payment_method__isnull=False,
         ).exclude(product__category__slug="salsas")
         product_sales = completed_items.values("product_id").annotate(
             reported_name=Max("product__name"), quantity=Sum("quantity")
@@ -230,6 +234,7 @@ def _lineas_coinciden(order, quote_items):
             or saved.quantity != expected["quantity"]
             or saved.unit_price != expected["unit_price"]
             or saved.notes != expected["notes"]
+            or saved.protein_choice != expected.get("protein_choice", "")
         ):
             return False
         saved_modifiers = list(saved.modifiers.order_by("id").values_list(
@@ -256,7 +261,7 @@ def _venta_idempotente_coincide(order, quote, payment_method, amount_received):
         and order.customer_name == quote.get("customer_name", "")
         and order.payment_method == payment_method
         and order.subtotal == quote["subtotal"]
-        and order.delivery_fee == 0
+        and order.delivery_fee == quote.get("delivery_fee", 0)
         and order.total_amount == quote["total_amount"]
         and order.amount_paid == paid_amount
         and order.change_given == change
@@ -273,6 +278,7 @@ def _venta_offline_idempotente_coincide(order, shift, values, subtotal, amount_p
             "quantity": item["quantity"],
             "unit_price": item["unit_price"],
             "notes": item.get("notes", ""),
+            "protein_choice": item.get("protein_choice", ""),
             "modifiers": [
                 {
                     "modifier_id": modifier["modifier_id"],
@@ -299,8 +305,8 @@ def _venta_offline_idempotente_coincide(order, shift, values, subtotal, amount_p
         )
         and order.payment_method == values["payment_method"]
         and order.subtotal == subtotal
-        and order.delivery_fee == 0
-        and order.total_amount == subtotal
+        and order.delivery_fee == values.get("delivery_fee", 0)
+        and order.total_amount == subtotal + values.get("delivery_fee", 0)
         and order.amount_paid == amount_paid
         and order.change_given == change_given
         and _lineas_coinciden(order, payload_items)
@@ -440,6 +446,7 @@ class OrderQuoteView(APIView):
         serializer = OrderQuoteInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data
+        delivery_fee = values["delivery_fee"]
         shift = _turno_abierto_del_usuario(request.user)
         if shift is None:
             return Response(
@@ -554,6 +561,7 @@ class OrderQuoteView(APIView):
                         "unit_price": product.price,
                         "updated_at": product.updated_at.isoformat(),
                         "notes": item.get("notes", ""),
+                        "protein_choice": item.get("protein_choice", ""),
                         "modifiers": modifier_snapshots,
                     }
                 )
@@ -566,6 +574,7 @@ class OrderQuoteView(APIView):
                         "modifiers": display_modifiers,
                         "modifiers_total_per_unit": modifiers_total_per_unit,
                         "line_total": line_total,
+                        "protein_choice": item.get("protein_choice", ""),
                     }
                 )
 
@@ -578,8 +587,9 @@ class OrderQuoteView(APIView):
             "consumption_type": values["consumption_type"],
             "customer_name": values["customer_name"],
             "items": quote_items,
+            "delivery_fee": delivery_fee,
             "subtotal": subtotal,
-            "total_amount": subtotal,
+            "total_amount": subtotal + delivery_fee,
             "requires_confirmation": requires_confirmation,
         }
         return Response(
@@ -589,8 +599,9 @@ class OrderQuoteView(APIView):
                 + timedelta(seconds=QUOTE_MAX_AGE_SECONDS),
                 "requires_confirmation": requires_confirmation,
                 "items": display_items,
+                "delivery_fee": delivery_fee,
                 "subtotal": subtotal,
-                "total_amount": subtotal,
+                "total_amount": subtotal + delivery_fee,
             }
         )
 
@@ -635,7 +646,6 @@ class CreateOrderView(APIView):
                 {"detail": "La cotización no corresponde a esta venta o usuario."},
                 status=status.HTTP_409_CONFLICT,
             )
-
         existing = Order.objects.filter(uuid=values["uuid"]).first()
         if existing:
             if _venta_idempotente_coincide(
@@ -718,7 +728,7 @@ class CreateOrderView(APIView):
                     customer_name=quote.get("customer_name", ""),
                     payment_method=values["payment_method"],
                     subtotal=quote["subtotal"],
-                    delivery_fee=0,
+                    delivery_fee=quote.get("delivery_fee", 0),
                     total_amount=quote["total_amount"],
                     amount_paid=amount_paid,
                     change_given=change_given,
@@ -731,6 +741,7 @@ class CreateOrderView(APIView):
                         quantity=item["quantity"],
                         unit_price=item["unit_price"],
                         notes=item["notes"],
+                        protein_choice=item.get("protein_choice", ""),
                     )
                     OrderItemModifier.objects.bulk_create(
                         [
@@ -781,13 +792,16 @@ class SyncOfflineOrderView(APIView):
             )
             for item in items
         )
-        amount_paid = values.get("amount_received") if values["payment_method"] == Order.PaymentMethod.EFECTIVO else None
-        if amount_paid is not None and amount_paid < subtotal:
+        delivery_fee = values.get("delivery_fee", 0)
+        total_amount = subtotal + delivery_fee
+        payment_method = values.get("payment_method")
+        amount_paid = values.get("amount_received") if payment_method == Order.PaymentMethod.EFECTIVO else None
+        if amount_paid is not None and amount_paid < total_amount:
             return Response(
                 {"detail": "El efectivo recibido no alcanza para cubrir el total offline."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        change_given = amount_paid - subtotal if amount_paid is not None else None
+        change_given = amount_paid - total_amount if amount_paid is not None else None
 
         try:
             with transaction.atomic():
@@ -838,10 +852,10 @@ class SyncOfflineOrderView(APIView):
                     offline_created=True,
                     consumption_type=values["consumption_type"],
                     customer_name=values["customer_name"],
-                    payment_method=values["payment_method"],
+                    payment_method=payment_method,
                     subtotal=subtotal,
-                    delivery_fee=0,
-                    total_amount=subtotal,
+                    delivery_fee=delivery_fee,
+                    total_amount=total_amount,
                     amount_paid=amount_paid,
                     change_given=change_given,
                     requires_review=bool(review_reason),
@@ -855,6 +869,7 @@ class SyncOfflineOrderView(APIView):
                         quantity=item["quantity"],
                         unit_price=item["unit_price"],
                         notes=item.get("notes", ""),
+                        protein_choice=item.get("protein_choice", ""),
                     )
                     OrderItemModifier.objects.bulk_create([
                         OrderItemModifier(

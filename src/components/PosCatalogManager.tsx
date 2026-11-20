@@ -193,7 +193,7 @@ export function PosCatalogManager({ offlineMode, onClose }: { offlineMode: boole
           categories: nextCategories,
           products: nextProducts,
           modifiers: nextModifiers,
-        });
+        }, false);
       } catch (storageError) {
         console.warn('No se pudo respaldar el catálogo localmente:', storageError);
       }

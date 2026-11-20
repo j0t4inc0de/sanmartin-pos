@@ -48,6 +48,8 @@ class PosProductSerializer(serializers.ModelSerializer):
             "category_id",
             "category_name",
             "name",
+            "description",
+            "ingredients",
             "price",
             "updated_at",
             "image_url",

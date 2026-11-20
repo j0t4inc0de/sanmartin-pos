@@ -38,16 +38,18 @@ import {
 } from '../services/posLocalStore';
 
 type ConsumptionType = 'PARA_SERVIR' | 'PARA_LLEVAR';
+type LegacyConsumptionType = ConsumptionType | 'CONSUMO';
 type PaymentMethod = 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA';
+type ProteinChoice = 'CHURRASCO' | 'LOMO' | 'MECHADA' | 'POLLO' | 'HAMBURGUESA';
 type Product = Catalog['products'][number];
 interface CartModifier { modifier_id: number; modifier_name: string; price_at_sale: number; quantity_per_unit: number; }
-interface CartLine { key: string; product_id: number; product_name: string; unit_price: number; quantity: number; notes: string; modifiers: CartModifier[]; }
-interface Quote { uuid: string; shift_order_number: number; created_at: string; customer_name: string; consumption_type: ConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; total_amount: number; }
-type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confirmation' | 'items' | 'subtotal' | 'total_amount'>;
-interface Sale { uuid: string; shift_order_number: number; total_amount: number; payment_method: PaymentMethod; amount_paid: number | null; change_given: number | null; }
+interface CartLine { key: string; product_id: number; product_name: string; unit_price: number; quantity: number; notes: string; protein_choice?: ProteinChoice | ''; modifiers: CartModifier[]; }
+interface Quote { uuid: string; shift_order_number: number; created_at: string; customer_name: string; consumption_type: LegacyConsumptionType; quote_token: string; valid_until: string; requires_confirmation: boolean; price_confirmation_accepted: boolean; offline_created?: boolean; items: PosPendingPaymentDraft['quote']['items']; subtotal: number; delivery_fee: number; total_amount: number; }
+type QuoteResponse = Pick<Quote, 'quote_token' | 'valid_until' | 'requires_confirmation' | 'items' | 'subtotal' | 'delivery_fee' | 'total_amount'>;
+interface Sale { uuid: string; shift_order_number: number; total_amount: number; payment_method: PaymentMethod | null; amount_paid: number | null; change_given: number | null; }
 interface OrderHistoryModifier { modifier_name: string; price_at_sale: number; }
-interface OrderHistoryLine { product_name: string; quantity: number; unit_price: number; notes: string; modifiers: OrderHistoryModifier[]; line_total: number; }
-interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; customer_name: string; consumption_type: ConsumptionType; payment_method: PaymentMethod; subtotal: number; delivery_fee: number; total_amount: number; amount_paid: number | null; change_given: number | null; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; offline_created: boolean; requires_review: boolean; review_reason: string; items: OrderHistoryLine[]; }
+interface OrderHistoryLine { product_name: string; quantity: number; unit_price: number; notes: string; protein_choice: ProteinChoice | ''; modifiers: OrderHistoryModifier[]; line_total: number; }
+interface OrderHistoryItem { uuid: string; shift_uuid: string; shift_order_number: number; created_at: string; customer_name: string; consumption_type: LegacyConsumptionType; payment_method: PaymentMethod | null; subtotal: number; delivery_fee: number; total_amount: number; amount_paid: number | null; change_given: number | null; status: 'COMPLETADA' | 'ANULADA'; cancellation_reason: string; offline_created: boolean; requires_review: boolean; review_reason: string; items: OrderHistoryLine[]; }
 interface OrderHistory { orders: OrderHistoryItem[]; open_shift_uuid: string | null; }
 interface CatalogDelta extends Catalog {
   removed?: { categories: number[]; products: number[]; modifiers: number[] };
@@ -75,6 +77,11 @@ const applyCatalogDelta = (current: Catalog, delta: CatalogDelta): Catalog => {
 };
 
 const formatPrice = (amount: number) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(amount);
+const normalizeText = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es-CL');
+const acceptsProteinChoice = (product: Product | undefined, catalog: Catalog | null) => Boolean(product
+  && catalog?.categories.find(category => category.id === product.category_id)?.slug === 'sandwiches'
+  && normalizeText(`${product.description ?? ''} ${(product.ingredients ?? []).join(' ')}`).includes('proteina a eleccion')
+  && !normalizeText(product.name).includes('vegetariano'));
 const BASE_PRODUCT_IMAGES = new Map(obtenerCatalogoBasePos().products.map(product => [product.slug, product.image_url]));
 const normalizeCashInput = normalizeClpDigits;
 const parseCashInput = (value: string): number | null => {
@@ -85,7 +92,7 @@ const parseCashInput = (value: string): number | null => {
 };
 const button = 'rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/10 disabled:opacity-40';
 
-export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, onBeforeCreateSale, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; onBeforeCreateSale: () => Promise<boolean>; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
+export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPaymentChange, onQueueChange, offlineMode = false, shiftSyncBlocked = false }: { shiftUuid: string; nextOrderNumber: number; onSale: (nextOrderNumber?: number, offlineCancellation?: { payment_method: PaymentMethod | null; total_amount: number }) => Promise<void>; onPendingPaymentChange: (pending: boolean) => void; onQueueChange: (pending: boolean) => void; offlineMode?: boolean; shiftSyncBlocked?: boolean }) => {
   const { confirm, prompt } = usePosDialogs();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [orders, setOrders] = useState<OrderHistoryItem[]>([]);
@@ -100,6 +107,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   const [lines, setLines] = useState<CartLine[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [consumptionType, setConsumptionType] = useState<ConsumptionType>('PARA_LLEVAR');
+  const [deliveryFeeInput, setDeliveryFeeInput] = useState('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [pendingPaymentStatus, setPendingPaymentStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [paymentReceivedPending, setPaymentReceivedPending] = useState(false);
@@ -149,6 +157,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     lines,
     consumption_type: consumptionType,
     payment_method: paymentMethod,
+    delivery_fee: consumptionType === 'PARA_LLEVAR' ? parseCashInput(deliveryFeeInput) ?? 0 : 0,
     amount_received: amountReceived,
   });
 
@@ -167,13 +176,15 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         if (draft) {
           setLines(draft.lines);
           setCustomerName(draft.customer_name ?? '');
-          setConsumptionType(draft.consumption_type);
-          setPaymentMethod(draft.payment_method);
+          setConsumptionType(draft.consumption_type === 'CONSUMO' ? 'PARA_LLEVAR' : draft.consumption_type);
+          setPaymentMethod(draft.payment_method ?? 'EFECTIVO');
+          setDeliveryFeeInput(draft.delivery_fee ? String(draft.delivery_fee) : '');
           setAmountReceived(normalizeCashInput(draft.amount_received));
         }
         if (pendingPayment) {
           setQuote({
             ...pendingPayment.quote,
+            delivery_fee: pendingPayment.quote.delivery_fee ?? 0,
             uuid: pendingPayment.uuid,
             shift_order_number: pendingPayment.shift_order_number,
             created_at: pendingPayment.created_at,
@@ -182,12 +193,15 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
             price_confirmation_accepted: pendingPayment.price_confirmation_accepted,
           offline_created: pendingPayment.offline_created,
           });
-          setPaymentMethod(pendingPayment.payment_method);
+          if (pendingPayment.payment_method) setPaymentMethod(pendingPayment.payment_method);
+          setDeliveryFeeInput(pendingPayment.quote.delivery_fee ? String(pendingPayment.quote.delivery_fee) : '');
           setAmountReceived(normalizeCashInput(pendingPayment.amount_received));
           setPendingPaymentStatus('saved');
-          if (pendingPayment.status === 'PAGO_RECIBIDO') {
+          if (pendingPayment.status === 'PAGO_RECIBIDO' || pendingPayment.status === 'CONSUMO_CONFIRMADO') {
             setPaymentReceivedPending(true);
-            setMessage(`Pago recibido en el equipo para la venta #${pendingPayment.shift_order_number}. No vuelvas a cobrar; reintenta el registro.`);
+            setMessage(pendingPayment.status === 'PAGO_RECIBIDO'
+              ? `Pago recibido en el equipo para la venta #${pendingPayment.shift_order_number}. No vuelvas a cobrar; reintenta el registro.`
+              : `Se encontró el borrador #${pendingPayment.shift_order_number} de un tipo retirado; descártalo para continuar.`);
           } else {
             setPreparedQuoteExpired(Date.now() >= new Date(pendingPayment.quote.valid_until).getTime());
             setMessage(`Se restauró la cotización #${pendingPayment.shift_order_number}. Revisa el estado del pago antes de continuar.`);
@@ -213,7 +227,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       .then(() => { if (active && writeVersion === draftWriteVersion.current) setDraftSaveStatus('saved'); })
       .catch(() => { if (active && writeVersion === draftWriteVersion.current) setDraftSaveStatus('error'); });
     return () => { active = false; };
-  }, [draftLoaded, shiftUuid, lines, customerName, consumptionType, paymentMethod, amountReceived]);
+  }, [draftLoaded, shiftUuid, lines, customerName, consumptionType, paymentMethod, amountReceived, deliveryFeeInput]);
 
   const persistCurrentDraft = async (): Promise<boolean> => {
     const writeVersion = ++draftWriteVersion.current;
@@ -230,7 +244,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const persistPendingPayment = async (
     targetQuote: Quote,
-    method: PaymentMethod,
+    method: PaymentMethod | null,
     receivedAmount: string,
     status: PosPendingPaymentDraft['status'],
     paymentReceivedAt: string | null = null,
@@ -262,17 +276,18 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
   };
 
-  const createPrintJob = (targetQuote: Quote, method: PaymentMethod, receivedAmount: string, totalAmount = targetQuote.total_amount, paidAmount: number | null = null, changeGiven: number | null = null): Omit<PosPrintJob, 'saved_at'> => {
+  const createPrintJob = (targetQuote: Quote, method: PaymentMethod | null, receivedAmount: string, totalAmount = targetQuote.total_amount, paidAmount: number | null = null, changeGiven: number | null = null): Omit<PosPrintJob, 'saved_at'> => {
     const effectivePaid = method === 'EFECTIVO' ? paidAmount ?? parseCashInput(receivedAmount) : null;
     return {
       uuid: targetQuote.uuid, shift_uuid: shiftUuid, shift_order_number: targetQuote.shift_order_number,
       created_at: targetQuote.created_at, consumption_type: targetQuote.consumption_type, payment_method: method,
       customer_name: targetQuote.customer_name,
+      delivery_fee: targetQuote.delivery_fee,
       total_amount: totalAmount, amount_paid: effectivePaid,
       change_given: method === 'EFECTIVO' ? changeGiven ?? Math.max(0, (effectivePaid ?? 0) - totalAmount) : null,
       items: targetQuote.items.map((item, index) => ({
         product_id: item.product_id, product_name: item.product_name, quantity: item.quantity,
-        unit_price: item.unit_price, notes: item.notes ?? lines[index]?.notes ?? '', modifiers: item.modifiers,
+        unit_price: item.unit_price, notes: item.notes ?? lines[index]?.notes ?? '', protein_choice: item.protein_choice ?? '', modifiers: item.modifiers,
       })),
       printed_at: null, print_error: null,
     };
@@ -295,7 +310,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     } finally { setPrintingJobUuid(null); }
   };
 
-  const saveAndPrintSale = async (targetQuote: Quote, method: PaymentMethod, receivedAmount: string, sale?: Sale) => {
+  const saveAndPrintSale = async (targetQuote: Quote, method: PaymentMethod | null, receivedAmount: string, sale?: Sale) => {
     const job = createPrintJob(targetQuote, method, receivedAmount, sale?.total_amount ?? targetQuote.total_amount, sale?.amount_paid ?? null, sale?.change_given ?? null);
     try { await guardarTrabajoImpresionPos(job); }
     catch { setPrintNotice(`La venta #${job.shift_order_number} se guardó, pero no se pudo respaldar el comprobante local para reimpresión.`); }
@@ -304,8 +319,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const queueOfflineSale = async (targetQuote: Quote): Promise<boolean> => {
     try {
+      const orderPaymentMethod = paymentMethod;
       const received = parseCashInput(amountReceived);
-      if (paymentMethod === 'EFECTIVO' && (received === null || received < targetQuote.total_amount)) {
+      if (orderPaymentMethod === 'EFECTIVO' && (received === null || received < targetQuote.total_amount)) {
         setError('El efectivo recibido debe cubrir el total de la venta.');
         return false;
       }
@@ -317,18 +333,21 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         offline_created: true,
         customer_name: targetQuote.customer_name,
         consumption_type: targetQuote.consumption_type,
-        payment_method: paymentMethod,
-        ...(paymentMethod === 'EFECTIVO' && received !== null ? { amount_received: received } : {}),
+        payment_method: orderPaymentMethod,
+        delivery_fee: targetQuote.delivery_fee,
+        ...(orderPaymentMethod === 'EFECTIVO' && received !== null ? { amount_received: received } : {}),
         items: targetQuote.items.map((item, index) => ({
           product_id: item.product_id,
           product_name: item.product_name,
           quantity: item.quantity,
           unit_price: item.unit_price,
           notes: item.notes ?? lines[index]?.notes ?? '',
+          protein_choice: item.protein_choice ?? lines[index]?.protein_choice ?? '',
           modifiers: item.modifiers,
         })),
       });
-      await saveAndPrintSale(targetQuote, paymentMethod, amountReceived);
+      await eliminarCobroPendientePos(shiftUuid);
+      await saveAndPrintSale(targetQuote, orderPaymentMethod, amountReceived);
       void playSaleSuccessSound();
       setPendingPaymentStatus('idle');
       setPaymentReceivedPending(false);
@@ -366,8 +385,13 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
       try {
         const cursor = savedCatalog?.catalog.generated_at;
+        const needsProductDetails = Boolean(savedCatalog?.catalog.products.some(product =>
+          savedCatalog.catalog.categories.some(category => category.id === product.category_id && category.slug === 'sandwiches')
+          && (product.description === undefined || product.ingredients === undefined)
+        ));
         const isRealServerCatalog = Boolean(
           savedCatalog?.server_synced &&
+          !needsProductDetails &&
           cursor &&
           cursor !== 'offline-fallback' &&
           cursor !== '2026-01-01T00:00:00.000Z' &&
@@ -535,7 +559,6 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     void eliminarCobroPendientePos(shiftUuid).catch(() => setPendingPaymentStatus('error'));
   };
   const addProduct = async (product: Product) => {
-    if (!await onBeforeCreateSale()) return;
     setLines(prev => [...prev, { key: crypto.randomUUID(), product_id: product.id, product_name: product.name, unit_price: product.price, quantity: 1, notes: '', modifiers: [] }]); invalidateQuote(); setMessage('');
   };
   const updateLine = (key: string, update: (line: CartLine) => CartLine) => { setLines(prev => prev.map(line => line.key === key ? update(line) : line)); invalidateQuote(); };
@@ -548,7 +571,6 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setError('Ingresa el nombre del cliente antes de cotizar.');
       return;
     }
-    if (!await onBeforeCreateSale()) return;
     if (!catalog) {
       setError('El catálogo no está disponible.');
       return;
@@ -557,6 +579,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       const prodFound = catalog.products.find(product => product.id === line.product_id || product.name.trim().toLowerCase() === line.product_name.trim().toLowerCase());
       if (!prodFound || prodFound.is_active === false) {
         setError(`El producto "${line.product_name}" ya no está disponible en el catálogo. Quítalo del pedido antes de cotizar.`);
+        return;
+      }
+      if (acceptsProteinChoice(prodFound, catalog) && !line.protein_choice) {
+        setError(`Selecciona la proteína para ${line.product_name}.`);
         return;
       }
       for (const entry of line.modifiers) {
@@ -590,16 +616,18 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
             return { modifier_id: modifier.id, modifier_name: modifier.name, price_at_sale: modifier.price, quantity_per_unit: entry.quantity_per_unit };
           });
           const extrasPerUnit = modifiers.reduce((sum, modifier) => sum + modifier.price_at_sale * modifier.quantity_per_unit, 0);
-          return { product_id: product.id, product_name: product.name, quantity: line.quantity, unit_price: product.price, modifiers, line_total: line.quantity * (product.price + extrasPerUnit) };
+          return { product_id: product.id, product_name: product.name, quantity: line.quantity, unit_price: product.price, protein_choice: line.protein_choice ?? '', modifiers, line_total: line.quantity * (product.price + extrasPerUnit) };
         });
         const subtotal = items.reduce((sum, item) => sum + item.line_total, 0);
-        response = { quote_token: '', valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), requires_confirmation: false, items, subtotal, total_amount: subtotal };
+        const deliveryFee = consumptionType === 'PARA_LLEVAR' ? parseCashInput(deliveryFeeInput) ?? 0 : 0;
+        response = { quote_token: '', valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), requires_confirmation: false, items, subtotal, delivery_fee: deliveryFee, total_amount: subtotal + deliveryFee };
       } else {
         response = await solicitarApi<QuoteResponse>('/api/orders/quote/', { method: 'POST', body: {
         uuid,
         shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
         created_at: createdAt,
         consumption_type: consumptionType,
+        delivery_fee: consumptionType === 'PARA_LLEVAR' ? parseCashInput(deliveryFeeInput) ?? 0 : 0,
         customer_name: normalizedCustomerName,
         items: lines.map(line => {
           const product = catalog!.products.find(p => p.id === line.product_id)
@@ -611,6 +639,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
             expected_updated_at: product.updated_at,
             quantity: Math.max(1, Number(line.quantity) || 1),
             notes: line.notes || '',
+            protein_choice: line.protein_choice ?? '',
             modifiers: line.modifiers.map(entry => {
               const modifier = catalog!.modifiers.find(m => m.id === entry.modifier_id)
                 || catalog!.modifiers.find(m => m.name.trim().toLowerCase() === entry.modifier_name.trim().toLowerCase());
@@ -626,13 +655,13 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         }),
         } });
       }
-      if (response.requires_confirmation && !await confirm({ title: 'Precio actualizado', message: `El catálogo cambió. Revisa el nuevo total de ${formatPrice(response.total_amount)} y confirma antes de continuar al pago.`, confirmLabel: 'Aceptar precio', tone: 'warning' })) {
+      if (response.requires_confirmation && !await confirm({ title: 'Precio actualizado', message: `El catálogo cambió. Revisa el nuevo total de ${formatPrice(response.total_amount)} y confirma antes de continuar.`, confirmLabel: 'Aceptar precio', tone: 'warning' })) {
         setMessage('Cotización cancelada; no se habilitó el paso de pago.');
         return;
       }
       const quotedOrder: Quote = {
         ...response,
-        items: response.items.map((item, index) => ({ ...item, notes: lines[index]?.notes ?? '' })),
+        items: response.items.map((item, index) => ({ ...item, notes: lines[index]?.notes ?? '', protein_choice: lines[index]?.protein_choice ?? item.protein_choice ?? '' })),
         uuid,
         shift_order_number: Math.max(1, Number(nextOrderNumber) || 1),
         created_at: createdAt,
@@ -655,6 +684,10 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
 
   const registerSavedPayment = async () => {
     if (!quote) return;
+    if (quote.consumption_type === 'CONSUMO') {
+      await discardLegacyQuote();
+      return;
+    }
     if (offlineMode || quote.offline_created) {
       await queueOfflineSale(quote);
       return;
@@ -670,7 +703,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         confirm_repriced: quote.requires_confirmation && quote.price_confirmation_accepted,
       } });
       void playSaleSuccessSound();
-      const printJob = createPrintJob(quote, paymentMethod, amountReceived, sale.total_amount, sale.amount_paid, sale.change_given);
+      const orderPaymentMethod = paymentMethod;
+      const printJob = createPrintJob(quote, orderPaymentMethod, amountReceived, sale.total_amount, sale.amount_paid, sale.change_given);
       try { await guardarTrabajoImpresionPos(printJob); }
       catch { setPrintNotice(`La venta #${sale.shift_order_number} quedó guardada, pero no se pudo respaldar el comprobante local para reimpresión.`); }
       await eliminarCobroPendientePos(shiftUuid);
@@ -723,8 +757,27 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
   };
 
+  const discardLegacyQuote = async () => {
+    if (!quote || quote.consumption_type !== 'CONSUMO') return;
+    if (!await confirm({ title: 'Descartar cotización antigua', message: 'Este pedido fue creado con el tipo que se retiró y no tiene un pago asociado. Se quitará el borrador local; las ventas ya registradas no se modificarán.', confirmLabel: 'Descartar borrador', tone: 'warning' })) return;
+    try {
+      await eliminarCobroPendientePos(shiftUuid);
+      setQuote(null);
+      setPaymentReceivedPending(false);
+      setPreparedQuoteExpired(false);
+      setPendingPaymentStatus('idle');
+      setMessage('Borrador antiguo descartado. Puedes volver a cotizar el pedido con un medio de pago.');
+    } catch {
+      setError('No se pudo retirar el borrador antiguo; se mantiene bloqueado para proteger el folio.');
+    }
+  };
+
   const saveSale = async () => {
     if (!quote) return;
+    if (quote.consumption_type === 'CONSUMO') {
+      setError('Esta cotización pertenece al tipo de pedido retirado. Descártala y vuelve a cotizar con un medio de pago.');
+      return;
+    }
     if (paymentReceivedPending) {
       await registerSavedPayment();
       return;
@@ -778,7 +831,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     const reason = await prompt({ title: `Anular venta #${order.shift_order_number}`, message: 'Indica el motivo para guardar la anulación en este equipo y sincronizarla al recuperar conexión.', inputLabel: 'Motivo de anulación', placeholder: 'Ej.: pedido duplicado', confirmLabel: 'Continuar', tone: 'danger' });
     if (reason === null) return;
     if (!await confirm({ title: 'Confirmar anulación offline', message: `La anulación de la venta #${order.shift_order_number} quedará guardada en este equipo y se enviará al reconectar.`, confirmLabel: 'Guardar anulación', tone: 'danger' })) return;
-    const total = order.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0);
+    const total = order.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0) + (order.delivery_fee ?? 0);
     try {
       await guardarAnulacionOfflinePos({ order_uuid: order.uuid, shift_uuid: order.shift_uuid, shift_order_number: order.shift_order_number, reason: reason.trim(), requested_at: new Date().toISOString() });
       setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
@@ -789,6 +842,20 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     } catch (error) { setError(error instanceof Error ? error.message : 'No se pudo guardar la anulación offline.'); }
   };
 
+  const discardLegacyOfflineOrder = async (order: PosOfflineOrder) => {
+    if (order.consumption_type !== 'CONSUMO') return;
+    if (!await confirm({ title: `Retirar pedido antiguo #${order.shift_order_number}`, message: 'Este pedido local pertenece al tipo retirado y no tiene un pago asociado. Se quitará solo de la cola de este equipo; pedidos ya sincronizados no se modifican.', confirmLabel: 'Retirar borrador', tone: 'warning' })) return;
+    try {
+      await eliminarVentaOfflineDeColaPos(order.uuid);
+      await eliminarAnulacionOfflinePos(order.uuid).catch(() => undefined);
+      setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
+      setOfflineCancellations(await listarAnulacionesOfflinePos(shiftUuid));
+      setMessage(`Borrador antiguo #${order.shift_order_number} retirado de la cola local.`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'No se pudo retirar el borrador antiguo.');
+    }
+  };
+
   const modifiersFor = (line: CartLine) => line.modifiers.reduce((sum, value) => {
     const mod = catalog?.modifiers.find(m => m.id === value.modifier_id || m.name.trim().toLowerCase() === value.modifier_name.trim().toLowerCase());
     return sum + (mod ? mod.price : value.price_at_sale) * value.quantity_per_unit;
@@ -797,7 +864,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
   return <section className="pos-sales-container space-y-5 rounded-2xl border border-white/10 bg-[#171717] p-5 shadow-xl sm:p-6">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#FACC15]">{offlineMode ? 'Venta offline' : 'Venta en línea'}</p><h2 className="mt-1 font-heading text-2xl font-bold text-white">Folio #{String(nextOrderNumber).padStart(3, '0')}</h2></div><button className={button} type="button" onClick={() => void loadCatalog()} disabled={loadingCatalog || offlineMode}><RefreshCw className="mr-2 inline h-4 w-4"/>{offlineMode ? 'Catálogo guardado' : 'Actualizar menú'}</button></header>
     {offlineMode && <Alert severity="warning">Modo offline: puedes registrar la venta en este equipo. No cierres el turno hasta sincronizar todas las ventas pendientes.</Alert>}
-    {(offlineOrders.length > 0 || offlineCancellations.length > 0) && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{offlineOrders.length} ventas y {offlineCancellations.length} anulaciones pendientes</strong><span>{syncingOfflineOrders ? 'Sincronizando…' : offlineMode ? 'Se enviarán al reconectar' : 'Reintento automático al recuperar conexión'}</span>{!offlineMode && <button type="button" className="rounded-lg border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50" disabled={syncingOfflineOrders || !navigator.onLine} onClick={() => void syncOfflineOrders()}>Reintentar sincronización</button>}</div>{offlineOrders.map(order => <div key={order.uuid} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/10 pt-3"><span>Venta #{String(order.shift_order_number).padStart(3, '0')} {offlineCancellations.some(item => item.order_uuid === order.uuid) ? '· Anulación pendiente' : '· Pendiente de sincronización'}</span>{!offlineCancellations.some(item => item.order_uuid === order.uuid) && <button type="button" disabled={busy || syncingOfflineOrders} className="rounded-lg border border-red-200/30 px-3 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50" onClick={() => void cancelOfflineOrder(order)}>Anular</button>}</div>)}{[...offlineOrders.map(order => order.sync_error), ...offlineCancellations.map(item => item.sync_error)].filter(Boolean).length > 0 && <p className="mt-2 text-xs text-amber-200">{offlineOrders.find(order => order.sync_error)?.sync_error ?? offlineCancellations.find(item => item.sync_error)?.sync_error} · Los eventos siguientes esperan que se resuelva este folio.</p>}</div>}
+    {(offlineOrders.length > 0 || offlineCancellations.length > 0) && <div role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-4 text-sm text-amber-100"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{offlineOrders.length} ventas y {offlineCancellations.length} anulaciones pendientes</strong><span>{syncingOfflineOrders ? 'Sincronizando…' : offlineMode ? 'Se enviarán al reconectar' : 'Reintento automático al recuperar conexión'}</span>{!offlineMode && <button type="button" className="rounded-lg border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-100 disabled:opacity-50" disabled={syncingOfflineOrders || !navigator.onLine} onClick={() => void syncOfflineOrders()}>Reintentar sincronización</button>}</div>{offlineOrders.map(order => <div key={order.uuid} className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/10 pt-3"><span>Venta #{String(order.shift_order_number).padStart(3, '0')} {offlineCancellations.some(item => item.order_uuid === order.uuid) ? '· Anulación pendiente' : '· Pendiente de sincronización'}</span>{!offlineCancellations.some(item => item.order_uuid === order.uuid) && (order.consumption_type === 'CONSUMO' ? <button type="button" disabled={busy || syncingOfflineOrders} className="rounded-lg border border-red-200/30 px-3 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50" onClick={() => void discardLegacyOfflineOrder(order)}>Retirar borrador antiguo</button> : <button type="button" disabled={busy || syncingOfflineOrders} className="rounded-lg border border-red-200/30 px-3 py-1.5 text-xs font-semibold text-red-100 disabled:opacity-50" onClick={() => void cancelOfflineOrder(order)}>Anular</button>)}</div>)}{[...offlineOrders.map(order => order.sync_error), ...offlineCancellations.map(item => item.sync_error)].filter(Boolean).length > 0 && <p className="mt-2 text-xs text-amber-200">{offlineOrders.find(order => order.sync_error)?.sync_error ?? offlineCancellations.find(item => item.sync_error)?.sync_error} · Los eventos siguientes esperan que se resuelva este folio.</p>}</div>}
     {draftLoadError && (
       <Alert
         severity="error"
@@ -823,22 +890,14 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       message={error}
       onClose={() => setError('')}
     />
-    <PosSnackbarAlert
-      open={Boolean(printNotice)}
-      severity="warning"
-      message={printNotice}
-      onClose={() => setPrintNotice('')}
-    />
     {paymentReceivedPending && (
       <Alert
         severity="warning"
-        action={
-          <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>
-            {busy ? 'Registrando…' : 'Reintentar registro'}
-          </button>
-        }
+        action={quote?.consumption_type === 'CONSUMO'
+          ? <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void discardLegacyQuote()}>Descartar borrador antiguo</button>
+          : <button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black disabled:opacity-50" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void registerSavedPayment()}>{busy ? 'Registrando…' : 'Reintentar registro'}</button>}
       >
-        El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.
+        {quote?.consumption_type === 'CONSUMO' ? 'Este borrador usa un tipo de pedido retirado y no tiene un pago asociado.' : 'El pago ya se guardó en este equipo. No lo cobres de nuevo; solo falta confirmar el registro en el servidor.'}
       </Alert>
     )}
     {paymentRecordWriteFailed && quote && (
@@ -986,21 +1045,23 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
                 ))}
             </div>
           </details>}
+          {acceptsProteinChoice(currentProduct, catalog) && <label className="mt-3 block text-xs font-semibold text-gray-300">Proteína <span className="text-red-300">*</span><select required className="mt-1 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-sm text-white" value={line.protein_choice ?? ''} onChange={event => updateLine(line.key, current => ({ ...current, protein_choice: event.target.value as ProteinChoice | '' }))}><option value="">Selecciona proteína</option><option value="CHURRASCO">Churrasco</option><option value="LOMO">Lomo</option><option value="MECHADA">Mechada</option><option value="POLLO">Pollo</option><option value="HAMBURGUESA">Hamburguesa</option></select></label>}
           <input className="mt-3 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-xs text-white" maxLength={150} placeholder="Nota para cocina (opcional)" value={line.notes} onChange={e => updateLine(line.key, l => ({...l, notes: e.target.value}))}/>
         </article>;})}</div>}
         <label className="block text-xs font-bold uppercase tracking-wider text-gray-300">Nombre del cliente <span className="text-red-300">*</span><input required maxLength={100} autoComplete="name" className="mt-2 w-full rounded-lg border border-white/10 bg-[#171717] px-3 py-2 text-sm font-normal normal-case tracking-normal text-white placeholder:text-gray-500" placeholder="Nombre para identificar el pedido" value={customerName} disabled={!!quote || paymentReceivedPending} onChange={event => { setCustomerName(event.target.value); invalidateQuote(); }} /></label>
-        <fieldset className="space-y-2 border-0 p-0"><legend className="text-xs font-bold uppercase tracking-wider text-gray-300">Tipo de pedido</legend><div className="grid grid-cols-2 gap-2"><button type="button" aria-pressed={consumptionType === 'PARA_SERVIR'} className={`pos-type-choice ${consumptionType === 'PARA_SERVIR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_SERVIR'); invalidateQuote();}}><Utensils className="h-5 w-5"/><span><strong>Para servir</strong><small>Consumo en el local</small></span></button><button type="button" aria-pressed={consumptionType === 'PARA_LLEVAR'} className={`pos-type-choice ${consumptionType === 'PARA_LLEVAR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_LLEVAR'); invalidateQuote();}}><ShoppingBag className="h-5 w-5"/><span><strong>Para llevar</strong><small>Pedido para llevar</small></span></button></div></fieldset>
-        <div className={`pos-quote-sticky ${quote ? 'is-quoted' : ''}`}><span>{lines.length ? `${lines.reduce((count, line) => count + line.quantity, 0)} productos · ${consumptionType === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}` : 'Agrega productos para cotizar'}</span><button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()}>{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar venta'}</button></div>
-        {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>{quote.offline_created ? 'Total calculado con catálogo local' : 'Total validado'}</span><span>{formatPrice(quote.total_amount)}</span></div><p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · {quote.offline_created ? 'Venta y folio guardados localmente antes del cobro.' : `Válida hasta ${new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización respaldada en este equipo.`}</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de cobrar.</p>}
-          <label className="block text-sm text-gray-300">Medio de pago<select className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" value={paymentMethod} onChange={e => updatePaymentMethod(e.target.value as PaymentMethod)}><option value="EFECTIVO">Efectivo</option><option value="TRANSBANK">Transbank (débito/crédito)</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
+        <fieldset className="space-y-2 border-0 p-0"><legend className="text-xs font-bold uppercase tracking-wider text-gray-300">Tipo de pedido</legend><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><button type="button" aria-pressed={consumptionType === 'PARA_SERVIR'} className={`pos-type-choice ${consumptionType === 'PARA_SERVIR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_SERVIR'); setDeliveryFeeInput(''); invalidateQuote();}}><Utensils className="h-5 w-5"/><span><strong>Para servir</strong><small>Consumo en el local</small></span></button><button type="button" aria-pressed={consumptionType === 'PARA_LLEVAR'} className={`pos-type-choice ${consumptionType === 'PARA_LLEVAR' ? 'is-selected' : ''}`} onClick={() => {setConsumptionType('PARA_LLEVAR'); invalidateQuote();}}><ShoppingBag className="h-5 w-5"/><span><strong>Para llevar</strong><small>Pedido para llevar</small></span></button></div></fieldset>
+        {consumptionType === 'PARA_LLEVAR' && <label className="block text-sm text-gray-300">Valor delivery (opcional)<ClpInput className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Ej.: 1.500" aria-label="Valor delivery en pesos chilenos" value={deliveryFeeInput} onValueChange={value => { setDeliveryFeeInput(value); invalidateQuote(); }}/></label>}
+        <div className={`pos-quote-sticky ${quote ? 'is-quoted' : ''}`}><span>{lines.length ? `${lines.reduce((count, line) => count + line.quantity, 0)} productos · ${consumptionType === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}` : 'Agrega productos para cotizar'}</span><button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()}>{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar'}</button></div>
+        {quote && <div className="space-y-3 rounded-xl border border-white/10 p-4"><div className="flex justify-between font-bold"><span>{quote.offline_created ? 'Total calculado con catálogo local' : 'Total validado'}</span><span>{formatPrice(quote.total_amount)}</span></div>{quote.delivery_fee > 0 && <div className="flex justify-between text-sm text-gray-300"><span>Incluye delivery</span><span>{formatPrice(quote.delivery_fee)}</span></div>}<p className="text-xs text-gray-400">Folio #{String(quote.shift_order_number).padStart(3, '0')} · {quote.offline_created ? 'Pedido guardado localmente antes de confirmar.' : `Válida hasta ${new Intl.DateTimeFormat('es-CL', {timeStyle:'short'}).format(new Date(quote.valid_until))}. Cotización respaldada en este equipo.`}</p>{quote.requires_confirmation && <p className="text-sm text-amber-200">El catálogo cambió; confirma el precio actualizado antes de continuar.</p>}
+          {quote.consumption_type === 'CONSUMO' ? <Alert severity="warning" action={<button type="button" className="rounded-lg bg-amber-300 px-4 py-2 font-bold text-black" onClick={() => void discardLegacyQuote()}>Descartar borrador antiguo</button>}>Esta cotización pertenece a un tipo de pedido retirado y no se puede confirmar.</Alert> : <><label className="block text-sm text-gray-300">Medio de pago<select className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" value={paymentMethod} onChange={e => updatePaymentMethod(e.target.value as PaymentMethod)}><option value="EFECTIVO">Efectivo</option><option value="TRANSBANK">Transbank (débito/crédito)</option><option value="TRANSFERENCIA">Transferencia</option></select></label>
           {paymentMethod === 'EFECTIVO' && <label className="block text-sm text-gray-300">Efectivo recibido (CLP)<ClpInput className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Ej.: 5.000" aria-label="Efectivo recibido en pesos chilenos" value={amountReceived} onValueChange={updateAmountReceived}/></label>}
-          {!paymentReceivedPending && !preparedQuoteExpired && <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void saveSale()} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Guardando venta…' : 'Confirmar recepción del pago'}</button>}
+          {!paymentReceivedPending && !preparedQuoteExpired && <button type="button" disabled={busy || pendingPaymentStatus !== 'saved'} onClick={() => void saveSale()} className="w-full rounded-xl bg-gradient-to-r from-[#DC2626] to-[#B91C1C] px-4 py-3 font-bold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Confirmar recepción del pago'}</button>}</>}
         </div>}
       </div>
     </fieldset>
     {!offlineMode && <details className="pos-info-disclosure border-t border-white/10 pt-3">
       <summary>Ventas recientes <span className="pos-disclosure-meta">{orders.length} registros</span></summary>
-      {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method.replace('_', ' ')}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span><button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:border-[#FACC15]/60 hover:text-[#FACC15]" onClick={() => setOrderDetail(order)}><ReceiptText aria-hidden="true" className="h-4 w-4"/>Ver detalle</button>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
+      {!orders.length ? <p className="text-xs text-gray-500">Todavía no hay ventas registradas.</p> : <div className="space-y-2">{orders.map(order => <div key={order.uuid} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#0D0D0D] p-3"><div><p className="text-sm font-medium text-white">#{String(order.shift_order_number).padStart(3, '0')} · {formatPrice(order.total_amount)} · {order.payment_method?.replace('_', ' ') ?? 'Sin pago registrado'}</p><p className="text-xs text-gray-500">{new Intl.DateTimeFormat('es-CL', {dateStyle:'short', timeStyle:'short'}).format(new Date(order.created_at))}</p>{order.status === 'ANULADA' && <p className="mt-1 text-xs text-red-200">Motivo de anulación: {order.cancellation_reason || 'Sin motivo informado'}</p>}</div><div className="flex items-center gap-2"><span className={`text-xs ${order.status === 'ANULADA' ? 'text-red-300' : 'text-emerald-300'}`}>{order.status === 'ANULADA' ? 'ANULADA' : 'COMPLETADA'}</span><button type="button" className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-white transition hover:border-[#FACC15]/60 hover:text-[#FACC15]" onClick={() => setOrderDetail(order)}><ReceiptText aria-hidden="true" className="h-4 w-4"/>Ver detalle</button>{order.status === 'COMPLETADA' && order.shift_uuid === shiftUuid && <button type="button" disabled={busy} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-200 hover:bg-red-950/40 disabled:opacity-40" onClick={() => void cancelOrder(order)}>Anular</button>}</div></div>)}</div>}
     </details>}
     {!!printJobs.length && <details className="pos-info-disclosure border-t border-white/10 pt-3">
       <summary>Impresiones recientes <span className="pos-disclosure-meta">{printJobs.length} comprobantes · este equipo</span></summary>
@@ -1014,9 +1075,9 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
           <button type="button" aria-label="Cerrar detalle" className="rounded-lg border border-white/15 p-2 text-gray-300 transition hover:border-white/30 hover:text-white" onClick={() => setOrderDetail(null)}><X aria-hidden="true" className="h-4 w-4"/></button>
         </header>
         <div className="max-h-[min(70vh,620px)] space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-          <div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Tipo de pedido</p><p className="mt-1 font-semibold">{orderDetail.consumption_type === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}</p></div><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Medio de pago</p><p className="mt-1 font-semibold">{orderDetail.payment_method.replace('_', ' ')}</p></div></div>
+          <div className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Tipo de pedido</p><p className="mt-1 font-semibold">{orderDetail.consumption_type === 'PARA_SERVIR' ? 'Para servir' : orderDetail.consumption_type === 'PARA_LLEVAR' ? 'Para llevar' : 'Registro histórico'}</p></div><div className="rounded-xl border border-white/10 bg-white/[0.03] p-3"><p className="text-xs text-gray-400">Medio de pago</p><p className="mt-1 font-semibold">{orderDetail.payment_method?.replace('_', ' ') ?? 'Sin pago registrado'}</p></div></div>
           <p className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm"><span className="text-xs text-gray-400">Cliente</span><br/><strong>{orderDetail.customer_name || 'Sin nombre'}</strong></p>
-          <div><h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Productos</h3><div className="divide-y divide-white/10 rounded-xl border border-white/10 px-4">{orderDetail.items.map((item, index) => <article key={`${item.product_name}-${index}`} className="py-3"><div className="flex justify-between gap-4"><div><p className="text-sm font-semibold">{item.quantity} × {item.product_name}</p><p className="mt-0.5 text-xs text-gray-400">{formatPrice(item.unit_price)} c/u</p></div><p className="text-sm font-semibold">{formatPrice(item.line_total)}</p></div>{item.modifiers.length > 0 && <ul className="mt-2 space-y-1 pl-3 text-xs text-gray-400">{item.modifiers.map((modifier, modifierIndex) => <li key={`${modifier.modifier_name}-${modifierIndex}`}>• {modifier.modifier_name}{modifier.price_at_sale > 0 ? ` · ${formatPrice(modifier.price_at_sale)}` : ''}</li>)}</ul>}{item.notes && <p className="mt-2 rounded-md bg-white/[0.04] px-2.5 py-2 text-xs text-gray-300"><span className="font-semibold">Nota cocina:</span> {item.notes}</p>}</article>)}</div></div>
+          <div><h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Productos</h3><div className="divide-y divide-white/10 rounded-xl border border-white/10 px-4">{orderDetail.items.map((item, index) => <article key={`${item.product_name}-${index}`} className="py-3"><div className="flex justify-between gap-4"><div><p className="text-sm font-semibold">{item.quantity} × {item.product_name}</p><p className="mt-0.5 text-xs text-gray-400">{formatPrice(item.unit_price)} c/u</p>{item.protein_choice && <p className="mt-1 text-sm font-bold text-amber-200">Proteína: {item.protein_choice}</p>}</div><p className="text-sm font-semibold">{formatPrice(item.line_total)}</p></div>{item.modifiers.length > 0 && <ul className="mt-2 space-y-1 pl-3 text-xs text-gray-400">{item.modifiers.map((modifier, modifierIndex) => <li key={`${modifier.modifier_name}-${modifierIndex}`}>• {modifier.modifier_name}{modifier.price_at_sale > 0 ? ` · ${formatPrice(modifier.price_at_sale)}` : ''}</li>)}</ul>}{item.notes && <p className="mt-2 rounded-md bg-white/[0.04] px-2.5 py-2 text-xs text-gray-300"><span className="font-semibold">Nota cocina:</span> {item.notes}</p>}</article>)}</div></div>
           <dl className="space-y-2 text-sm"><div className="flex justify-between text-gray-300"><dt>Subtotal</dt><dd>{formatPrice(orderDetail.subtotal)}</dd></div>{orderDetail.delivery_fee > 0 && <div className="flex justify-between text-gray-300"><dt>Despacho</dt><dd>{formatPrice(orderDetail.delivery_fee)}</dd></div>}<div className="flex justify-between border-t border-white/15 pt-3 text-base font-bold"><dt>Total</dt><dd>{formatPrice(orderDetail.total_amount)}</dd></div>{orderDetail.amount_paid !== null && <div className="flex justify-between text-gray-300"><dt>Recibido</dt><dd>{formatPrice(orderDetail.amount_paid)}</dd></div>}{orderDetail.change_given !== null && <div className="flex justify-between text-gray-300"><dt>Vuelto</dt><dd>{formatPrice(orderDetail.change_given)}</dd></div>}</dl>
           {orderDetail.status === 'ANULADA' && <p className="rounded-lg border border-red-500/25 bg-red-950/20 p-3 text-sm text-red-200"><span className="font-semibold">Anulada.</span> Motivo: {orderDetail.cancellation_reason || 'Sin motivo informado.'}</p>}
           {orderDetail.requires_review && <p className="rounded-lg border border-amber-400/25 bg-amber-950/20 p-3 text-xs text-amber-100">Venta offline sincronizada. Requiere revisión{orderDetail.review_reason ? `: ${orderDetail.review_reason}` : '.'}</p>}

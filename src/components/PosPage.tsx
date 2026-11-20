@@ -10,7 +10,8 @@ import { PosReports } from './PosReports';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ClpInput } from './ClpInput';
 import { usePosDialogs } from './PosDialogs';
-import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarCobroPendientePos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarAnulacionOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, guardarVentaOfflineEnColaPos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
+import { printPosShiftClose } from '../services/posPrinter';
+import { cargarAccesoOfflinePos, cargarCatalogoPos, cargarTurnoDesdeCachePos, eliminarAnulacionOfflinePos, eliminarEventoTurnoOfflinePos, eliminarVentaOfflineDeColaPos, guardarAccesoOfflinePos, guardarAnulacionOfflinePos, guardarEventoYTurnoEnCacheOfflinePos, guardarTurnoEnCachePos, guardarVentaOfflineEnColaPos, listarAnulacionesOfflinePos, listarEventosTurnoOfflinePos, listarVentasOfflineEnColaPos, marcarErrorAnulacionOfflinePos, marcarErrorEventoTurnoOfflinePos, marcarErrorVentaOfflineEnColaPos, precargarCatalogoPos, type PosOfflineShiftEvent } from '../services/posLocalStore';
 
 interface PosUser {
   id: number;
@@ -75,29 +76,6 @@ const formatChileClock = (value: Date) => ({
   }).format(value).replace(/\ba\.\s*m\./i, 'AM').replace(/\bp\.\s*m\./i, 'PM'),
 });
 
-const chileDateAndMinute = (value: Date) => {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'America/Santiago',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(value);
-  const part = (type: string) => Number(parts.find(entry => entry.type === type)?.value ?? 0);
-  return { year: part('year'), month: part('month'), day: part('day'), date: part('year') * 10000 + part('month') * 100 + part('day'), minute: part('hour') * 60 + part('minute') };
-};
-
-const debeCerrarAutomaticamente = (openedAt: string, now: Date) => {
-  const opened = chileDateAndMinute(new Date(openedAt));
-  const current = chileDateAndMinute(now);
-  const cutoff = 30;
-  const cutoffDay = opened.minute < cutoff
-    ? opened.date
-    : (() => {
-      const nextDay = new Date(Date.UTC(opened.year, opened.month - 1, opened.day + 1));
-      return nextDay.getUTCFullYear() * 10000 + (nextDay.getUTCMonth() + 1) * 100 + nextDay.getUTCDate();
-    })();
-  return current.date > cutoffDay || (current.date === cutoffDay && current.minute >= cutoff);
-};
-
 const PaymentSummaryList = ({ items }: { items: PaymentSummaryEntry[] }) => (
   <ul className="mt-2 space-y-2">
     {items.map((item) => (
@@ -118,6 +96,7 @@ export const PosPage = () => {
   const [user, setUser] = useState<PosUser | null>(null);
   const [shift, setShift] = useState<CashShift | null>(null);
   const [lastClosedShift, setLastClosedShift] = useState<CashShift | null>(null);
+  const [closeReceiptNotice, setCloseReceiptNotice] = useState('');
   const [anotherShiftOpen, setAnotherShiftOpen] = useState(false);
   const [nextOrderNumber, setNextOrderNumber] = useState(1);
   const [username, setUsername] = useState('');
@@ -128,19 +107,13 @@ export const PosPage = () => {
   const [closingCashCount, setClosingCashCount] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
   const [hasPendingPayment, setHasPendingPayment] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [chileClock, setChileClock] = useState(() => formatChileClock(new Date()));
   const [offlineMode, setOfflineMode] = useState(false);
   const [activeWorkspace, setActiveWorkspace] = useState<'sales' | 'catalog' | 'reports' | 'devices'>('sales');
   const [hasQueuedOfflineSales, setHasQueuedOfflineSales] = useState(false);
-  const [autoCloseDue, setAutoCloseDue] = useState(false);
-  const [autoCloseWaitingForPayment, setAutoCloseWaitingForPayment] = useState(false);
   const [pendingShiftEvents, setPendingShiftEvents] = useState<PosOfflineShiftEvent[]>([]);
-  const autoCloseInProgress = useRef(false);
-
-  useEffect(() => { isSubmittingRef.current = isSubmitting; }, [isSubmitting]);
 
   useEffect(() => {
     const updateClock = () => setChileClock(formatChileClock(new Date()));
@@ -363,13 +336,13 @@ export const PosPage = () => {
     return closedShift;
   };
 
-  const handleSaleSaved = async (offlineNextOrderNumber?: number, offlineCancellation?: { payment_method: string; total_amount: number }) => {
+  const handleSaleSaved = async (offlineNextOrderNumber?: number, offlineCancellation?: { payment_method: string | null; total_amount: number }) => {
     if (offlineMode && (offlineNextOrderNumber || offlineCancellation)) {
       if (offlineNextOrderNumber) setNextOrderNumber(offlineNextOrderNumber);
       if (user && shift) {
         const queuedOrders = await listarVentasOfflineEnColaPos(shift.uuid);
         const newOrder = offlineNextOrderNumber ? queuedOrders.find(order => order.shift_order_number === offlineNextOrderNumber - 1) : undefined;
-        const newTotal = newOrder?.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0) ?? 0;
+        const newTotal = (newOrder?.items.reduce((sum, item) => sum + item.quantity * (item.unit_price + item.modifiers.reduce((extra, modifier) => extra + modifier.price_at_sale * modifier.quantity_per_unit, 0)), 0) ?? 0) + (newOrder?.delivery_fee ?? 0);
         const updatedShift = {
           ...shift,
           sales_summary: shift.sales_summary.map(item => ({
@@ -730,6 +703,15 @@ export const PosPage = () => {
     }
   };
 
+  const printShiftCloseReceipt = async (closedShift: CashShift) => {
+    try {
+      await printPosShiftClose(closedShift);
+      setCloseReceiptNotice('Boleta de cierre enviada a la impresora.');
+    } catch (error) {
+      setCloseReceiptNotice(`Turno cerrado. No se pudo imprimir la boleta: ${error instanceof Error ? error.message : 'error de impresión'}`);
+    }
+  };
+
   const handleCloseShift = async () => {
     if (hasPendingPayment) {
       setErrorMessage('Resuelve la cotización o venta pendiente antes de cerrar el turno.');
@@ -749,6 +731,7 @@ export const PosPage = () => {
 
     setIsSubmitting(true);
     setErrorMessage('');
+    setCloseReceiptNotice('');
     try {
       if (offlineMode) {
         if (!user) throw new Error('No hay una cuenta offline disponible para guardar el cierre.');
@@ -778,6 +761,7 @@ export const PosPage = () => {
         setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
         setShift(closedShift);
         setLastClosedShift(closedShift);
+        await printShiftCloseReceipt(closedShift);
         setClosingNotes('');
         setClosingCashCount('');
         return;
@@ -794,6 +778,7 @@ export const PosPage = () => {
         },
       );
       setLastClosedShift(closedShift);
+      await printShiftCloseReceipt(closedShift);
       setClosingNotes('');
       setClosingCashCount('');
       await refreshShift();
@@ -805,67 +790,6 @@ export const PosPage = () => {
       setIsSubmitting(false);
     }
   };
-
-  const cerrarTurnoAutomaticamente = useCallback(async (): Promise<boolean> => {
-    if (!shift?.is_open || !user || autoCloseInProgress.current) return false;
-    autoCloseInProgress.current = true;
-    let startedSubmission = false;
-    try {
-      setAutoCloseDue(true);
-      const savedPayment = await cargarCobroPendientePos(shift.uuid).catch(() => null);
-      const paymentNeedsResolution = hasPendingPayment || savedPayment?.status === 'PAGO_RECIBIDO';
-      setAutoCloseWaitingForPayment(paymentNeedsResolution);
-      if (paymentNeedsResolution || (!offlineMode && hasQueuedOfflineSales) || isSubmittingRef.current) return false;
-      startedSubmission = true;
-      setIsSubmitting(true);
-      setErrorMessage('');
-      const closedAt = new Date().toISOString();
-      const expectedCash = shift.initial_cash + (shift.sales_summary.find(item => item.payment_method === 'EFECTIVO')?.total_amount ?? 0);
-      const closedShift: CashShift = {
-        ...shift,
-        closed_at: closedAt,
-        final_cash: expectedCash,
-        counted_cash: null,
-        cash_difference: null,
-        closed_automatically: true,
-        is_open: false,
-        updated_at: closedAt,
-      };
-      await guardarEventoYTurnoEnCacheOfflinePos(user.id, {
-        shift: closedShift,
-        another_shift_open: false,
-        next_order_number: nextOrderNumber,
-      }, {
-        user_id: user.id,
-        shift_uuid: shift.uuid,
-        event_type: 'CLOSE',
-        payload: { closed_at: closedAt, counted_cash: null, closed_automatically: true, notes: shift.notes },
-      });
-      setShift(closedShift);
-      setLastClosedShift(closedShift);
-      setPendingShiftEvents(await listarEventosTurnoOfflinePos(user.id));
-      setAutoCloseDue(false);
-      setAutoCloseWaitingForPayment(false);
-      if (!offlineMode && navigator.onLine && await syncPendingOpenEvents(user.id)) {
-        await syncPendingCloseEvents(user.id);
-      }
-      return true;
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el cierre automático en este equipo.');
-      return false;
-    } finally {
-      autoCloseInProgress.current = false;
-      if (startedSubmission) setIsSubmitting(false);
-    }
-  }, [shift, user, nextOrderNumber, hasPendingPayment, hasQueuedOfflineSales, offlineMode]);
-
-  const comprobarTurnoAntesDeVenta = useCallback(async (): Promise<boolean> => {
-    if (!shift?.is_open) return false;
-    if (!debeCerrarAutomaticamente(shift.opened_at, new Date())) return true;
-    setAutoCloseDue(true);
-    await cerrarTurnoAutomaticamente();
-    return false;
-  }, [shift, cerrarTurnoAutomaticamente]);
 
   const handleRetryPendingShiftEvents = async () => {
     if (!user || isSubmitting) return;
@@ -920,31 +844,6 @@ export const PosPage = () => {
   };
 
 
-
-  useEffect(() => {
-    if (!shift?.is_open || !user) {
-      setAutoCloseDue(false);
-      setAutoCloseWaitingForPayment(false);
-      return;
-    }
-    let cancelled = false;
-    const checkAutomaticClose = () => {
-      if (!cancelled && debeCerrarAutomaticamente(shift.opened_at, new Date())) {
-        void cerrarTurnoAutomaticamente();
-      }
-    };
-    const handleVisibilityChange = () => { if (document.visibilityState === 'visible') checkAutomaticClose(); };
-    void checkAutomaticClose();
-    const intervalId = window.setInterval(checkAutomaticClose, 15000);
-    window.addEventListener('focus', checkAutomaticClose);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', checkAutomaticClose);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [shift, user, cerrarTurnoAutomaticamente]);
 
   return (
     <main className="pos-shell min-h-screen bg-[#0D0D0D] px-4 py-5 text-gray-100 sm:px-6 sm:py-8 2xl:px-10">
@@ -1208,6 +1107,7 @@ export const PosPage = () => {
             {(!shift || !shift.is_open) && lastClosedShift && (
               <div className="rounded-2xl border border-emerald-500/20 bg-[#171717] p-5">
                 <h2 className="font-semibold text-white">Resumen del turno cerrado</h2>
+                {closeReceiptNotice && <p role="status" className="mt-2 text-sm text-amber-200">{closeReceiptNotice}</p>}
                 <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                   <div>
                     <dt className="text-xs uppercase text-gray-400">Efectivo esperado</dt>
@@ -1292,7 +1192,7 @@ export const PosPage = () => {
             )}
             {shift?.is_open ? (
             <div className="pos-shift-layout min-w-0 space-y-5">
-              <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} onBeforeCreateSale={comprobarTurnoAntesDeVenta} />
+              <PosSalesPanel shiftUuid={shift.uuid} nextOrderNumber={nextOrderNumber} offlineMode={offlineMode} shiftSyncBlocked={pendingShiftEvents.some(item => item.event_type === 'CLOSE')} onSale={handleSaleSaved} onPendingPaymentChange={setHasPendingPayment} onQueueChange={setHasQueuedOfflineSales} />
               <aside aria-labelledby="pos-active-shift-title" className="pos-shift-summary grid min-w-0 gap-5 rounded-2xl border border-emerald-500/20 bg-[#171717] p-5 shadow-xl sm:p-6 lg:grid-cols-2">
                 <header className="flex items-start justify-between gap-4 lg:col-span-2">
                   <div>
@@ -1358,7 +1258,6 @@ export const PosPage = () => {
                 </button>
                 {offlineMode && <p className="rounded-xl border border-white/10 bg-[#0D0D0D] p-3 text-xs text-gray-400 lg:col-span-2">El cierre quedará pendiente y se enviará después de sincronizar las ventas y anulaciones del turno.</p>}
                 {hasPendingPayment && <p role="alert" className="rounded-xl border border-amber-400/20 bg-amber-500/[0.07] p-3 text-xs leading-relaxed text-amber-200 lg:col-span-2">Hay una cotización o pago pendiente; resuélvelo antes de cerrar el turno.</p>}
-                {autoCloseDue ? <p role="status" className="rounded-xl border border-amber-500/25 bg-amber-950/20 p-3 text-xs text-amber-100 lg:col-span-2">Llegó la hora del cierre automático. {autoCloseWaitingForPayment ? 'Termina de resolver el pago pendiente para cerrar sin perder la venta.' : !offlineMode && hasQueuedOfflineSales ? 'Se cerrará al terminar de sincronizar las ventas pendientes.' : 'El turno se está cerrando y se sincronizará al recuperar la conexión.'}</p> : <p className="text-xs text-gray-500 lg:col-span-2">Cierre automático a las 00:30 (Chile).</p>}
               </aside>
               </div>
             ) : shift && offlineMode ? (
