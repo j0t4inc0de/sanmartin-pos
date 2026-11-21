@@ -3,192 +3,150 @@
 > **Cliente:** Sanguchería San Martín - Food Truck  
 > **Ubicación:** Av. Gabriela Oriente #01216, Puente Alto, Chile  
 > **Desarrollado por:** We Are Samod — Soluciones Informáticas & Desarrollo Fullstack  
-> **Servidor Host:** `jota-server` (Ubuntu Linux 6.8 / Red Tailscale)  
-> **Condiciones Comerciales (Acuerdo con Diego):**  
-> - **Desarrollo Total:** $230.000 CLP en 2 cuotas:
->   - **1ra Cuota (Inicio):** $115.000 CLP (ya pagada íntegra a Juan).
->   - **2da Cuota (Entrega Final):** $115.000 CLP al finalizar el desarrollo ($65.000 CLP para Benjamín y $50.000 CLP para Juan).
-> - **Mantenimiento & Servidor:** $60.000 CLP / mensual (MRR recurrente en `jota-server`: Mes c/Diego: Servidor $20k, Juan $15k, Benja $15k, Diego $10k; Mes s/Diego: Servidor $30k, Juan $15k, Benja $15k).  
-> **Fecha de Actualización:** 6 de Noviembre de 2026 (Versión 2.2 — Dominio Oficial .CL, Cierre Auto 00:00 & Release 16 Nov)  
+> **Servidor Host Backend:** `jota-server` (Ubuntu Linux 6.8 / Red Tailscale `100.99.25.56`)  
+> **Hosting Frontend:** Cloudflare Pages (`https://sangucheriasanmartin.cl` / `https://sanmartin-frontend.pages.dev`)  
+> **Fecha de Actualización:** 21 de Noviembre de 2026 (Versión 2.5 — Producción Oficial, Proteína a Elección, Delivery, Impresión Térmica ESC/POS & Arqueo Cierre)
 
 ---
 
-## 1. Infraestructura y Rutas en el Servidor (`jota-server`)
+## 1. Infraestructura y Topología de Producción
 
-El proyecto se encuentra desplegado y funcionando en producción bajo la infraestructura de contenedores Docker y enrutamiento seguro mediante Cloudflare Tunnel.
+El sistema opera bajo una arquitectura desacoplada de alto rendimiento:
 
 ```
-                                      INTERNET
-                                         │
-                                         ▼
-                             ┌───────────────────────┐
-                             │ Cloudflare Zero Trust │
-                             │  sanmartin.           │
-                             │  wearesamod.com       │
-                             └───────────┬───────────┘
-                                         │ Túnel Seguro
-                                         ▼
-┌─ jota-server (Host: 100.99.25.56) ───────────────────────────────────┐
-│                                                                      │
-│   ┌──────────────────────────────────────────────────────────────┐   │
-│   │ Red Docker: proxy_network                                    │   │
-│   │                                                              │   │
-│   │   ┌───────────────────────┐      ┌─────────────────────────┐ │   │
-│   │   │  cloudflare-tunnel    │─────▶│  sanmartin-landing      │ │   │
-│   │   │  (cloudflared daemon) │      │  Puerto interno: 80     │ │   │
-│   │   └───────────────────────┘      └────────────┬────────────┘ │   │
-│   │                                               │                  │
-│   │   ┌───────────────────────┐      ┌────────────▼────────────┐ │   │
-│   │   │  sanmartin-db         │◀────┤  sanmartin-backend      │ │   │
-│   │   │  (PostgreSQL 16)      │      │  (Django REST 5.x)      │ │   │
-│   │   └───────────────────────┘      └─────────────────────────┘ │   │
-│   └──────────────────────────────────────────────────────────────┘   │
-│                                                                      │
-│   Ruta física en host:                                               │
-│   /mnt/storage/sanmartin-landing      [ Nginx Alpine SPA ]           │
-│                                       ├── / ──▶ En Construcción      │
-│                                       ├── /menu ──▶ Carta QR         │
-│                                       └── /assets ──▶ JS/CSS         │
-└──────────────────────────────────────────────────────────────────────┘
+                                    CLIENTES / DISPOSITIVOS
+                             ┌───────────────────────────────────┐
+                             │ • Mesón Food Truck (All-in-One)   │
+                             │ • Teléfonos Clientes (Carta QR)   │
+                             │ • Navegadores Web (Landing Page)  │
+                             └─────────────────┬─────────────────┘
+                                               │
+                                               ▼
+                              ┌─────────────────────────────────┐
+                              │     Cloudflare Edge Network     │
+                              │     sangucheriasanmartin.cl     │
+                              └────────┬───────────────┬────────┘
+                                       │               │
+                     Rutas Estáticas   │               │ Rutas Dinámicas
+                     (HTML/JS/CSS/SPA) │               │ (/api/*, /admin/*, /media/*)
+                                       ▼               ▼
+                 ┌───────────────────────────┐   ┌───────────────────────────┐
+                 │  Cloudflare Pages         │   │ Cloudflare Zero Trust     │
+                 │  (Direct Upload con Vite) │   │ Tunnel (Túnel cifrado)    │
+                 │  sanmartin-frontend       │   └─────────────┬─────────────┘
+                 └───────────────────────────┘                 │
+                                                               ▼
+┌─ jota-server (Host Linux 100.99.25.56) ────────────────────────────────────────────────────────┐
+│                                                                                                │
+│   ┌────────────────────────────────────────────────────────────────────────────────────────┐   │
+│   │ Red Docker: proxy_network                                                              │   │
+│   │                                                                                        │   │
+│   │   ┌─────────────────────────────┐        ┌─────────────────────────────────────────┐   │   │
+│   │   │  cloudflare-tunnel          │───────▶│  sanmartin-backend                      │   │   │
+│   │   │  (cloudflared daemon)       │        │  (Django REST Framework 5.2 / Gunicorn) │   │   │
+│   │   └─────────────────────────────┘        │  Puerto interno: 8000                   │   │   │
+│   │                                          └────────────────────┬────────────────────┘   │   │
+│   │                                                               │                        │   │
+│   │                                          ┌────────────────────▼────────────────────┐   │   │
+│   │                                          │  sanmartin-db                           │   │   │
+│   │                                          │  (PostgreSQL 16 Alpine en contenedor)   │   │   │
+│   │                                          └─────────────────────────────────────────┘   │   │
+│   └────────────────────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                                │
+│   Directorio físico en host: /mnt/storage/sanmartin-landing                                    │
+│   Volúmenes persistentes: sanmartin_db_data (Postgres), sanmartin_media (fotos catálogo)        │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Rutas y Parámetros del Servidor:
-- **Directorio de Trabajo en Host:** `/mnt/storage/sanmartin-landing`
-- **Nombre del Contenedor Frontend:** `sanmartin-landing`
-- **Nombre del Contenedor Backend:** `sanmartin-backend` (Django 5.x REST API en Docker)
-- **Base de Datos:** `sanmartin-db` (PostgreSQL 16 en contenedor, puerto interno `5432`)
-- **Red de Docker Conectada:** `proxy_network` (compartida con `cloudflare-tunnel`)
-- **Puerto Expuesto Frontend:** `80/tcp` (aislado internamente en Docker)
-- **Configuración Nginx:** SPA routing (`try_files $uri $uri/ /index.html;`)
-- **Dominio Oficial Registrado:** `https://sangucheriasanmartin.cl` (Inscrito en NIC Chile, gestionado vía Cloudflare con SSL automático)
-- **Dominio de Contingencia/Desarrollo:** `https://sanmartin.wearesamod.com`
-  - `/` ➔ Landing Page Oficial
-  - `/menu` ➔ Carta Digital QR
-  - `/sistema-sanmartin` (o `/pos`) ➔ Sistema POS y Dashboard (Login único usuario `admin`)
+### Dominios y Enrutamiento:
+- **Dominio Principal:** `https://sangucheriasanmartin.cl`
+- **Frontend SPA (Cloudflare Pages):**
+  - `/` ➔ Landing Page Oficial (Hero, Características, Ubicación, Testimonios y Promociones reales).
+  - `/menu` ➔ Carta Digital QR móvil con buscador, filtros y fotos reales de sándwiches y chorrillanas.
+  - `/pos` ➔ Sistema POS de Venta, Catálogo, Reportes de Caja y Diagnóstico de Impresora.
+- **Backend API (jota-server a través del túnel):**
+  - `/api/*` ➔ Django REST API (ventas, cotización, turnos, catálogo, reportes).
+  - `/admin/*` ➔ Django Admin para administración y gestión de usuarios.
+  - `/media/*` ➔ Archivos multimedia e imágenes cargadas para productos del catálogo.
 
 ---
 
-## 2. Estado Actual del Desarrollo Frontend (Landing & Carta QR)
+## 2. Frontend (React 19 + TypeScript + Vite + Tailwind CSS)
 
-El frontend está desarrollado en **React 19 + TypeScript + Vite + Tailwind CSS v4 + Framer Motion**.
-
-### A. Vistas Implementadas y Estrategia Activa:
-
-| Ruta | Componente | Descripción y Estado Actual |
-| :--- | :--- | :--- |
-| **`/`** | `UnderConstruction.tsx` | **Pantalla de presentación temporal activa.** Muestra la identidad del Food Truck, el logo con aura dorada, el crédito corporativo de *We Are Samod*, aviso de desarrollo y botón directo a la Carta QR. |
-| **`/menu`** | `QrMenuPage.tsx` | **Carta Digital 100% operativa.** Optimizada para teléfonos móviles. Incluye buscador instantáneo por ingredientes, pestañas por categoría, fotos reales, precios en CLP, desglose de ingredientes y barra inferior de estado (*"¡Plancha Caliente! Abierto ahora / Mar a Dom: 18:30 - 23:30"*). |
-| **Landing Completa** | `App.tsx` | Conservada al 100% tras la bandera `SHOW_FULL_LANDING = false`. Contiene Hero, Menú interactivo, sección Nosotros, Mapa verificado de Google Maps, Testimonios y Carrito de pedidos. |
-
-> ⚠️ **Sincronización API:** Tanto la **Landing Page (`/`)** como el **Menú QR (`/menu`)** hoy operan con datos estáticos (`menuData.ts`). La fase fullstack conectará estas vistas al endpoint `GET /api/menu/` para reflejar en vivo los precios, ofertas y el switch `"is_available"` (ocultando productos agotados).
-
----
-
-## 3. Arquitectura del Sistema POS: Hardware y Operación Local
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                   EQUIPO LOCAL EN FOOD TRUCK                           │
-│           ASUS All-in-One (Windows 11) en Mesón de Atención            │
-│       Operado por el cajero con Teclado Físico y Mouse (Sin táctil)    │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                                    ├──▶ Navegador Chromium (Modo Kiosk)
-                                    │    • Almacenamiento Local (IndexedDB / Cache API)
-                                    │    • Cola de sincronización offline con UUIDs
-                                    │
-                                    └──▶ Conexión USB Directa
-                                         │
-                                         ▼
-                         ┌───────────────────────────────┐
-                         │   DINON THERMAL PRINTER 9390  │
-                         │   • Ancho: 80 mm              │
-                         │   • Protocolo: ESC/POS        │
-                         │   • Velocidad: 160 mm/s       │
-                         └───────────────┬───────────────┘
-                                         │ Puerto RJ11 (24V 1A)
-                                         ▼
-                         ┌───────────────────────────────┐
-                         │      Gaveta de Dinero         │
-                         │ (Apertura automática efectivo)│
-                         └───────────────────────────────┘
-                                         ▲
-                                         │ Sincronización API (Online / Offline-First)
-                                         ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                         SERVIDOR CENTRAL                               │
-│              jota-server (PostgreSQL 16 + Django REST Framework)       │
-├────────────────────────────────────────────────────────────────────────┤
-│ • Catálogo Maestro (Precios, Modificadores, Switch is_available)       │
-│ • Registro de Ventas Inmutables, Cierre de Caja y Gráfico Horas Punta  │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼                                   ▼
-        Carta QR del Local                   Landing Page Oficial
-             (`/menu`)                               (`/`)
-    (Actualización inmediata)              (Actualización inmediata)
-```
+### A. Vistas Principales:
+1. **Carta Digital QR (`QrMenuPage.tsx`):**
+   - Consume en tiempo real el catálogo de Django mediante el hook `useMenuCatalog()`.
+   - Búsqueda instantánea por nombre o ingredientes.
+   - Pestañas dinámicas según categorías activas.
+   - Cero datos hardcodeados: las promociones se leen desde la categoría real del local (*"Promos Definitiva"*).
+2. **Landing Page (`App.tsx` / `CombosSection.tsx`):**
+   - Muestra promociones dinámicas activas obtenidas de la API.
+   - Si no hay promociones activas en la BD, la sección se oculta de forma limpia y transparente.
+3. **Punto de Venta (`PosPage.tsx` / `PosSalesPanel.tsx`):**
+   - Diseño optimizado para pantalla ancha de computador Todo en Uno (All-in-One).
+   - 4 Espacios de trabajo: **Caja (Ventas)**, **Catálogo**, **Reportes** y **Dispositivos (Impresora)**.
+   - Botón destacado y ergonómico `VOLVER A CAJA` en todas las pantallas secundarias.
 
 ---
 
-## 4. Arquitectura Offline-First (Venta Ininterrumpida sin Internet)
+## 3. Funcionalidades Clave del POS de San Martín
 
-El Food Truck opera en Puente Alto sobre conexión móvil (4G/Wi-Fi). Ante caídas de red:
+### A. Gestión de Sándwiches con "Proteína a Elección":
+- Los sándwiches que indican en su descripción o ingredientes *"Proteína a elección"* exigen seleccionar obligatoriamente una de las 5 opciones:
+  - **Churrasco**, **Lomo**, **Mechada**, **Pollo** o **Hamburguesa**.
+- Los productos de receta fija o vegetarianos no despliegan selector de proteína.
+- La proteína elegida se guarda en `OrderItem.protein_choice` y se imprime destacada en la comanda de cocina.
 
-1. **Operación Local Completa (0 Downtime):**
-   * El POS sigue cobrando, calculando vuelto, imprimiendo boletas en la DINON 9390 y abriendo la gaveta sin necesidad de internet.
-   * Los pedidos y el turno de caja se almacenan temporalmente en el **IndexedDB** del navegador.
-2. **Idempotencia mediante `UUIDv4`:**
-   * Cada orden se genera con un `uuid` único universal desde el All-in-One.
-   * Al regresar la conexión, el POS sincroniza las órdenes pendientes contra el endpoint `POST /api/pos/orders/sync/`.
-   * El servidor ejecuta `INSERT ... ON CONFLICT (uuid) DO NOTHING` (o `update_or_create`). Si la conexión parpadea a la mitad, **jamás se duplica una orden ni se descuadra el dinero de la caja**.
-3. **Preservación de Hora Real (`created_at` del POS):**
-   * El timestamp de venta se guarda tal como se cobró localmente, protegiendo la exactitud del **Gráfico de Horas Punta** aun si la sincronización ocurre 2 horas más tarde.
-4. **Sincronización Delta de Catálogo (`updated_at`):**
-   * Al reconectar y durante la operación online, el POS consulta `GET /api/pos/catalog/?updated_after=<timestamp>`, recibiendo categorías, productos y modificadores modificados, además de identificadores explícitos para retirar los elementos desactivados/no disponibles.
+### B. Nombre del Cliente Obligatorio:
+- Cada pedido exige capturar el `customer_name` (1 a 100 caracteres).
+- Se utiliza para llamar al cliente en mesón cuando su pedido está listo y se imprime en tamaño doble en la comanda de cocina y en el comprobante del cliente.
+
+### C. Tipos de Consumo y Delivery:
+- **Para Servir:** Consumo en mesas del mesón.
+- **Para Llevar:** Pedido empaquetado para retiro en mesón. Admite agregar un recargo de envío opcional (`delivery_fee`) si el cliente solicita despacho.
+- Se eliminó la figura de consumo propio sin costo del flujo de ventas ordinario para garantizar cuadratura contable estricta.
+
+### D. Resolución Inteligente de Conflictos 409 (Folios e Idempotencia):
+- Si el navegador experimenta un conflicto de folio (por ejemplo, dos equipos o pestañas cotizando al mismo tiempo):
+  - El sistema no se congela ni simula falsamente un fallo de red.
+  - Muestra un banner de error explícito y el botón **"Actualizar folio y desbloquear carrito"**.
+  - Al confirmarlo, borra el borrador pendiente de `IndexedDB`, resincroniza el folio correlativo (`nextOrderNumber`) desde `/api/shifts/current/` y permite cotizar nuevamente sin perder los productos cargados.
+
+### E. Integración de Impresión Térmica ESC/POS (DINON 9390):
+- **Puente Local Windows (`posPrinter.ts`):** Servicio local en `http://127.0.0.1:9390/print` con timeout de 15 segundos vía `AbortController`.
+- **Comandas de Cocina:** Tipografía en negrita y doble altura/ancho (`esc(29, 33, 17)`) para máxima legibilidad de productos, notas de cocina y exclusiones.
+- **Logo del Local:** Encabezado gráfico de San Martín en el comprobante de cliente (`posPrinterLogo.ts`).
+- **Apertura de Gaveta RJ11:** Pulso eléctrico automático al confirmar pagos en efectivo.
+- **Tirilla de Cierre de Turno ("VENTA DEL DÍA"):** Al cerrar la caja, imprime el resumen contable (inicio, fin, desglose por Efectivo, Tarjeta, Transferencia y Total General).
 
 ---
 
-## 5. Contratos de la API REST (Especificación de Endpoints)
+## 4. Arquitectura Offline-First y Resiliencia
 
-| Método | Endpoint | Acceso | Descripción |
+1. **Persistencia Local Dual:**
+   - Carrito activo y cobro pendiente respaldados en **IndexedDB** (`posLocalStore.ts`).
+   - Si la ventana se recarga o se corta la energía, el borrador se restaura íntegro.
+2. **Cola de Sincronización FIFO:**
+   - Las ventas realizadas sin conexión se acumulan localmente y se transmiten al servidor en estricto orden cronológico (`created_at`).
+3. **Idempotencia vía UUID:**
+   - Cada orden nace con un `UUIDv4`. Si una petición de cobro sufre timeout pero llega al servidor, el reintento devuelve la orden creada sin duplicar ítems ni cobros.
+4. **Catálogo Delta:**
+   - La pantalla de ventas consulta cambios incrementales del menú mediante `updated_after`, sincronizando precios, modificadores y bajas lógicas (`is_deleted`).
+
+---
+
+## 5. Endpoints REST Principales
+
+| Método | Endpoint | Permiso | Descripción |
 | :---: | :--- | :---: | :--- |
-| **`GET`** | `/api/menu/` | Público | Categorías y productos activos/disponibles para la Carta QR y Landing. |
-| **`POST`** | `/api/auth/token/` | Público | Autenticación del usuario único del mesón (`admin`) vía JWT / Session. |
-| **`GET`** | `/api/pos/catalog/` | `sales.can_operate_pos` | Catálogo completo o cambios incrementales con bajas explícitas mediante `?updated_after=...`. |
-| **`GET/POST/PATCH`** | `/api/pos/catalog/manage/{categories,products,modifiers}/` | `sales.can_operate_pos` | Administrar el catálogo desde el POS; conserva registros mediante desactivación y no expone borrado físico. |
-| **`PATCH`** | `/api/pos/products/{id}/availability/` | `admin` | Switch rápido de disponibilidad diaria (`is_available: true/false`). |
-| **`POST`** | `/api/pos/shifts/` | `admin` | Apertura o cierre de turno de caja (gestiona `uuid`, `initial_cash`, `notes`). |
-| **`POST`** | `/api/pos/orders/sync/` | `admin` | Sincronización en lote de órdenes offline o creación en tiempo real con `uuid`. |
-| **`POST`** | `/api/pos/orders/{id}/cancel/` | `admin` | Anulación en 1 clic de una comanda con registro de `cancellation_reason`. |
-| **`GET`** | `/api/pos/reports/shift-summary/{id}/` | `admin` | Arqueo automático de caja agregando por método de pago. |
-| **`GET`** | `/api/pos/reports/rush-hours/` | `admin` | Agrupación por intervalos de hora para el gráfico de horas punta. |
-| **`GET`** | `/api/reports/sales/?period=day&date=YYYY-MM-DD`, `?period=week&date=YYYY-MM-DD` o `?period=month&month=YYYY-MM` | `sales.can_operate_pos` | Reporte agregado por período: pagos, anulaciones, ranking de productos, horas y turnos. La semana comercial es martes a domingo. Ver `docs/CONTRATO_API_REPORTES.md`. |
-
----
-
-## 6. Reglas de Negocio Reales del Local (Acuerdos con Diego)
-
-1. **Se paga ANTES de preparar:** El pedido se cobra en mesón, se imprime el ticket para el cliente + comanda de plancha y se abre la gaveta. Al despachar el pan, el papel de cocina se bota. Por ello, las órdenes nacen en estado **`COMPLETADA`**.
-2. **5 Tipos de Consumo:** `PARA_SERVIR`, `PARA_LLEVAR`, `CONSUMO_PROPIO` ($0 en total, colación del personal), `DELIVERY` (+ recargo de envío) y `RETIRO` (pedidos anticipados por WhatsApp).
-3. **Modificadores Asociados al Producto:** En `order_items`, cada sándwich tiene sus `order_item_modifiers` (*Extra Queso $900*, *Sin Mayo $0*) para imprimir tabulados justo debajo del pan en el ticket térmico.
-4. **Inmutabilidad Contable:** Se congelan `product_name`, `unit_price`, `modifier_name` y `price_at_sale` en la venta para que futuras ediciones de la carta no alteren el historial contable.
-5. **Cero Sobreingeniería:** Sin combos por el momento (todo se vende unitario contundente), sin pesaje de ingredientes en gramos, sin tablas externas redundantes para estados. Sin migración de datos antiguos de Tkinter.
-6. **Mecánica de Anulación y Gaveta DINON 9390:** El botón de 1 clic `ANULAR PEDIDO` no borra la orden de la base de datos (queda `status = 'ANULADA'`), pero descuenta el dinero inmediatamente del arqueo de caja. Si el pago original fue en efectivo, el POS envía el comando de pulso RJ11 a la impresora DINON 9390 para abrir automáticamente la gaveta y realizar el reembolso.
-7. **Cierre Automático de Caja (00:00):** Si el personal olvida cerrar turno tras el límite habitual de las 23:30, el sistema ejecuta el cierre automático a las 00:00 registrando la nota: *"Caja cerrada automáticamente por inactividad / sistema"*.
-8. **Diseño de Interfaz Desktop Widescreen:** El POS opera en computador Todo en Uno (All-in-One); ocupa el 100% del ancho de pantalla, organiza las vistas mediante pestañas superiores (sin scrolls verticales largos), elimina botones distractores ("Volver a la web") e incorpora un reloj digital en tiempo real en la barra de sesión activa.
-
----
-
-## 7. Hoja de Ruta de Desarrollo y Entrega Final
-
-| Hito / Fecha | Alcance | Responsable | Estado |
-| :---: | :--- | :---: | :---: |
-| **Hito 1** | Landing comercial, Carta QR `/menu`, material publicitario y despliegue en `jota-server`. | Juan Erices | **100% Completado** ✅ |
-| **Hito 2** | Modelo Entidad-Relación (MER), DDL PostgreSQL 16, modelos Django 5.x y arquitectura Offline-First. | Juan Erices | **100% Completado** ✅ |
-| **Hito 3** | Dominio oficial `sangucheriasanmartin.cl` comprado en NIC Chile y configurado en Cloudflare. | Juan Erices | **100% Completado** ✅ |
-| **Miércoles 11 Nov** | Cierre de desarrollo frontend POS (desktop widescreen, pestañas, anulación y reloj). | Benjamín Martínez | En desarrollo ⏳ |
-| **Jueves 12 - Viernes 13** | Pruebas integrales y auditoría de flujo (caja, tickets DINON 9390, cierres y anulaciones). | Juan + Benjamín | Programado |
-| **Sábado 14 - Domingo 15** | Despliegue final de base de datos PostgreSQL y backend en `jota-server`. | Juan Erices | Programado |
-| **Lunes 16 Nov 2026** | **Entrega Oficial e Instalación en el Food Truck (Puesta en marcha con Diego)**. | Equipo SAM | **HITO FINAL** 🎯 |
+| **`GET`** | `/api/menu/` | Público | Catálogo activo y disponible para Landing y Menú QR. |
+| **`GET`** | `/api/auth/session/` | `IsAuthenticated` | Verifica sesión activa y datos del usuario. |
+| **`GET/POST`** | `/api/shifts/current/` | `sales.can_operate_pos` | Consulta el turno activo, otro turno abierto y el `next_order_number`. |
+| **`POST`** | `/api/shifts/open/` | `sales.can_operate_pos` | Apertura de turno con monto inicial en efectivo. |
+| **`POST`** | `/api/shifts/{uuid}/close/` | `sales.can_operate_pos` | Cierre de turno manual con conteo físico de efectivo y notas. |
+| **`POST`** | `/api/orders/quote/` | `sales.can_operate_pos` | Cotización firmada con precios vigentes, validación de proteína y cálculo de totales. |
+| **`POST`** | `/api/orders/` | `sales.can_operate_pos` | Registro definitivo de venta pagada (idempotente). |
+| **`POST`** | `/api/orders/sync/` | `sales.can_operate_pos` | Sincronización de ventas generadas en modo offline. |
+| **`POST`** | `/api/orders/{uuid}/cancel/` | `sales.can_operate_pos` | Anulación de venta con motivo obligatorio. |
+| **`GET`** | `/api/reports/sales/` | `sales.can_operate_pos` | Reporte de ventas del día, semana o mes con horas punta y medios de pago. |
+| **`GET/POST/DELETE`** | `/api/pos/catalog/manage/products/` | `sales.can_operate_pos` | Administración de productos con soft delete (`is_deleted`) y subida de imágenes. |

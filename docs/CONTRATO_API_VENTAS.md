@@ -9,8 +9,9 @@ Este documento convierte las decisiones de negocio acordadas en reglas de implem
 
 ## 1. Decisiones confirmadas
 
-- La primera versión registra ventas presenciales del mesón; no incluye delivery, retiro externo, combos ni consumo propio.
-- El tipo de consumo será `PARA_SERVIR` o `PARA_LLEVAR`.
+- La primera versión registra ventas presenciales del mesón y pedidos para llevar con despacho opcional (`delivery_fee`); no incluye combos ni consumo propio.
+- El tipo de consumo será `PARA_SERVIR` o `PARA_LLEVAR`. Si el pedido es `PARA_LLEVAR`, admite un recargo opcional de envío (`delivery_fee`).
+- Para sándwiches que indiquen en su descripción o ingredientes «proteína a elección», se exige especificar `protein_choice` (`CHURRASCO`, `LOMO`, `MECHADA`, `POLLO` o `HAMBURGUESA`).
 - Una venta se guarda como completada cuando el operador confirma que recibió el pago. No habrá pedidos pendientes de pago.
 - Cada venta admite un medio de pago: efectivo, Transbank (débito o crédito, una sola categoría) o transferencia.
 - En efectivo, se ingresa el monto recibido, que debe cubrir el total; el servidor calcula el vuelto. En Transbank y transferencia, `amount_paid` y `change_given` quedan vacíos; `total_amount` registra el importe de la venta.
@@ -79,6 +80,7 @@ Todas las rutas requieren sesión autenticada, CSRF y permiso POS.
   "created_at": "2026-11-02T20:12:00-03:00",
   "customer_name": "Nombre del cliente",
   "consumption_type": "PARA_LLEVAR",
+  "delivery_fee": 1500,
   "items": [
     {
       "product_id": 24,
@@ -86,6 +88,7 @@ Todas las rutas requieren sesión autenticada, CSRF y permiso POS.
       "expected_unit_price": 6500,
       "expected_updated_at": "2026-11-02T19:40:00-03:00",
       "quantity": 2,
+      "protein_choice": "CHURRASCO",
       "notes": "Pan bien tostado",
       "modifiers": [
         { "modifier_id": 8, "expected_name": "Queso extra", "expected_price": 900, "quantity_per_unit": 2 },
