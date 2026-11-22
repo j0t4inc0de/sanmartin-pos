@@ -124,13 +124,29 @@ class OrderQuoteInputSerializer(serializers.Serializer):
     consumption_type = serializers.ChoiceField(
         choices=["PARA_SERVIR", "PARA_LLEVAR"]
     )
+    is_delivery = serializers.BooleanField(required=False, default=None, allow_null=True)
+    delivery_address = serializers.CharField(max_length=250, required=False, allow_blank=True, trim_whitespace=True, default="")
     delivery_fee = serializers.IntegerField(min_value=0, required=False, default=0)
     items = QuoteItemInputSerializer(many=True, allow_empty=False)
 
     def validate(self, attrs):
         delivery_fee = attrs.get("delivery_fee", 0)
-        if delivery_fee and attrs["consumption_type"] != "PARA_LLEVAR":
-            raise serializers.ValidationError({"delivery_fee": "El delivery solo aplica a pedidos para llevar."})
+        legacy_payload = "is_delivery" not in self.initial_data
+        is_delivery = attrs.get("is_delivery")
+        if is_delivery is None:
+            # Older POS builds used a positive fee as the delivery marker.
+            is_delivery = bool(delivery_fee)
+            attrs["is_delivery"] = is_delivery
+        delivery_address = attrs["delivery_address"]
+        if (delivery_fee or is_delivery or delivery_address) and attrs["consumption_type"] != "PARA_LLEVAR":
+            field = "delivery_fee" if delivery_fee else "consumption_type"
+            raise serializers.ValidationError({field: "El delivery solo aplica a pedidos para llevar."})
+        if delivery_fee and not is_delivery:
+            raise serializers.ValidationError({"is_delivery": "Activa delivery para agregar un costo de despacho."})
+        if is_delivery and not delivery_address and not legacy_payload:
+            raise serializers.ValidationError({"delivery_address": "Ingresa la dirección del pedido delivery."})
+        if not is_delivery and delivery_address:
+            raise serializers.ValidationError({"delivery_address": "La dirección solo se usa en pedidos delivery."})
         for indice, linea in enumerate(attrs["items"]):
             product = Product.objects.filter(
                 pk=linea["product_id"], is_active=True, is_available=True
@@ -226,7 +242,8 @@ class OfflineOrderSyncInputSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     offline_created = serializers.BooleanField()
     consumption_type = serializers.ChoiceField(choices=["PARA_SERVIR", "PARA_LLEVAR"])
-
+    is_delivery = serializers.BooleanField(required=False, default=None, allow_null=True)
+    delivery_address = serializers.CharField(max_length=250, required=False, allow_blank=True, trim_whitespace=True, default="")
     delivery_fee = serializers.IntegerField(min_value=0, required=False, default=0)
     # Los clientes POS anteriores pueden conservar ventas pendientes en IndexedDB.
     # La interfaz actual siempre exige el nombre; este valor permite sincronizar esas ventas antiguas.
@@ -243,8 +260,20 @@ class OfflineOrderSyncInputSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not attrs["offline_created"]:
             raise serializers.ValidationError({"offline_created": "La ruta de sincronización acepta solo ventas creadas offline."})
-        if attrs["delivery_fee"] and attrs["consumption_type"] != "PARA_LLEVAR":
-            raise serializers.ValidationError({"delivery_fee": "El delivery solo aplica a pedidos para llevar."})
+        legacy_payload = "is_delivery" not in self.initial_data
+        is_delivery = attrs.get("is_delivery")
+        if is_delivery is None:
+            # Older offline drafts used a positive fee as the only delivery marker.
+            is_delivery = bool(attrs["delivery_fee"])
+            attrs["is_delivery"] = is_delivery
+        if (attrs["delivery_fee"] or is_delivery or attrs["delivery_address"]) and attrs["consumption_type"] != "PARA_LLEVAR":
+            raise serializers.ValidationError({"consumption_type": "El delivery solo aplica a pedidos para llevar."})
+        if attrs["delivery_fee"] and not is_delivery:
+            raise serializers.ValidationError({"is_delivery": "Activa delivery para agregar un costo de despacho."})
+        if is_delivery and not attrs["delivery_address"] and not legacy_payload:
+            raise serializers.ValidationError({"delivery_address": "Ingresa la dirección del pedido delivery."})
+        if not is_delivery and attrs["delivery_address"]:
+            raise serializers.ValidationError({"delivery_address": "La dirección solo se usa en pedidos delivery."})
         if attrs["payment_method"] == "EFECTIVO" and "amount_received" not in attrs:
             raise serializers.ValidationError({"amount_received": "Indica el efectivo recibido."})
         if attrs["payment_method"] != "EFECTIVO" and "amount_received" in attrs:
@@ -307,6 +336,8 @@ class OrderReadSerializer(serializers.ModelSerializer):
             "offline_created",
             "consumption_type",
             "customer_name",
+            "is_delivery",
+            "delivery_address",
             "payment_method",
             "subtotal",
             "delivery_fee",

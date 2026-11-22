@@ -259,6 +259,8 @@ def _venta_idempotente_coincide(order, quote, payment_method, amount_received):
         and order.created_at == created_at
         and order.consumption_type == quote["consumption_type"]
         and order.customer_name == quote.get("customer_name", "")
+        and order.is_delivery == quote.get("is_delivery", False)
+        and order.delivery_address == quote.get("delivery_address", "")
         and order.payment_method == payment_method
         and order.subtotal == quote["subtotal"]
         and order.delivery_fee == quote.get("delivery_fee", 0)
@@ -306,6 +308,8 @@ def _venta_offline_idempotente_coincide(order, shift, values, subtotal, amount_p
         and order.payment_method == values["payment_method"]
         and order.subtotal == subtotal
         and order.delivery_fee == values.get("delivery_fee", 0)
+        and order.is_delivery == values.get("is_delivery", False)
+        and order.delivery_address == values.get("delivery_address", "")
         and order.total_amount == subtotal + values.get("delivery_fee", 0)
         and order.amount_paid == amount_paid
         and order.change_given == change_given
@@ -586,6 +590,8 @@ class OrderQuoteView(APIView):
             "user_id": request.user.pk,
             "consumption_type": values["consumption_type"],
             "customer_name": values["customer_name"],
+            "is_delivery": values["is_delivery"],
+            "delivery_address": values["delivery_address"],
             "items": quote_items,
             "delivery_fee": delivery_fee,
             "subtotal": subtotal,
@@ -599,6 +605,8 @@ class OrderQuoteView(APIView):
                 + timedelta(seconds=QUOTE_MAX_AGE_SECONDS),
                 "requires_confirmation": requires_confirmation,
                 "items": display_items,
+                "is_delivery": values["is_delivery"],
+                "delivery_address": values["delivery_address"],
                 "delivery_fee": delivery_fee,
                 "subtotal": subtotal,
                 "total_amount": subtotal + delivery_fee,
@@ -726,6 +734,8 @@ class CreateOrderView(APIView):
                     offline_created=False,
                     consumption_type=quote["consumption_type"],
                     customer_name=quote.get("customer_name", ""),
+                    is_delivery=quote.get("is_delivery", False),
+                    delivery_address=quote.get("delivery_address", ""),
                     payment_method=values["payment_method"],
                     subtotal=quote["subtotal"],
                     delivery_fee=quote.get("delivery_fee", 0),
@@ -825,6 +835,8 @@ class SyncOfflineOrderView(APIView):
                 late_for_closed_shift = not shift.is_open
                 if late_for_closed_shift:
                     review_reasons.append("Venta offline sincronizada después del cierre del turno; requiere conciliación.")
+                if values["is_delivery"] and not values["delivery_address"]:
+                    review_reasons.append("Venta delivery antigua sin dirección; requiere confirmación.")
                 for item in items:
                     current = products[item["product_id"]]
                     if not current.is_active or not current.is_available:
@@ -852,6 +864,8 @@ class SyncOfflineOrderView(APIView):
                     offline_created=True,
                     consumption_type=values["consumption_type"],
                     customer_name=values["customer_name"],
+                    is_delivery=values["is_delivery"],
+                    delivery_address=values["delivery_address"],
 
                     payment_method=payment_method,
                     subtotal=subtotal,

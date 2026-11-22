@@ -72,6 +72,8 @@ export interface PosSaleDraft {
   consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR' | 'CONSUMO';
   payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA' | null;
   delivery_fee?: number;
+  is_delivery?: boolean;
+  delivery_address?: string;
   amount_received: string;
   saved_at: string;
 }
@@ -107,6 +109,8 @@ export interface PosPendingPaymentDraft {
     }[];
     subtotal: number;
     delivery_fee?: number;
+    is_delivery?: boolean;
+    delivery_address?: string;
     total_amount: number;
   };
   price_confirmation_accepted: boolean;
@@ -146,6 +150,8 @@ export interface PosOfflineOrder {
   consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR' | 'CONSUMO';
   payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA' | null;
   delivery_fee?: number;
+  is_delivery?: boolean;
+  delivery_address?: string;
   amount_received?: number;
   items: {
     product_id: number;
@@ -170,6 +176,8 @@ export interface PosPrintJob {
   consumption_type: 'PARA_SERVIR' | 'PARA_LLEVAR' | 'CONSUMO';
   payment_method: 'EFECTIVO' | 'TRANSBANK' | 'TRANSFERENCIA' | null;
   delivery_fee?: number;
+  is_delivery?: boolean;
+  delivery_address?: string;
   total_amount: number;
   amount_paid: number | null;
   change_given: number | null;

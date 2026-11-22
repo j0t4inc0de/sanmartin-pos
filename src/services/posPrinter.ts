@@ -82,12 +82,19 @@ const finishReceipt = () => append(esc(27, 100, 4), esc(29, 86, 0, 0));
 
 const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
   const columns = { quantity: 5, description: 27, total: 14 };
+  const isDelivery = job.is_delivery ?? Boolean(job.delivery_fee);
 
   const title = job.consumption_type === 'CONSUMO' ? `REGISTRO HISTÓRICO N° ${orderNo(job.shift_order_number)}` : `VALE N° ${orderNo(job.shift_order_number)} - ${job.consumption_type === 'PARA_LLEVAR' ? 'LLEVAR' : 'SERVIR'}`;
   const paymentLabel = job.payment_method === 'TRANSBANK' ? 'TARJETA' : job.payment_method?.replace('_', ' ') ?? 'SIN PAGO REGISTRADO';
   const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), printLogo(), centered('SAN MARTÍN'), esc(27, 69, 1), centered(title), esc(27, 69, 0)];
   if (reprint) parts.push(centered('REIMPRESION'));
-  parts.push(centered(dateReceipt(job.created_at)), line('-'.repeat(46)));
+  parts.push(centered(dateReceipt(job.created_at)));
+  if (isDelivery && job.delivery_address?.trim()) {
+    parts.push(esc(27, 69, 1));
+    wrap(`Dirección: ${job.delivery_address.trim()}`).forEach(value => parts.push(line(value)));
+    parts.push(esc(27, 69, 0));
+  }
+  parts.push(line('-'.repeat(46)));
   parts.push(line(`${fit('Unid.', columns.quantity).padEnd(columns.quantity)}${fit('Descripción', columns.description).padEnd(columns.description)}${fit('Total', columns.total).padStart(columns.total)}`));
   parts.push(line('-'.repeat(46)));
   job.items.forEach(item => {
@@ -105,26 +112,24 @@ const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
         .forEach(value => parts.push(line(`${' '.repeat(columns.quantity)}${fit(value, columns.description)}`)));
     });
   });
+  if (isDelivery) parts.push(line('-'.repeat(46)), row('DELIVERY', money(job.delivery_fee ?? 0)));
   parts.push(line('-'.repeat(46)), esc(27, 69, 1), row('TOTAL', money(job.total_amount)), esc(27, 69, 0), line('-'.repeat(46)));
   parts.push(line(`PAGO = ${paymentLabel}`));
   if (job.payment_method === 'EFECTIVO' && job.amount_paid !== null) {
     parts.push(row('Recibido', money(job.amount_paid)), row('Vuelto', money(job.change_given ?? 0)));
   }
 
-  if ((job.delivery_fee ?? 0) > 0) parts.push(row('DELIVERY', money(job.delivery_fee ?? 0)));
-  parts.push(esc(27, 69, 1), esc(29, 33, 17));
-  wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`, 23).forEach(value => parts.push(line(value)));
-  parts.push(esc(29, 33, 0), esc(27, 69, 0));
   parts.push(centered('GRACIAS POR PREFERIRNOS'), finishReceipt());
   return append(...parts);
 };
 
 const kitchenChit = (job: PosPrintJob, reprint: boolean) => {
-  const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), printLogo(), centered('SAN MARTÍN'), esc(27, 69, 1), centered('COMANDA COCINA'), esc(27, 69, 0)];
+  const isDelivery = job.is_delivery ?? Boolean(job.delivery_fee);
+  const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), centered('SAN MARTÍN'), esc(27, 69, 1), centered('COMANDA COCINA'), esc(27, 69, 0)];
   if (reprint) parts.push(centered('REIMPRESION'));
   parts.push(esc(29, 33, 17), centered(`N. ${orderNo(job.shift_order_number)}`), esc(29, 33, 0));
 
-  parts.push(centered(job.consumption_type === 'CONSUMO' ? 'REGISTRO HISTÓRICO' : job.consumption_type === 'PARA_LLEVAR' ? 'PARA LLEVAR' : 'PARA SERVIR'), centered(dateText(job.created_at)));
+  parts.push(esc(27, 69, 1), esc(29, 33, 17), centered(job.consumption_type === 'CONSUMO' ? 'REGISTRO HISTÓRICO' : isDelivery ? 'DELIVERY' : job.consumption_type === 'PARA_LLEVAR' ? 'PARA LLEVAR' : 'PARA SERVIR'), esc(29, 33, 0), esc(27, 69, 0), centered(dateText(job.created_at)));
   parts.push(esc(27, 69, 1), esc(29, 33, 17));
   wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`, 23).forEach(value => parts.push(centered(value)));
   parts.push(esc(29, 33, 0), esc(27, 69, 0));
@@ -320,6 +325,7 @@ export interface PosShiftClosePrintJob {
   opened_at: string;
   closed_at: string | null;
   sales_summary: Array<{ payment_method: string; total_amount: number }>;
+  notes?: string;
 }
 
 const shiftCloseReceipt = (shift: PosShiftClosePrintJob) => {
@@ -336,6 +342,10 @@ const shiftCloseReceipt = (shift: PosShiftClosePrintJob) => {
   parts.push(row('PAGOS CON TARJETA', money(card)));
   parts.push(row('PAGOS CON TRANSFERENCIA', money(transfer)));
   parts.push(line('-'.repeat(46)), esc(27, 69, 1), row('TOTAL GENERAL', money(total)), esc(27, 69, 0));
+  if (shift.notes?.trim()) {
+    parts.push(line('-'.repeat(46)), esc(27, 69, 1), line('NOTAS'), esc(27, 69, 0));
+    wrap(shift.notes.trim()).forEach(note => parts.push(line(note)));
+  }
   parts.push(finishReceipt());
   return append(...parts);
 };

@@ -402,6 +402,35 @@ class OrderApiTests(APITestCase):
         self.assertEqual(response.data["delivery_fee"], 1500)
         self.assertEqual(response.data["change_given"], 500)
 
+    def test_delivery_con_direccion_se_guarda_en_la_venta_aunque_sea_gratis(self):
+        payload = self.payload_cotizacion()
+        payload["is_delivery"] = True
+        payload["delivery_address"] = "Av. Central 123, casa azul"
+        _, quote = self.cotizar(payload)
+
+        response = self.cobrar(quote, payload, amount=5000)
+
+        self.assertEqual(quote.status_code, 200)
+        self.assertTrue(quote.data["is_delivery"])
+        self.assertEqual(quote.data["delivery_address"], payload["delivery_address"])
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["is_delivery"])
+        self.assertEqual(response.data["delivery_address"], payload["delivery_address"])
+        self.assertEqual(Order.objects.get().delivery_address, payload["delivery_address"])
+
+    def test_delivery_exige_direccion_y_no_acepta_direccion_en_retiro_normal(self):
+        payload = self.payload_cotizacion()
+        payload["is_delivery"] = True
+        _, missing_address = self.cotizar(payload)
+        self.assertEqual(missing_address.status_code, 400)
+        self.assertIn("delivery_address", missing_address.data)
+
+        payload["is_delivery"] = False
+        payload["delivery_address"] = "Av. Central 123"
+        _, address_without_delivery = self.cotizar(payload)
+        self.assertEqual(address_without_delivery.status_code, 400)
+        self.assertIn("delivery_address", address_without_delivery.data)
+
     def test_delivery_se_rechaza_fuera_de_para_llevar(self):
         payload = self.payload_cotizacion()
         payload["consumption_type"] = "PARA_SERVIR"
