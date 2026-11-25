@@ -267,6 +267,32 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
     }
   };
 
+  const clearSaleDraftAfterCompletion = async () => {
+    setLines([]);
+    setQuote(null);
+    setAmountReceived('');
+    setCustomerName('');
+    setIsDelivery(false);
+    setDeliveryAddress('');
+    setDeliveryFeeInput('');
+    // Persist the reset immediately so the next order cannot restore the prior
+    // delivery fee from IndexedDB if the POS is reloaded between sales.
+    try {
+      await guardarBorradorVentaPos({
+        ...currentDraft(),
+        lines: [],
+        customer_name: '',
+        is_delivery: false,
+        delivery_address: '',
+        delivery_fee: 0,
+        amount_received: '',
+      });
+    } catch {
+      // The sale is already registered; the autosave effect retries this reset.
+      setDraftSaveStatus('error');
+    }
+  };
+
   const persistPendingPayment = async (
     targetQuote: Quote,
     method: PaymentMethod | null,
@@ -386,7 +412,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setPaymentRecordWriteFailed(false);
       setOfflineOrders(await listarVentasOfflineEnColaPos(shiftUuid));
       setMessage(`Venta #${targetQuote.shift_order_number} guardada en este equipo y pendiente de sincronización.`);
-      setLines([]); setQuote(null); setAmountReceived(''); setCustomerName(''); setIsDelivery(false); setDeliveryAddress(''); setDeliveryFeeInput('');
+      await clearSaleDraftAfterCompletion();
       await onSale(targetQuote.shift_order_number + 1);
       if (!offlineMode && navigator.onLine) void syncOfflineOrders();
       return true;
@@ -756,7 +782,7 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
       setPaymentConflictError(null);
       setPaymentRecordWriteFailed(false);
       setMessage(`Venta #${sale.shift_order_number} guardada. Total ${formatPrice(sale.total_amount)}${sale.change_given !== null ? ` · Vuelto ${formatPrice(sale.change_given)}` : ''}.`);
-      setLines([]); setQuote(null); setAmountReceived(''); setCustomerName(''); setIsDelivery(false); setDeliveryAddress(''); setDeliveryFeeInput('');
+      await clearSaleDraftAfterCompletion();
       await printStoredJob({ ...printJob, saved_at: new Date().toISOString() });
       await loadOrders();
       try { await onSale(); }
@@ -1150,8 +1176,8 @@ export const PosSalesPanel = ({ shiftUuid, nextOrderNumber, onSale, onPendingPay
         {consumptionType === 'PARA_LLEVAR' && <div className="space-y-3 rounded-xl border border-white/10 p-3">
           <label className="flex items-center gap-3 text-sm font-semibold text-gray-200"><input type="checkbox" className="h-4 w-4 accent-[#FACC15]" checked={isDelivery} disabled={!!quote || paymentReceivedPending} onChange={event => { const enabled = event.target.checked; setIsDelivery(enabled); if (!enabled) { setDeliveryAddress(''); setDeliveryFeeInput(''); } invalidateQuote(); }} />Este pedido es delivery</label>
           {isDelivery && <>
-            <label className="block text-sm text-gray-300">Dirección de entrega <span className="text-red-300">*</span><textarea required maxLength={250} rows={2} autoComplete="street-address" className="mt-1 w-full resize-y rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Calle, número, comuna y referencia" value={deliveryAddress} disabled={!!quote || paymentReceivedPending} onChange={event => { setDeliveryAddress(event.target.value); invalidateQuote(); }} /></label>
             <label className="block text-sm text-gray-300">Valor delivery (opcional)<ClpInput className="mt-1 w-full rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Ej.: 1.500" aria-label="Valor delivery en pesos chilenos" value={deliveryFeeInput} onValueChange={value => { setDeliveryFeeInput(value); invalidateQuote(); }}/></label>
+            <label className="block text-sm text-gray-300">Dirección de entrega <span className="text-red-300">*</span><textarea required maxLength={250} rows={2} autoComplete="street-address" className="mt-1 w-full resize-y rounded-lg border border-white/10 bg-[#0D0D0D] p-3 text-white" placeholder="Calle, número, comuna y referencia" value={deliveryAddress} disabled={!!quote || paymentReceivedPending} onChange={event => { setDeliveryAddress(event.target.value); invalidateQuote(); }} /></label>
           </>}
         </div>}
         <div className={`pos-quote-sticky ${quote ? 'is-quoted' : ''}`}><span>{lines.length ? `${lines.reduce((count, line) => count + line.quantity, 0)} productos · ${consumptionType === 'PARA_SERVIR' ? 'Para servir' : 'Para llevar'}` : 'Agrega productos para cotizar'}</span><button type="button" disabled={!lines.length || busy || loadingCatalog || !draftLoaded || draftSaveStatus !== 'saved' || !!quote || paymentReceivedPending} onClick={() => void requestQuote()}>{busy && !quote ? 'Calculando…' : quote ? 'Cotización activa' : 'Cotizar'}</button></div>
