@@ -342,16 +342,33 @@ const shiftCloseReceipt = (shift: PosShiftClosePrintJob) => {
   parts.push(row('PAGOS CON TARJETA', money(card)));
   parts.push(row('PAGOS CON TRANSFERENCIA', money(transfer)));
   parts.push(line('-'.repeat(46)), esc(27, 69, 1), row('TOTAL GENERAL', money(total)), esc(27, 69, 0));
-  if (shift.notes?.trim()) {
-    parts.push(line('-'.repeat(46)), esc(27, 69, 1), line('NOTAS'), esc(27, 69, 0));
-    wrap(shift.notes.trim()).forEach(note => parts.push(line(note)));
-  }
+  parts.push(finishReceipt());
+  return append(...parts);
+};
+
+const shiftCloseNotesReceipt = (shift: PosShiftClosePrintJob) => {
+  const notes = shift.notes?.trim();
+  if (!notes) return new Uint8Array();
+
+  const parts: Uint8Array[] = [
+    esc(27, 64),
+    esc(27, 116, 2),
+    centered('SAN MARTÍN'),
+    esc(27, 69, 1),
+    centered('NOTAS DE CIERRE'),
+    esc(27, 69, 0),
+    centered(dateReceipt(shift.closed_at ?? new Date().toISOString())),
+    line('-'.repeat(46)),
+  ];
+  wrap(notes).forEach(note => parts.push(line(note)));
   parts.push(finishReceipt());
   return append(...parts);
 };
 
 export const printPosShiftClose = async (shift: PosShiftClosePrintJob) => {
-  await send(shiftCloseReceipt(shift));
+  // Each ESC/POS receipt ends with its own feed-and-cut command, so notes land
+  // on a separate physical slip while sharing one printer connection.
+  await send(append(shiftCloseReceipt(shift), shiftCloseNotesReceipt(shift)));
 };
 
 export const openPosCashDrawer = async () => {
