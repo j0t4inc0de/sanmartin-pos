@@ -89,6 +89,11 @@ const customerReceipt = (job: PosPrintJob, reprint: boolean) => {
   const parts: Uint8Array[] = [esc(27, 64), esc(27, 116, 2), printLogo(), centered('SAN MARTÍN'), esc(27, 69, 1), centered(title), esc(27, 69, 0)];
   if (reprint) parts.push(centered('REIMPRESION'));
   parts.push(centered(dateReceipt(job.created_at)));
+  if (isDelivery && job.delivery_address?.trim()) {
+    parts.push(esc(27, 69, 1));
+    wrap(`Dirección: ${job.delivery_address.trim()}`).forEach(value => parts.push(line(value)));
+    parts.push(esc(27, 69, 0));
+  }
   parts.push(line('-'.repeat(46)));
   parts.push(line(`${fit('Unid.', columns.quantity).padEnd(columns.quantity)}${fit('Descripción', columns.description).padEnd(columns.description)}${fit('Total', columns.total).padStart(columns.total)}`));
   parts.push(line('-'.repeat(46)));
@@ -128,11 +133,6 @@ const kitchenChit = (job: PosPrintJob, reprint: boolean) => {
   parts.push(esc(27, 69, 1), esc(29, 33, 17));
   wrap(`Cliente: ${job.customer_name || 'Sin nombre'}`, 23).forEach(value => parts.push(centered(value)));
   parts.push(esc(29, 33, 0), esc(27, 69, 0));
-  if (isDelivery && job.delivery_address?.trim()) {
-    parts.push(esc(27, 69, 1));
-    wrap(`Dirección: ${job.delivery_address.trim()}`).forEach(value => parts.push(line(value)));
-    parts.push(esc(27, 69, 0));
-  }
   parts.push(line('-'.repeat(46)));
   job.items.forEach(item => {
     parts.push(esc(29, 33, 17));
